@@ -532,14 +532,15 @@ function applyStatic() {
   document.querySelectorAll('#langSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === lang)));
   $('title').textContent = t('appName');
 }
-// Stretches with no accepted reading: between two neighbouring rows (and from the last row to `end`, when given) a hole longer
-// than max(3 x the median spacing of the rows, 5 min). Nothing before the first row. Returns [{ a, b }] in ms.
-function gapsOf(list, end) {
-  const d = []; for (let i = 1; i < list.length; i++) d.push(list[i].t - list[i - 1].t);
-  const sd = d.slice().sort((p, q) => p - q), med = sd.length ? (sd[(sd.length - 1) >> 1] + sd[sd.length >> 1]) / 2 : 0;
-  const thr = Math.max(3 * med, 5 * 60000), out = [];
-  for (let i = 1; i < list.length; i++) if (list[i].t - list[i - 1].t > thr) out.push({ a: list[i - 1].t, b: list[i].t });
-  if (list.length && end != null && end - list[list.length - 1].t > thr) out.push({ a: list[list.length - 1].t, b: end });
+// Stretches with no accepted reading inside [t0, end]: exactly where the chart line breaks, i.e. two neighbouring readings more than
+// `gap` ms apart (and from the last reading to `end`). `rows` = all readings, oldest first; the last one before t0 counts, so a hole
+// crossing the left edge starts at t0, and a range with no readings is one band from t0 (while the last reading is older than `gap`).
+// Nothing before the first reading. Returns [{ a, b }] in ms.
+function gapsOf(rows, t0, end, gap) {
+  let i0 = 0; while (i0 < rows.length && rows[i0].t < t0) i0++;
+  const pts = rows.slice(i0 > 0 ? i0 - 1 : 0).map((r) => r.t), out = [];
+  if (end != null && pts.length) pts.push(end);
+  for (let i = 1; i < pts.length; i++) if (pts[i] - pts[i - 1] > gap) out.push({ a: Math.max(pts[i - 1], t0), b: pts[i] });
   return out;
 }
 function render(D) {
@@ -644,8 +645,9 @@ function draw(hours) {
   for (const c of cutsOf(list)) { const a = Math.max(x(c.start), L), b = x(c.end || Math.min(c.last + 120000, t1)); s += `<rect x="${a.toFixed(1)}" y="${T}" width="${Math.max(2, b - a).toFixed(1)}" height="${H - T - B}" fill="rgba(224,165,58,.10)"/>`; }
   // no readings: a grey hatched band over the grid-off one, its hover text the span and its length
   s += `<defs><pattern id="nodata" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="rgba(139,142,149,.12)"/><line x1="0" y1="0" x2="0" y2="7" stroke="#9a9da4" stroke-opacity=".6" stroke-width="2"/></pattern></defs>`;
-  for (const g of gapsOf(list, NOW)) { const a = x(g.a), b = x(Math.min(g.b, t1));
-    s += `<rect x="${a.toFixed(1)}" y="${T}" width="${Math.max(2, b - a).toFixed(1)}" height="${H - T - B}" fill="url(#nodata)" stroke="#9a9da4" stroke-opacity=".45"><title>${t('noDataTip', { a: hm(g.a), b: hm(g.b), d: dur(g.b - g.a) })}</title></rect>`; }
+  const gaps = gapsOf(rows, t0, NOW, GAP);
+  for (const g of gaps) { const a = x(g.a), b = x(Math.min(g.b, t1));
+    s += `<rect x="${a.toFixed(1)}" y="${T}" width="${Math.max(2, b - a).toFixed(1)}" height="${H - T - B}" fill="url(#nodata)" stroke="#9a9da4" stroke-opacity=".45"/>`; }
   for (const p of [0, 25, 50, 75, 100]) { s += `<line x1="${L}" x2="${W - R}" y1="${ys(p)}" y2="${ys(p)}" stroke="#34363b" ${p ? 'stroke-dasharray="2 5"' : ''}/><text x="${L - 8}" y="${ys(p) + 4}" fill="#8b8e95" font-size="12" text-anchor="end">${p}%</text><text x="${W - R + 8}" y="${ys(p) + 4}" fill="#8b8e95" font-size="12">${uW(Math.round(maxLoad * p / 100))}</text>`; }
   for (const p of [D.thresholds.emergencyAt, D.thresholds.stopAt]) s += `<line x1="${L}" x2="${W - R}" y1="${ys(p)}" y2="${ys(p)}" stroke="${p === D.thresholds.stopAt ? '#db5c5c' : '#e0a53a'}" stroke-opacity=".55" stroke-dasharray="6 4"/>`;
   const step = hours <= 1 ? 10 : hours <= 4 ? 30 : hours <= 8 ? 60 : 180, first = Math.ceil(t0 / (step * 60000)) * step * 60000;
@@ -658,10 +660,14 @@ function draw(hours) {
         + `<line x1="${x(NOW).toFixed(1)}" x2="${x(NOW).toFixed(1)}" y1="${T}" y2="${H - B}" stroke="#8b8e95" stroke-opacity=".35"/><text x="${(x(NOW) + 6).toFixed(1)}" y="${T + 12}" fill="#8b8e95" font-size="12">${t('nowForecast')}</text>`; } }
   s += `<line id="cross" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="#8b8e95" stroke-opacity=".6" visibility="hidden"/>`;
   const svg = $('chart'); svg.innerHTML = s; $('count').textContent = t('readingsCount', { n: list.length });
-  svg.onmousemove = (e) => { const b = svg.getBoundingClientRect(), px = (e.clientX - b.left) * W / b.width; if (!list.length || px < L || px > W - R) { svg.onmouseleave(); return; }
-    const tt = t0 + (px - L) / (W - L - R) * (t1 - t0); let best = list[0]; for (const r of list) if (Math.abs(r.t - tt) < Math.abs(best.t - tt)) best = r;
-    const c = document.getElementById('cross'); c.setAttribute('x1', x(best.t)); c.setAttribute('x2', x(best.t)); c.setAttribute('visibility', 'visible');
-    const tip = $('tip'); tip.style.display = 'block'; tip.innerHTML = `<b>${hm(best.t)}</b> · ${best.soc}% · ${uW(best.load)} · ${t('tipGrid', { s: best.mains ? t('on') : t('off') })}`;
+  svg.onmousemove = (e) => { const b = svg.getBoundingClientRect(), px = (e.clientX - b.left) * W / b.width; if (px < L || px > W - R) { svg.onmouseleave(); return; }
+    const tt = t0 + (px - L) / (W - L - R) * (t1 - t0), hole = gaps.find((g) => tt >= g.a && tt <= g.b), c = document.getElementById('cross'), tip = $('tip');
+    // inside a no-data band the custom tooltip names the hole (the nearest reading would mislead)
+    if (hole) { c.setAttribute('visibility', 'hidden'); tip.style.display = 'block'; tip.textContent = t('noDataTip', { a: hm(hole.a), b: hm(hole.b), d: dur(hole.b - hole.a) }); }
+    else { if (!list.length) { svg.onmouseleave(); return; }
+      let best = list[0]; for (const r of list) if (Math.abs(r.t - tt) < Math.abs(best.t - tt)) best = r;
+      c.setAttribute('x1', x(best.t)); c.setAttribute('x2', x(best.t)); c.setAttribute('visibility', 'visible');
+      tip.style.display = 'block'; tip.innerHTML = `<b>${hm(best.t)}</b> · ${best.soc}% · ${uW(best.load)} · ${t('tipGrid', { s: best.mains ? t('on') : t('off') })}`; }
     tip.style.left = Math.min(window.innerWidth - tip.offsetWidth - 8, e.clientX + 12) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; };
   svg.onmouseleave = () => { $('tip').style.display = 'none'; const c = document.getElementById('cross'); if (c) c.setAttribute('visibility', 'hidden'); };
   // Energy per clock hour
