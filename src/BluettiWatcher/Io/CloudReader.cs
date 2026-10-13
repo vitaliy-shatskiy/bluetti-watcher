@@ -34,6 +34,9 @@ internal sealed record CloudToken(string Access, string Refresh, string TokenTyp
 /// </summary>
 internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandler handler, TimeProvider time, Action<string> log) : IStationReader, IDisposable
 {
+    // Not secrets: the public client values shipped in BLUETTI's official Home Assistant integration
+    // (github.com/bluetti-official/bluetti-home-assistant, custom_components/bluetti/profile/application.yaml).
+    // ClientSecret is base64("HomeAssistant"). Access comes only from the user's own token (cloud-token.json, never in the repo).
     private const string DevicesUrl = "https://gw.bluettipower.com/api/bluiotdata/ha/v2/devices";
     internal const string TokenUrl = "https://sso.bluettipower.com/oauth2/token";
     private const string AppKey = "19974C15BCCBC91B21A8BA71BF5";
