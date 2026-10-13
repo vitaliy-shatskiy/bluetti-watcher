@@ -1,0 +1,16 @@
+version: 2
+updates:
+  # global.json: a new .NET SDK patch brings the runtime security fixes that NativeAOT bakes into the exe.
+  # The PR fails CI in locked restore until the lock files are refreshed: `dotnet restore --force-evaluate`.
+  - package-ecosystem: dotnet-sdk
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
