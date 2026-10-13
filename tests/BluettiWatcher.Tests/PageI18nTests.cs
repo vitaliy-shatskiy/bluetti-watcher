@@ -374,6 +374,51 @@ public sealed partial class PageI18nTests
         Assert.Equal("4.1 + 6.2", string.Join(qd.Groups[3].Value, "GPV4.1+GPV6.2".Split(qd.Groups[1].Value[0]).Select(x => Regex.Replace(x, qd.Groups[2].Value, ""))));
     }
 
+    [NodeFact]
+    public void The_gap_finder_marks_holes_longer_than_three_median_spacings_and_five_minutes()
+    {
+        string page = Page().Replace("\r\n", "\n", StringComparison.Ordinal);
+        // the legend item and the grey band sit beside the grid-off ones; the band is drawn after the grid-off band, so it lies on top
+        Assert.Contains("data-i18n=\"legendNoData\"", page, StringComparison.Ordinal);
+        int off = page.IndexOf("fill=\"rgba(224,165,58,.10)\"", StringComparison.Ordinal), hatch = page.IndexOf("fill=\"url(#nodata)\"", StringComparison.Ordinal);
+        Assert.True(off > 0 && hatch > off, "the no-data band must be drawn after the grid-off band");
+        string script = $$"""
+            const src = {{System.Text.Json.JsonSerializer.Serialize(FunctionText(page, "gapsOf"))}};
+            const gapsOf = new Function(src + '; return gapsOf;')();
+            const M = 60000, T0 = Date.UTC(2026, 9, 13, 18, 0, 0);
+            const rows = (mins) => mins.map((m) => ({ t: T0 + m * M }));
+            const every = (step, n) => Array.from({ length: n }, (_, i) => i * step);
+            const mins = (g) => g.map((x) => [(x.a - T0) / M, (x.b - T0) / M]);
+            const hole = every(1, 15).concat(every(1, 15).map((m) => 31 + m));   // readings 0..14, then 31..45: a 17-min hole
+            const out = {
+              hole: mins(gapsOf(rows(hole))),
+              regular: mins(gapsOf(rows(every(1, 120)))),
+              sparseOk: mins(gapsOf(rows(every(10, 12)))),                        // 10-min spacing: median 10, threshold 30
+              sparseHole: mins(gapsOf(rows(every(10, 6).concat([100, 110])))),   // a 50-min hole in 10-min rows
+              fiveMin: mins(gapsOf(rows([0, 1, 2, 3, 4, 9, 10, 11]))),            // 5 min exactly: not longer
+              sixMin: mins(gapsOf(rows([0, 1, 2, 3, 4, 10, 11, 12]))),            // 6 min: marked
+              empty: gapsOf([]).length, one: gapsOf(rows([0])).length,
+              tail: mins(gapsOf(rows(every(1, 10)), T0 + 20 * M)),                // last reading 9, now 20: trailing hole
+              tailShort: mins(gapsOf(rows(every(1, 10)), T0 + 12 * M)),
+              leading: mins(gapsOf(rows([30, 31, 32, 33]))),                       // nothing before the first row
+            };
+            console.log(JSON.stringify(out));
+            """;
+        using var doc = System.Text.Json.JsonDocument.Parse(RunNode(script));
+        string J(string name) => doc.RootElement.GetProperty(name).GetRawText();
+        Assert.Equal("[[14,31]]", J("hole"));   // no reading from minute 14 to 31: 17 min
+        Assert.Equal("[]", J("regular"));
+        Assert.Equal("[]", J("sparseOk"));
+        Assert.Equal("[[50,100]]", J("sparseHole"));
+        Assert.Equal("[]", J("fiveMin"));
+        Assert.Equal("[[4,10]]", J("sixMin"));
+        Assert.Equal("0", J("empty"));
+        Assert.Equal("0", J("one"));
+        Assert.Equal("[[9,20]]", J("tail"));
+        Assert.Equal("[]", J("tailShort"));
+        Assert.Equal("[]", J("leading"));
+    }
+
     [Fact]
     public void The_markup_holds_no_text_of_its_own()
     {
