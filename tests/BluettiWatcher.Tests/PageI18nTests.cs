@@ -374,6 +374,69 @@ public sealed partial class PageI18nTests
         Assert.Equal("4.1 + 6.2", string.Join(qd.Groups[3].Value, "GPV4.1+GPV6.2".Split(qd.Groups[1].Value[0]).Select(x => Regex.Replace(x, qd.Groups[2].Value, ""))));
     }
 
+    [NodeFact]
+    public void The_gap_finder_marks_exactly_where_the_chart_line_breaks()
+    {
+        string page = Page().Replace("\r\n", "\n", StringComparison.Ordinal);
+        // the legend item and the grey band sit beside the grid-off ones; the band is drawn after the grid-off band, so it lies on top
+        Assert.Contains("data-i18n=\"legendNoData\"", page, StringComparison.Ordinal);
+        int off = page.IndexOf("fill=\"rgba(224,165,58,.10)\"", StringComparison.Ordinal), hatch = page.IndexOf("fill=\"url(#nodata)\"", StringComparison.Ordinal);
+        Assert.True(off > 0 && hatch > off, "the no-data band must be drawn after the grid-off band");
+        // draw() cannot run here (it needs a DOM), so the helper is tested with the arguments draw passes: all rows, the range start, NOW and the line's own GAP
+        Assert.Contains("const gaps = gapsOf(rows, t0, NOW, GAP);", page, StringComparison.Ordinal);
+        Assert.Contains("const GAP = 10 * 60000;", page, StringComparison.Ordinal);
+        Assert.Contains("r.t - list[i - 1].t > GAP ? 'M' : 'L'", page, StringComparison.Ordinal);   // the line breaks on "> GAP"; the band rule is the same
+        string script = $$"""
+            const src = {{System.Text.Json.JsonSerializer.Serialize(FunctionText(page, "gapsOf"))}};
+            const gapsOf = new Function(src + '; return gapsOf;')();
+            const M = 60000, GAP = 10 * M, T0 = Date.UTC(2026, 9, 13, 18, 0, 0);
+            const rows = (mins) => mins.map((m) => ({ t: T0 + m * M }));
+            const every = (step, n, from = 0) => Array.from({ length: n }, (_, i) => from + i * step);
+            const mins = (g) => g.map((x) => [(x.a - T0) / M, (x.b - T0) / M]);
+            // the range starts at minute `from` and ends at minute `now` (default: the last row)
+            const run = (m, from, now) => mins(gapsOf(rows(m), T0 + from * M, T0 + (now ?? m[m.length - 1]) * M, GAP));
+            const out = {
+              hole: run(every(1, 15).concat(every(1, 15, 31)), 0),                  // readings 0..14, then 31..45: a 17-min hole
+              regular: run(every(1, 120), 0),
+              atGap: run([0, 1, 2, 12, 13], 0),                                      // 10 min exactly (2 -> 12): the line is continuous, no band
+              overGap: run([0, 1, 2, 13, 14], 0),                                    // 11 min: the line breaks, band
+              fiveMinRows: run(every(5, 6).concat(every(5, 6, 39)), 0),              // 5-min rows, a 14-min hole (25 -> 39): breaks the line, so a band
+              hourly: run(every(60, 5), 0),                                          // hourly rows: every step breaks the line, every step is a band
+              one: run([0], 0),
+              tail: run(every(1, 10), 0, 20),                                        // last reading 9, now 20: trailing hole
+              tailAtGap: run(every(1, 10), 0, 19),                                   // 9 -> 19 is exactly GAP: none
+              tailShort: run(every(1, 10), 0, 12),
+              leading: run([30, 31, 32, 33], 0),                                     // nothing before the first row
+              edge: run([-180, 50, 51, 52], 0),                                      // range from 0, readings stop at -180 and resume at 50: band starts at the edge
+              edgeShort: run([-5, 1, 2, 3], 0),                                      // the row before the range is 6 min before the next one: no band
+              edgeClipped: run([-180, 5, 6, 7], 0),                                  // resumes at 5: band 0..5
+              emptyRange: run([-180, -170], 0, 60),                                  // no row in the range at all: one band from the range start to now
+              emptyRecent: run([-180, -4], 0, 3),                                    // no row in the range, last one 7 min before now: no band
+              noRows: mins(gapsOf([], T0, T0 + 60 * M, GAP)),
+            };
+            console.log(JSON.stringify(out));
+            """;
+        using var doc = System.Text.Json.JsonDocument.Parse(RunNode(script));
+        string J(string name) => doc.RootElement.GetProperty(name).GetRawText();
+        Assert.Equal("[[14,31]]", J("hole"));   // no reading from minute 14 to 31: 17 min
+        Assert.Equal("[]", J("regular"));
+        Assert.Equal("[]", J("atGap"));
+        Assert.Equal("[[2,13]]", J("overGap"));
+        Assert.Equal("[[25,39]]", J("fiveMinRows"));
+        Assert.Equal("[[0,60],[60,120],[120,180],[180,240]]", J("hourly"));
+        Assert.Equal("[]", J("one"));
+        Assert.Equal("[[9,20]]", J("tail"));
+        Assert.Equal("[]", J("tailAtGap"));
+        Assert.Equal("[]", J("tailShort"));
+        Assert.Equal("[]", J("leading"));
+        Assert.Equal("[[0,50]]", J("edge"));
+        Assert.Equal("[]", J("edgeShort"));
+        Assert.Equal("[[0,5]]", J("edgeClipped"));
+        Assert.Equal("[[0,60]]", J("emptyRange"));
+        Assert.Equal("[]", J("emptyRecent"));
+        Assert.Equal("[]", J("noRows"));
+    }
+
     [Fact]
     public void The_markup_holds_no_text_of_its_own()
     {
