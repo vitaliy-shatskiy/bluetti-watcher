@@ -1,14 +1,42 @@
 name: CI
 
+# main and pull requests only: a PR branch push runs once (pull_request), a tag runs release.yml alone.
+# A change to documentation only starts no run. Files that code or tests read stay out of this list:
+# integrations/claude-code/power-mode*.rules.md (the hook and its test read them).
 on:
   push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+      - 'integrations/claude-code/README.md'
+      - 'power-mode/README.md'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+      - 'integrations/claude-code/README.md'
+      - 'power-mode/README.md'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# A newer push to the same PR cancels the run it supersedes; every other run has a group of its own and always finishes.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Three jobs in parallel: the run takes as long as the slowest one, not the sum.
 jobs:
-  test:
+  dotnet:
+    name: .NET tests
     runs-on: windows-latest
     timeout-minutes: 30
     defaults:
@@ -21,20 +49,45 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: .NET tests
+        run: dotnet test bluetti-watcher.slnx -c Release
+
+  node:
+    name: Node tests
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22
 
-      # install.ps1's dry run (tools/test-install.ps1) checks for Python 3.12-3.14 on PATH.
+      # Two files in parallel; inside power-mode.test.js the independent tests run one per CPU (TEST_CONCURRENCY overrides).
+      - name: Node tests (power-mode switch and its integration hook)
+        run: node --test power-mode/power-mode.test.js integrations/claude-code/power-mode.test.js
+
+  tools:
+    name: PowerShell tool tests
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      # install.ps1's dry run (tools/test-install.ps1) checks for dotnet and for Python 3.12-3.14 on PATH.
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
-
-      - name: .NET tests
-        run: dotnet test bluetti-watcher.slnx -c Release
-
-      - name: Node tests (power-mode switch and its integration hook)
-        run: node --test power-mode/power-mode.test.js integrations/claude-code/power-mode.test.js
 
       - name: PowerShell tool tests
         run: |
