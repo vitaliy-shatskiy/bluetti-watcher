@@ -6,6 +6,35 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-14
+
+### Download
+
+| File | What it is |
+|---|---|
+| `bluetti-watcher-1.2.0-win-x64.zip` | The service, the power-mode scripts, the installer and the docs |
+| `bluetti-watcher-1.2.0-win-x64.zip.sha256` | Its SHA-256; check with `(Get-FileHash bluetti-watcher-1.2.0-win-x64.zip).Hash` |
+
+Upgrade: extract the zip, then `pwsh -NoProfile -File install.ps1` (a dry run) and the same with `-Apply`; your
+config, database and history stay. Requirements and details: [README](https://github.com/vitaliy-shatskiy/bluetti-watcher#quick-start).
+
+### Added
+
+- `trimWorkingSet` (default `true`): after each poll the process's pages leave its working set, so the Task Manager
+  "Memory" column (private working set) drops under 1 MB (0.5 MB idle in `tools/bench.ps1`). Cosmetic: commit
+  (private bytes) does not change, and the pages fault back in at the next poll; `false` keeps them.
+
+### Changed
+
+- SQLite is Windows' own `winsqlite3.dll` (System32): the release ships `BluettiWatcher.exe` alone, without
+  `e_sqlite3.dll` (1.9 MB less). The SQLite version now follows Windows Update; an existing `station.db` opens as
+  before.
+- Memory: 256 KB garbage-collector regions in a 64 MB range; after each poll the native heaps' free memory is
+  decommitted (HeapCompact, HeapOptimizeResources); the data and flag folders come from `%LOCALAPPDATA%` and
+  `%ProgramData%` (the shell call only when a variable is missing or not an absolute path), so reading them loads no
+  shell32. Private bytes in `tools/bench.ps1`: 4.4 MB idle and 7.7 MB after a page load on a 30-day database (about
+  5 MB and 9 MB in 1.1).
+
 ## [1.1.1] - 2026-10-14
 
 ### Download
@@ -162,7 +191,8 @@ with `-Apply`. Requirements and details: [README](https://github.com/vitaliy-sha
 
 Source at this tag: [v1.0.0](https://github.com/vitaliy-shatskiy/bluetti-watcher/tree/v1.0.0)
 
-[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/releases/tag/v1.0.0
