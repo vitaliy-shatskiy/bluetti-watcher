@@ -57,8 +57,8 @@ internal static class PageCodes
     public static IReadOnlyList<string> Values { get; } =
         ["off", "ok", "stale", "none", "blocked", "failed", "network", "format", "dataset", "site", "auto", "eco", "max", "yes", "no", "unknown"];
 
-    /// <summary>The station's output modes (bluetti_bt_lib enums/output_mode.py), and CLOUD_MAINS: a cloud reading with AC input (design.md §4 AC2a).</summary>
-    public static IReadOnlyList<string> OutputModes { get; } = ["STOP", "INVERTER_OUTPUT", "BYPASS_OUTPUT_C", "BYPASS_OUTPUT_D", "LOAD_MATCHING", "CLOUD_MAINS"];
+    /// <summary>The station's output modes (bluetti_bt_lib enums/output_mode.py), CLOUD_MAINS (a cloud reading with AC input, design.md §4 AC2a) and BLE_MAINS (the same from a Bluetooth model with no output-mode field).</summary>
+    public static IReadOnlyList<string> OutputModes { get; } = ["STOP", "INVERTER_OUTPUT", "BYPASS_OUTPUT_C", "BYPASS_OUTPUT_D", "LOAD_MATCHING", "CLOUD_MAINS", "BLE_MAINS"];
 
     /// <summary>The page's dictionary keys for every code.</summary>
     public static IEnumerable<string> Keys() =>

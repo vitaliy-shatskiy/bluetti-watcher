@@ -78,7 +78,7 @@ public sealed class DtekWatcherMatcherTests
 {
     private static DtekMatch Feed(DtekMatch m, DtekSchedule? s, string[] house, params DtekCut[] cuts)
     {
-        foreach (var c in cuts) m = DtekMatcher.Apply(m, c, s, house, Kyiv);
+        foreach (var c in cuts) m = DtekMatcher.Apply(m, c, s, house, Kyiv, TimeSpan.Zero);
         return m;
     }
 

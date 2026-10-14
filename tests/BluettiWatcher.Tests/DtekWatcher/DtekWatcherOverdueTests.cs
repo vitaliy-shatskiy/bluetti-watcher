@@ -188,10 +188,11 @@ public sealed class DtekWatcherOverdueTests : IDisposable
 
     // ---- the service ----
 
-    private DtekWatcherService Watcher(string[]? queues = null)
+    private DtekWatcherService Watcher(string[]? queues = null, int? minCutMin = null)
     {
         var c = Config(queues: queues ?? ["A"]);
         c.Site = false;
+        if (minCutMin is { } min) c.MinCutMin = min;
         return new(new StationConfig { DataDir = _dir, DtekWatcher = c }, () => _source, new DtekStore(_store), _clock, _ => { });
     }
 
@@ -255,6 +256,20 @@ public sealed class DtekWatcherOverdueTests : IDisposable
         Assert.Equal(("A", "07.10.2026", 6, 90, 6, 90), (late.Queue, late.Date, late.StartDelta, late.EndDelta, late.FirstStartDelta, late.FirstEndDelta));
         using var third = Watcher();
         Assert.Equal(1, third.View(false, null).LateCuts);
+    }
+
+    // design.md §11 DTEK module, rule 29: a 4-minute cut in a window is no lateness entry; 0 restores the old count
+    [Theory]
+    [InlineData(null, 0)]   // the default minimum, 15 minutes
+    [InlineData(0, 1)]      // 0 = every cut counts
+    public async Task A_cut_of_4_minutes_in_a_window_is_recorded_only_without_a_minimum(int? minCutMin, int recorded)
+    {
+        using var w = Watcher(minCutMin: minCutMin);
+        await TickAt(w, "2026-10-07 12:00");
+        Begin(w, "2026-10-07 17:06");
+        End(w, "2026-10-07 17:06", "2026-10-07 17:10");
+        Assert.Equal(recorded, Saved().Count);
+        Assert.Equal(recorded, w.View(false, null).LateCuts);
     }
 
     // design.md §11 DTEK module, rule 25
@@ -348,7 +363,7 @@ public sealed class DtekWatcherOverdueTests : IDisposable
     [Fact]
     public async Task The_history_keeps_the_last_60_cuts()
     {
-        using var w = Watcher();
+        using var w = Watcher(minCutMin: 0);   // 1-minute cuts: the minimum is off here
         await TickAt(w, "2026-10-07 12:00");
         var first = At("2026-10-07 17:00");
         for (int i = 0; i < 61; i++)
@@ -392,6 +407,21 @@ public sealed class DtekWatcherOverdueTests : IDisposable
         _store.SetMeta("dtekWatcherLateness", JsonSerializer.Serialize(list, StationJson.Default.ListDtekLate));
         using var again = Watcher();
         Assert.Equal(60, again.View(false, null).LateCuts);
+    }
+
+    // design.md §11 DTEK module, rule 29: entries saved by 1.0.0 for blips do not count after the upgrade
+    [Fact]
+    public async Task Saved_entries_of_cuts_shorter_than_the_minimum_are_dropped_on_load()
+    {
+        using (var w = Watcher()) await TickAt(w, "2026-10-07 12:00");
+        var blip = Late(1); blip.End = blip.Start.AddMinutes(4);
+        var edge = Late(2); edge.End = edge.Start.AddMinutes(15);
+        var under = Late(3); under.End = under.Start.AddMinutes(15).AddSeconds(-1);
+        _store.SetMeta("dtekWatcherLateness", JsonSerializer.Serialize(new List<DtekLate> { blip, edge, Late(4), under }, StationJson.Default.ListDtekLate));
+        using var again = Watcher();
+        Assert.Equal(2, again.View(false, null).LateCuts);   // the 15-minute edge and the 4-hour one; the 4-minute blip and 14:59 are gone
+        using var none = Watcher(minCutMin: 0);
+        Assert.Equal(4, none.View(false, null).LateCuts);
     }
 
     // design.md §11 DTEK module, rule 26

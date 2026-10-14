@@ -146,7 +146,7 @@ public sealed class CloudLoginTests : IDisposable
         _http.Json(TokenAnswer());
         int exit = await Login(Browser("code=CODE-9")).RunAsync(CancellationToken.None);
         Assert.Equal(0, exit);
-        using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(_dir, "cloud-token.json")));
+        using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(_dir, "cloud-token.json"), TestContext.Current.CancellationToken));
         var t = doc.RootElement;
         Assert.Equal(Access, t.GetProperty("access_token").GetString());
         Assert.Equal(Refresh, t.GetProperty("refresh_token").GetString());

@@ -1,14 +1,16 @@
 using System.Net;
 using System.Net.Sockets;
 using BluettiWatcher;
+using BluettiWatcher.Decision;
 using BluettiWatcher.DtekWatcher;
 using BluettiWatcher.Http;
 using BluettiWatcher.Io;
+using BluettiWatcher.Io.Ble;
 using BluettiWatcher.Storage;
 
 // Command line: see Cli.Usage (--help). The service prints nothing (it logs to service.log); every other command prints
 // into the terminal it was started from.
-// Exit: 0 stopped (or token saved, help, version) · 1 the login failed · 2 could not run (bad arguments, another instance past lockWaitSec, the port taken, the writer on disk, no reader).
+// Exit: 0 stopped (or token saved, help, version) · 1 the login failed · 2 could not run (bad arguments, another instance past lockWaitSec, the port taken).
 using var console = ConsoleOut.Attach();
 var outcome = await Cli.ExecuteAsync(args, Console.Out, Console.Error, async cfg =>
 {
@@ -19,7 +21,7 @@ var outcome = await Cli.ExecuteAsync(args, Console.Out, Console.Error, async cfg
 if (outcome.Exit is { } exitCode) return exitCode;
 var config = outcome.Config!;
 Directory.CreateDirectory(config.DataDir);
-var fileLog = new FileLog(Path.Combine(config.DataDir, "service.log"));
+using var fileLog = new FileLog(Path.Combine(config.DataDir, "service.log"));
 void Log(string text) => fileLog.Write(text);
 
 // A task restart can start this instance while the old one still exits: wait for its lock, bounded (0..600 s).
@@ -30,13 +32,12 @@ if (single is null) { Log($"DID NOT RUN - another instance still holds this port
 // The flag's mutex is Local\: the service must share the user's interactive session, never session 0.
 if (System.Diagnostics.Process.GetCurrentProcess().SessionId == 0) { Log("DID NOT RUN - session 0: the service runs in the user's interactive session (install.ps1)"); return 2; }
 
-// Read only, forever: the library's writer never stays on disk.
-var left = WriterGuard.Remove(config.VenvDir, Log);
-if (left.Count > 0) { Log($"DID NOT RUN - the library's writer is on disk and could not be removed: {string.Join("; ", left)}"); return 2; }
-// Without a station address nothing is polled; the page and /api/health still answer and name the problem.
+// Without a station address (or a station neither Bluetooth nor the cloud reads) nothing is polled; the page and
+// /api/health still answer and name the problem.
 if (config.ExtraReadersProblem is { } badReaders) Log($"CONFIG - {badReaders}");
-if (config.MacProblem is { } noMac) Log($"NOT POLLING - {noMac}");
-else if (!File.Exists(config.ReaderPath)) { Log($"DID NOT RUN - no reader at {config.ReaderPath} (install.ps1 builds the venv)"); return 2; }
+if (config.IgnoredKeysNote is { } ignored) Log($"CONFIG - {ignored}");
+if (config.PollProblem is { } noPoll) Log($"NOT POLLING - {noPoll}");
+else if (config.BluetoothProblem is { } noBluetooth) Log($"CLOUD ONLY - {noBluetooth}");
 
 using var store = new StationStore(Path.Combine(config.DataDir, "station.db"));
 var runner = new ProcessRunner();
@@ -48,10 +49,12 @@ if (config.MutexWarning is { } mutexWarning)
 }
 // The wake of a PC hibernated in a cut: armed only with wakeEveryMinutes > 0; turned off at the first reading on mains whatever it says.
 var wake = new WakeKeeper(config, new ScheduledWakeTask(config, runner, Log), store, Log);
-// Bluetooth first; when it misses, the BLUETTI cloud (design.md §4 Cloud fallback), on when its token file exists at start unless cloudEnabled is false.
+// Bluetooth first; when it misses, the BLUETTI cloud (design.md §4 Cloud fallback), on whenever its token file exists (read at each poll, so a token made while running counts) unless cloudEnabled is false.
 using var cloudHttp = new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(10) };
-using var cloud = config.CloudOn ? new BluettiCloudReader(config, cloudHttp, time, Log) : null;
-using var service = new StationService(config, new FallbackReader(new BluettiReader(config, runner, Log), cloud), new PowerModeAdapter(config, runner, Log),
+using var cloud = new BluettiCloudReader(config, cloudHttp, time, Log);
+// Bluetooth: the built-in WinRT reader, IoT V1 and V2 models, read only (Io/Ble).
+IStationReader bluetooth = new NativeBleReader(config, new WinRtBleConnector(), Log);
+using var service = new StationService(config, new FallbackReader(bluetooth, cloud, () => config.CloudOn, r => StationDecision.Check(r, new StationState(), time.GetUtcNow(), config), Log), new PowerModeAdapter(config, runner, Log, new BluettiWatcher.PowerMode.InProcessPowerMode()),
     config.DryRun ? new DryRunHibernator(Log) : new ShutdownHibernator(runner, Log),
     new FlagFileReader(config.FlagFile, Log, config.PowerModeMutex), store, time, Log, wake, new StateActions(config, runner, store, time, Log));
 service.Compact();
@@ -68,7 +71,7 @@ catch (SocketException e) { Log($"DID NOT RUN - 127.0.0.1:{config.Port} is taken
 using var stop = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
 AppDomain.CurrentDomain.ProcessExit += (_, _) => stop.Cancel();
-Log($"Bluetti Watcher started: http://127.0.0.1:{config.Port}/ · reader {config.ReaderPath} · data {config.DataDir}{(cloud is null ? "" : " · cloud fallback")}{(config.DryRun ? " · DRY RUN" : "")}");
+Log($"Bluetti Watcher started: http://127.0.0.1:{config.Port}/ · reader {(config.CloudOnly ? "cloud only" : "Bluetooth")} · data {config.DataDir}{(config.CloudOn ? " · cloud fallback" : "")}{(config.DryRun ? " · DRY RUN" : "")}");
 
 var serving = http.RunAsync(stop.Token);
 var scheduleReads = dtek.RunAsync(stop.Token);
@@ -82,7 +85,7 @@ try
         if (schedule.Due())
         {
             int delay;
-            if (config.MacProblem is not null) delay = config.PollSec;   // no station to poll: the loop only idles
+            if (config.PollProblem is not null) delay = config.PollSec;   // no station to poll: the loop only idles
             else try { delay = await service.PollAsync(stop.Token); }
             catch (Exception e) when (e is not OperationCanceledException)
             {
@@ -92,6 +95,9 @@ try
             }
             schedule.Next(delay);
             dtek.AfterPoll(service.State);   // the finished cut goes to the queue search; nothing comes back
+            // Between polls the process keeps only what it holds: the garbage of the poll and of the page's requests goes back
+            // to Windows (a workstation gen0 budget is sized from the CPU cache, tens of MB, and the exe takes no DOTNET_GC* variable).
+            GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
         }
         // A page choice saved by POST /api/mode runs here, with the power-mode timeout, never the request's.
         try { await service.ApplyPendingAsync(stop.Token); }

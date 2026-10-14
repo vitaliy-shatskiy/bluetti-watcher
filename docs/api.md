@@ -24,7 +24,7 @@ The current state, for the page.
 | Field | Meaning |
 |---|---|
 | `type`, `capacityWh`, `efficiency` | From the configuration. |
-| `mode` | The station's output mode, readable (`inverter output`); `modeCode` the raw code (`INVERTER_OUTPUT`, `CLOUD_MAINS`, ...). |
+| `mode` | The station's output mode, readable (`inverter output`); `modeCode` the raw code (`INVERTER_OUTPUT`, `CLOUD_MAINS`, `BLE_MAINS`, ...). |
 | `eco`, `ecoNote` | The power mode in words ("" when normal) and as a coded note. |
 | `manual` | The page's choice: `auto`, `eco`, `max`. `modePending`: a choice not applied yet, or null. |
 | `modeError`, `modeErrorNote` | The last refusal or failure of a page choice ("" when none), and as a coded note. |

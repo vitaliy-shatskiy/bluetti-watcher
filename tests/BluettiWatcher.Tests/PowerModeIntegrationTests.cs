@@ -26,7 +26,7 @@ public sealed class PowerModeIntegrationTests : IDisposable
         if (string.IsNullOrEmpty(script)) return;   // opt-in
         Directory.CreateDirectory(_dir);
         string stub = Path.Combine(_dir, "stand-in.ps1");
-        await File.WriteAllTextAsync(stub, "exit 0\n");
+        await File.WriteAllTextAsync(stub, "exit 0\n", TestContext.Current.CancellationToken);
         Environment.SetEnvironmentVariable("POWER_MODE_POWERCFG", stub);
         Environment.SetEnvironmentVariable("POWER_MODE_SCHTASKS", stub);
         string flag = Path.Combine(Path.GetTempPath(), $"power-mode-test-{Guid.NewGuid():N}.json");
@@ -43,7 +43,7 @@ public sealed class PowerModeIntegrationTests : IDisposable
             Assert.True((await a.StationEcoAsync(CancellationToken.None)).Ok, string.Join("\n", log));
             Assert.Equal("eco/station", Mode());
             Assert.True((await a.BatteryAsync(new BatteryReport(19.5, Level.Low, false), 5, CancellationToken.None)).Ok, string.Join("\n", log));
-            using (var doc = JsonDocument.Parse(await File.ReadAllTextAsync(flag)))
+            using (var doc = JsonDocument.Parse(await File.ReadAllTextAsync(flag, TestContext.Current.CancellationToken)))
                 Assert.Equal("low", doc.RootElement.GetProperty("battery").GetProperty("level").GetString());
             Assert.True((await a.StationEmergencyAsync(CancellationToken.None)).Ok, string.Join("\n", log));
             Assert.Equal("emergency/station", Mode());

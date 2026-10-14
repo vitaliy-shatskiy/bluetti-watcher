@@ -9,8 +9,9 @@ This document states the rules the service follows. Every key named here is desc
 ## 1. Goals and limits
 
 - Tiny footprint: about 20 MB working set at most and about 0 % CPU between readings; one process.
-- Read only toward the station, forever. The library's writer is deleted from the venv and never imported; the
-  service refuses to start while any piece of it is on disk.
+- Read only toward the station, forever. The Bluetooth reader can build one kind of frame, a read of holding
+  registers (Modbus function 0x03) under register 2000, and its only GATT writes are that request and the
+  notification subscription.
 - The BLUETTI cloud fallback (section 4) is read only the same way: it reads the device list and refreshes its token,
   nothing else.
 - Never blocks or harms the PC on bad data: unknown beats wrong.
@@ -20,18 +21,39 @@ This document states the rules the service follows. Every key named here is desc
 1. A per-user background process, no window and no tray, started at logon by a scheduled task as the user (Medium
    integrity, "run only when the user is logged on"), restarted on failure; nothing before logon. It must never run in
    session 0: the power-mode mutex is a `Local\` name shared with the user's own scripts. A start in session 0 exits 2.
-2. Host: one C# NativeAOT exe (`BluettiWatcher.exe`). Bluetooth LE goes through the pinned Python `bluetti-read`
-   (`bluetti-bt-lib==0.1.8` in a venv built from `requirements.lock` with `--require-hashes`, the writer removed)
-   spawned once per poll: connect, read, disconnect, so the phone app can connect between reads.
+2. Host: one C# NativeAOT exe (`BluettiWatcher.exe`). Bluetooth LE goes in-process through WinRT GATT, the 29 IoT V1 and
+   V2 models (AC200L, AC200M, AC200PL, AC300, AC500, EB3A, EP500, EP500P; AC2A, AC2P, AC50B, AC60, AC60P, AC70, AC70P,
+   AC180, AC180T, AC180P, AP300, EL10, EL30V2, EL100V2, EP600, EP760, EP800, EP2000, Handsfree 1, PR30V2, PR100V2):
+   connect, read, disconnect per poll, so the phone
+   app can connect between reads; the reading fields in batched function-0x03 reads (notifications on ff01, requests
+   on ff02), each answer reassembled to its full length and CRC-checked. An answer that timed out or came back invalid
+   ends its connection and the next request goes over a new one, so a late answer never fills another request; the
+   whole read is bounded by `readerTimeoutSec` plus 2 s whatever the Bluetooth stack does. A station it cannot reach
+   is a missed reading, so the cloud fallback answers; so does a model with no AC input power field (EP600, EP760, EP800,
+   EP2000: battery % only, no mains state; no connection is made); a model with no output-mode register (every V2 model,
+   the EB3A) gets the mode derived as in the AC2a rule below (`BLE_MAINS` for AC input above 0 W); so does a station that encrypts its Bluetooth link (it opens with
+   a key-exchange message, "**" and a checksum, which no Modbus answer can be: the poll ends at once, no reading, and it is not connected to again until the service restarts); an
+   unknown model is read through the cloud alone when the cloud fallback is on. Ported from bluetti-bt-lib 0.1.8 (MIT, [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md)).
 3. HTTP on `127.0.0.1` only (port 18940 by default): the dashboard and the API ([api.md](api.md)). The installer adds
    a Desktop and Start menu shortcut that opens the page as a Chrome or Edge app window.
 4. Storage: SQLite (`station.db` in the data directory), one row per minute (and one row per missed reading, marked);
-   raw rows are kept `rawRetentionDays` (30), then 5-minute aggregates forever.
-5. The power-mode switch is three PowerShell scripts shipped in the repository under `power-mode/` and installed
-   beside the exe at `<data dir>\power-mode\`: `power-mode.ps1` (the commands), `power-mode-flag.ps1` (the flag file
-   under a named mutex, atomic writes) and `power-mode-end.ps1` (ends a timed eco). Every change of power mode goes
-   through `power-mode.ps1`; the service never writes the flag itself. The service runs it as
-   `pwsh -NoProfile -NonInteractive -File <script> <command> ... -Path <flag>`, windowless, only at a transition:
+   raw rows are kept `rawRetentionDays` (30), then 5-minute aggregates forever. A new file is created with 1 KB pages
+   in WAL with `synchronous=NORMAL`: a poll's commits are not flushed, only the checkpoint every ~1000 pages is, and
+   the WAL file is cut back to 1 MB after it. An existing file is opened as it is: its page size and journal mode are
+   never changed (no rebuild or VACUUM; a rebuild in place corrupts the file when another process holds the `-wal`
+   open), so a database made with 4 KB pages keeps them. Opening waits on a busy file and never throws for a reader.
+   The log `service.log` rolls to `service.log.1` past 1 MB; a line identical to the one before is folded into one
+   `repeated N times since HH:mm:ss: <line>` line, written before the next different line. The first occurrence of a
+   line is written at once; a pending count is written by a timer at most 15 minutes after it began (and when the
+   service stops cleanly), so a kill loses at most the count of the last 15 minutes of identical repeats, never a
+   distinct line.
+5. The power-mode switch is `BluettiWatcher.exe power-mode` (`src/BluettiWatcher/PowerMode/`): the commands, the flag
+   file under a named mutex with atomic writes, and the end of a timed eco (the end task runs the exe itself). The
+   scripts under `power-mode/`, installed at `<data dir>\power-mode\`, forward to it (`power-mode.ps1`,
+   `power-mode-end.ps1`) or read the flag for other scripts (`power-mode-flag.ps1`). Every change of power mode goes
+   through the switch. The service runs it in its own process (`power-mode <command> ... -Path <flag>` on a thread of
+   its own, the live names as its environment), only at a transition; a configured `powerMode.script` runs that
+   script as `pwsh -NoProfile -NonInteractive -File <script> <command> ... -Path <flag>` instead:
    - station eco: `eco -Source station` (Windows Power saver plan, GPU power cap where available; no end time, lasts
      until `off`)
    - station emergency: `on -Source station`
@@ -50,8 +72,8 @@ This document states the rules the service follows. Every key named here is desc
 7. Without `mac` in config.json the service starts, serves the page and `/api/health` with a problem naming the
    missing `mac`, and polls nothing. There is no default station address.
 
-Exit codes: 0 stopped normally; 2 did not run (the writer on disk, no reader, the port taken, session 0, another
-instance still holding the port's lock after `lockWaitSec`).
+Exit codes: 0 stopped normally; 2 did not run (the port taken, session 0, another instance still holding the port's
+lock after `lockWaitSec`).
 
 ## 3. Readings
 
@@ -113,7 +135,8 @@ a localhost address, writes the token file and exits. It never prints the token.
 - AC5: the cloud client only GETs the devices endpoint and POSTs the token endpoint; no control, fulfilment or bind
   call exists in the code (a test checks the client's URLs against an allow-list).
 - AC6: each accepted reading carries its source (`bluetooth` or `cloud`): every accepted cloud reading and the first
-  Bluetooth one after it are logged with it, a rejected reading's log line names it, and `/api/health` gives
+  Bluetooth one after it are logged with it (unchanged repeats folded into a count, section 2), a rejected reading's
+  log line names it, and `/api/health` gives
   `lastSource` (null before the first accepted reading).
 - AC7: cloud readings that repeat (the cloud may cache) go through the same plausibility and agreement rules.
 - AC8: logs and errors never contain the access or refresh token.
@@ -325,7 +348,7 @@ those three calls and the `dtekWatcher` config property.
    be read), and only when the site answered during this cut.
 8. Configuration lives in `config.json` in the data directory, never in the repository: `dtekWatcher.enabled`
    (default false: the module is off, creates no client and makes no request), `queues`, `group`, `datasetUrl`,
-   `staleAfterMin` (90), `site` (default false: the dataset only; true opts in to reading the distributor's website, which is subject to its terms), `host`, and the optional address for the site only: `city`, `street`,
+   `staleAfterMin` (90), `minCutMin` (15, rule 29), `site` (default false: the dataset only; true opts in to reading the distributor's website, which is subject to its terms), `host`, and the optional address for the site only: `city`, `street`,
    `house`. Enabled with a dataset address that is not plain https or a host that is not a plain host name: off, with
    the reason in the log and the note.
 9. A cut matches a queue's window when both its start and its end fall within 20 minutes of the window's borders
@@ -442,6 +465,7 @@ those three calls and the `dtekWatcher` config property.
     - Stored under meta key `dtekWatcherLateness`: the last 60 cuts, one entry per cut start. A list that is damaged,
       wrong-typed or of an older form is empty; entries out of bounds (a queue name over 16 characters, a set of more
       than 4, an end not after the start, a delta over 14 days) are dropped.
+    - A cut shorter than `minCutMin` (rule 29) is not recorded.
 26. Plan edits during a cut: every schedule taken in while a cut runs that moves a shown queue's planned-off half hours
     counts once; the count is saved with the running cut and ends with it.
 27. `/api/now` `dtekWatcher` gives `overdue`, `overdueMin`, `plannedReturn`, `batteryUntil`, `planChanges`,
@@ -465,3 +489,10 @@ those three calls and the `dtekWatcher` config property.
     - f. Lateness is recorded with a set too: the entry names the set and says `union: true`; its deltas are against
       the union's window.
     - g. The page shows the set as `1.1 + 2.1`.
+29. Short cuts. `dtekWatcher.minCutMin` (default 15, 0 to 1440, else the module is off with the reason; 0 = every cut
+    counts) is the shortest cut, from its start to the confirmed return, that counts for the module's statistics. A
+    shorter cut is a blip: it adds no lateness entry (rule 25), so it cannot move the usual lateness, and it does not
+    count in the queue search (rule 9) or the manual queue's hint (rule 20), where a 4-minute blip near a 30-minute
+    window would otherwise fit it (both ends within 20 minutes). A cut of exactly `minCutMin` counts. Short cuts stay
+    in the cut history and on the chart, and a running cut is overdue and shown as before: the minimum applies when
+    the cut ends.

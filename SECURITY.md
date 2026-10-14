@@ -15,8 +15,8 @@ In scope:
   `Origin` check, no CORS), anything that lets another origin, another user or the network read or change the state.
 - The cloud token file (`cloud-token.json`): the token leaking into logs, errors, the page or the API; a write that
   could leave it readable to other users or torn.
-- Read only toward the station: any path by which the service, the venv or the cloud client could send a write or
-  control command to the station.
+- Read only toward the station: any path by which the service's Bluetooth reader or the cloud client could send a
+  write or control command to the station.
 - The installer and the scheduled tasks it registers: the wake task's access list, anything that runs elevated.
 - The power-mode scripts: the flag file, its mutex and the tasks they register.
 
@@ -27,5 +27,6 @@ the data directly), and BLUETTI's cloud service itself.
 
 - The service runs as the logged-on user without elevation; the API binds to `127.0.0.1` only.
 - The token file lives in the user's data directory, is written atomically and never printed, logged or served.
-- The Bluetooth library's write code is deleted from the venv and the service refuses to start while it is on disk.
+- The Bluetooth reader can build only a read request (Modbus function 0x03, under register 3000); its only GATT writes
+  are that request and the notification subscription.
 - The cloud client's URLs are checked against a two-entry allow-list (the devices read and the token refresh).

@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 using BluettiWatcher.Decision;
 using BluettiWatcher.DtekWatcher;
+using BluettiWatcher.Io.Ble;
 
 namespace BluettiWatcher;
 
@@ -53,8 +53,12 @@ internal sealed class StationConfig
     /// <summary>How long a start waits for the instance before it (a task restart) to let go of the port's lock.</summary>
     public int LockWaitSec { get; set; } = 30;
     public string DataDir { get; set; } = Path.Combine(LocalAppData, "bluetti-watcher");
-    public string ReaderPath { get; set; } = Path.Combine(LocalAppData, "bluetti-watcher", ".venv", "Scripts", "bluetti-read.exe");
+    /// <summary>The time limit of one Bluetooth read (connect, every request, disconnect), seconds.</summary>
     public int ReaderTimeoutSec { get; set; } = 30;
+    /// <summary>Ignored since 1.1.0 (the Python reader is gone): read only so that an old config.json loads and the start log names it.</summary>
+    public string? BleBackend { get; set; }
+    /// <summary>Ignored since 1.1.0 (the Python reader is gone; also the old <c>--reader</c> flag): as <see cref="BleBackend"/>.</summary>
+    public string? ReaderPath { get; set; }
     /// <summary>The power-mode switch: its script and the live names it shares with the watcher.</summary>
     public PowerModeConfig PowerMode { get; set => field = value ?? new PowerModeConfig(); } = new();
     /// <summary>Alias of <c>powerMode.flagPath</c>; <c>powerMode.flagPath</c> wins when both are set.</summary>
@@ -151,13 +155,62 @@ internal sealed class StationConfig
         }
     }
 
-    private static readonly Regex ReaderName = new(@"\A[A-Za-z0-9_. -]{1,64}\z", RegexOptions.CultureInvariant);
-
-    private static bool ValidReaderName(string? name) => name is not null && ReaderName.IsMatch(name);
+    /// <summary>1 to 64 ASCII letters, digits, <c>_ . -</c> or space. A plain loop: a Regex here added 668 KB to the exe.</summary>
+    private static bool ValidReaderName(string? name)
+    {
+        if (name is null || name.Length is 0 or > 64) return false;
+        foreach (char c in name)
+            if (!char.IsAsciiLetterOrDigit(c) && c is not ('_' or '.' or '-' or ' ')) return false;
+        return true;
+    }
 
     /// <summary>Why the service is not fully configured (shown on /api/health); null when nothing is wrong.</summary>
     [JsonIgnore]
-    public string? ConfigProblem => MacProblem is { } m ? (ExtraReadersProblem is { } r ? m + "; " + r : m) : ExtraReadersProblem;
+    public string? ConfigProblem => Join(Join(CloudOnly ? null : MacProblem, BluetoothProblem), ExtraReadersProblem);
+
+    private static string? Join(string? a, string? b) => a is null ? b : b is null ? a : a + "; " + b;
+
+    /// <summary>
+    /// Why nothing is polled: no address, or a station Bluetooth cannot read and no cloud fallback; null when polling can
+    /// run. A model Bluetooth does not read is polled through the cloud alone when the cloud fallback is on.
+    /// </summary>
+    [JsonIgnore]
+    public string? PollProblem => CloudOnly ? null : MacProblem ?? BluetoothProblem;
+
+    /// <summary>The model is not one Bluetooth reads, and the cloud fallback is on: the cloud alone reads the station.</summary>
+    [JsonIgnore]
+    public bool CloudOnly => CloudOn && !BleModels.TryGet(Type, out _);
+
+    /// <summary>
+    /// Why Bluetooth cannot read this station: a model that is not one of the 29 IoT V1 and V2 models (an unknown name), or an address it cannot parse. Null when it can (a missing address is <see cref="MacProblem"/>).
+    /// </summary>
+    [JsonIgnore]
+    public string? BluetoothProblem
+    {
+        get
+        {
+            string models = string.Join(", ", BleModels.Names);
+            string cloud = CloudOn ? "the cloud fallback alone reads it" : "only the cloud fallback can read it (README, Optional modules)";
+            if (!BleModels.TryGet(Type, out _))
+                return $"type \"{Type}\" is not a model Bluetooth reads ({models}): {cloud}";
+            if (NonEmpty(Mac) is { } mac && !BleAddress.TryParse(mac, out _))
+                return $"mac \"{mac}\" is not a Bluetooth address (AA:BB:CC:DD:EE:FF)";
+            return null;
+        }
+    }
+
+    /// <summary>The keys of the Python reader an old config.json may still carry, named for the start log; null when none.</summary>
+    [JsonIgnore]
+    public string? IgnoredKeysNote
+    {
+        get
+        {
+            var keys = new List<string>(2);
+            if (BleBackend is not null) keys.Add("bleBackend");
+            if (ReaderPath is not null) keys.Add("readerPath (or --reader)");
+            return keys.Count == 0 ? null : $"{string.Join(", ", keys)} ignored: since 1.1.0 the built-in Bluetooth reader is the only one (no Python)";
+        }
+    }
 
     /// <summary>Why the service cannot poll; null when it can.</summary>
     [JsonIgnore]
@@ -178,9 +231,6 @@ internal sealed class StationConfig
     [JsonIgnore]
     public int ConfirmStepCapSec => 2 * Math.Max(PollSec, FastPollSec);
 
-    [JsonIgnore]
-    public string VenvDir => Path.GetDirectoryName(Path.GetDirectoryName(Path.GetFullPath(ReaderPath))) ?? "";
-
     /// <summary>Defaults, then <c>--config</c> (or <c>config.json</c> in the data directory), then the flags.</summary>
     public static StationConfig Load(string[] args)
     {
@@ -192,7 +242,7 @@ internal sealed class StationConfig
             : new StationConfig();
         if (dataDir is not null) cfg.DataDir = dataDir;
         if (flags.TryGetValue("port", out var port)) cfg.Port = int.Parse(port, CultureInfo.InvariantCulture);
-        if (flags.TryGetValue("reader", out var reader)) cfg.ReaderPath = reader;
+        if (flags.TryGetValue("reader", out var reader)) cfg.ReaderPath = reader;   // the Python reader's flag: accepted, ignored, logged
         if (flags.TryGetValue("flag", out var flag)) cfg.PowerMode.FlagPath = flag;
         if (flags.TryGetValue("power-mode", out var pm)) cfg.PowerMode.Script = pm;
         if (flags.ContainsKey("dry-run")) cfg.DryRun = true;

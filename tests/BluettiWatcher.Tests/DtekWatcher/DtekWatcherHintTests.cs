@@ -30,7 +30,7 @@ public sealed class DtekWatcherHintMatcherTests
     private static DtekHint Feed(string group, DtekSchedule? s, string[] house, params DtekCut[] cuts)
     {
         DtekHint? h = null;
-        foreach (var c in cuts) h = DtekMatcher.Hint(h, group, c, s, house, Kyiv);
+        foreach (var c in cuts) h = DtekMatcher.Hint(h, group, c, s, house, Kyiv, TimeSpan.Zero);
         return h!;
     }
 
@@ -110,10 +110,10 @@ public sealed class DtekWatcherHintMatcherTests
     public void What_was_counted_against_another_value_is_dropped_and_a_refuted_one_stays_refuted()
     {
         var one = Feed("A", Schedule(Hx.Days()), House, Hx.B1);
-        Assert.Equal(("B", 1, null, "C"), (DtekMatcher.Hint(one, "C", Hx.B2, Schedule(Hx.Days()), House, Kyiv) is var h ? h.Candidate : null, h.Count, h.RefutedBy, h.Group));
+        Assert.Equal(("B", 1, null, "C"), (DtekMatcher.Hint(one, "C", Hx.B2, Schedule(Hx.Days()), House, Kyiv, TimeSpan.Zero) is var h ? h.Candidate : null, h.Count, h.RefutedBy, h.Group));
         var refuted = Feed("A", Schedule(Hx.Days()), House, Hx.B1, Hx.B2);
-        Assert.Equal("B", DtekMatcher.Hint(refuted, "A", Hx.A2, Schedule(Hx.Days()), House, Kyiv).RefutedBy);
-        Assert.Null(DtekMatcher.Hint(refuted, "C", Hx.A2, Schedule(Hx.Days()), House, Kyiv).RefutedBy);
+        Assert.Equal("B", DtekMatcher.Hint(refuted, "A", Hx.A2, Schedule(Hx.Days()), House, Kyiv, TimeSpan.Zero).RefutedBy);
+        Assert.Null(DtekMatcher.Hint(refuted, "C", Hx.A2, Schedule(Hx.Days()), House, Kyiv, TimeSpan.Zero).RefutedBy);
     }
 
     // design.md §11 DTEK module, rule 9
@@ -121,8 +121,8 @@ public sealed class DtekWatcherHintMatcherTests
     public void A_cut_with_no_schedule_for_its_time_tells_nothing()
     {
         var one = Feed("A", Schedule(Hx.Days()), House, Hx.B1);
-        Assert.Same(one, DtekMatcher.Hint(one, "A", Hx.B2, null, House, Kyiv));
-        Assert.Same(one, DtekMatcher.Hint(one, "A", Hx.B2, Schedule(Day("2026-10-07", ("A", "18-21:0"))), House, Kyiv));
+        Assert.Same(one, DtekMatcher.Hint(one, "A", Hx.B2, null, House, Kyiv, TimeSpan.Zero));
+        Assert.Same(one, DtekMatcher.Hint(one, "A", Hx.B2, Schedule(Day("2026-10-07", ("A", "18-21:0"))), House, Kyiv, TimeSpan.Zero));
     }
 
     // design.md §11 DTEK module, rule 22

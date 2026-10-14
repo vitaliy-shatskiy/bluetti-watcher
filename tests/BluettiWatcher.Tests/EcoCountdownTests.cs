@@ -124,8 +124,9 @@ public class EcoAtTests
     {
         // Poll jitter, unanswered polls, mains blips, implausible jumps (rejected, then a rebase), batteries falling through 20 %.
         var cfg = Defaults();
-        int[] gaps = [15, 30, 45, 60, 90, 120, 170, 240];
-        int promises = 0, kept = 0;
+        // Gaps of 700 s and more are past maxGapSec (600): the gap guard of the decision and of EcoAt.
+        int[] gaps = [15, 30, 45, 60, 90, 120, 170, 240, 700, 900, 1500];
+        int promises = 0, kept = 0, pastGap = 0, restarted = 0, streakQueried = 0;
         // CA5394 off here: the random source is seeded on purpose for reproducible timing, nothing secret
 #pragma warning disable CA5394
         for (int seed = 1; seed <= 400; seed++)
@@ -134,7 +135,8 @@ public class EcoAtTests
             var steps = new List<object>();
             var times = new List<DateTimeOffset>();
             var t = T0;
-            double soc = seed % 3 == 0 ? 24 : 80;
+            // Low batteries put the 20 % streak (emergency) in play: 24 % falls through it, 21 % and 20.5 % are on its edge.
+            double soc = seed % 3 == 0 ? 24 : seed % 5 == 0 ? 21 : seed % 7 == 0 ? 20.5 : 80;
             for (int k = 0; k < 30; k++)
             {
                 int dt = k == 0 ? 0 : gaps[rnd.Next(gaps.Length)];
@@ -153,6 +155,30 @@ public class EcoAtTests
             }
 #pragma warning restore CA5394
             var d = Step([.. steps], cfg: cfg);
+            for (int i = 0; i + 1 < d.Count; i++)
+            {
+                // The gap guard, asked at the moment the next step arrives: a last accepted reading older than maxGapSec gives no
+                // promise (the restart time is not known); and an accepted reading after such a gap starts the mains timer over at itself.
+                if (d[i].State.LastAt is not { } last) continue;
+                bool past = (times[i + 1] - last).TotalSeconds > cfg.MaxGapSec;
+                var asked = StationDecision.EcoAt(d[i].State, Flag(), times[i + 1], cfg);
+                if (past)
+                {
+                    pastGap++;
+                    Assert.True(asked is null, $"seed {seed}: step {i + 1}: a promise {asked:HH:mm:ss} with the last reading {(times[i + 1] - last).TotalSeconds:0} s old");
+                    if (d[i].State.OffSince is not null && d[i + 1].Battery is not null && d[i + 1].State.Grid == BluettiWatcher.Decision.Grid.Off)
+                    {
+                        restarted++;
+                        Assert.True(d[i + 1].State.OffSince == times[i + 1], $"seed {seed}: step {i + 1}: mains timer not restarted after a {(times[i + 1] - last).TotalSeconds:0} s gap");
+                    }
+                }
+                // The streak guard: a 20 % streak running gives no promise at the moment of its own reading either.
+                if (d[i].State.Grid == BluettiWatcher.Decision.Grid.Off && !d[i].State.Cut && d[i].State.Since[(int)LevelStep.Emergency] is not null)
+                {
+                    streakQueried++;
+                    Assert.Null(StationDecision.EcoAt(d[i].State, Flag(), times[i], cfg));
+                }
+            }
             for (int i = 0; i < d.Count; i++)
             {
                 if (StationDecision.EcoAt(d[i].State, Flag(), times[i], cfg) is not { } at) continue;
@@ -177,6 +203,7 @@ public class EcoAtTests
             }
         }
         Assert.True(promises > 300 && kept > 100, $"promises {promises}, checked to the cut {kept}");
+        Assert.True(pastGap > 1000 && restarted > 100 && streakQueried > 20, $"past the gap {pastGap}, restarted {restarted}, streak asked {streakQueried}");
     }
 }
 

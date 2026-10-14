@@ -157,7 +157,7 @@ public sealed class StateActionsTests : IDisposable
         var log = new List<string>();
         var a = new StateActions(cfg, new ProcessRunner(), _store, _clock, l => { lock (log) log.Add(l); });
         a.Enter("eco");
-        await a.IdleAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        await a.IdleAsync().WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
         string e = Assert.Single(ActionEvents());
         Assert.StartsWith($"eco: \"{missing}\" --now -> could not run: Win32Exception", e, StringComparison.Ordinal);
         Assert.Contains(log, l => l.Contains("could not run", StringComparison.Ordinal));

@@ -194,7 +194,7 @@ public sealed class CloudReaderTests : IDisposable
     [InlineData("{\"access_token\":\"ACC")]
     public async Task A_token_file_that_is_not_json_is_logged_as_such(string content)
     {
-        await File.WriteAllTextAsync(TokenPath, content);
+        await File.WriteAllTextAsync(TokenPath, content, TestContext.Current.CancellationToken);
         Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
         Assert.Contains("token file is not JSON", Assert.Single(_log), StringComparison.Ordinal);
         Assert.Empty(_http.Calls);
@@ -306,7 +306,7 @@ public sealed class CloudReaderTests : IDisposable
     [InlineData("""{"refresh_token":"x"}""")]
     public async Task No_usable_token_file_is_a_miss_and_no_call(string? content)
     {
-        if (content is not null) await File.WriteAllTextAsync(TokenPath, content);
+        if (content is not null) await File.WriteAllTextAsync(TokenPath, content, TestContext.Current.CancellationToken);
         Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
         Assert.Empty(_http.Calls);
         Assert.Contains("token", Assert.Single(_log), StringComparison.Ordinal);

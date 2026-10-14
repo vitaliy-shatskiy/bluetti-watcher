@@ -5,7 +5,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Only the AC200PL is tested. Other models that bluetti-bt-lib supports may work with `type` set in config.json.
+        Only the AC200PL is tested. The other 28 models (IoT V1 and V2, listed in the README) are read
+        over Bluetooth with `type` set in config.json; an encrypted station or any other model only through the cloud fallback.
         A report either way helps others with the same station. Remove the station's Bluetooth address (MAC) from
         anything you paste.
   - type: input
@@ -25,7 +26,7 @@ body:
     id: version
     attributes:
       label: Bluetti Watcher version
-      placeholder: 1.0.0
+      placeholder: 1.1.0
     validations:
       required: true
   - type: dropdown

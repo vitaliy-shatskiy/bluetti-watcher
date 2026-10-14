@@ -12,7 +12,7 @@ body:
     attributes:
       label: Bluetti Watcher version
       description: "`version` from http://127.0.0.1:18940/api/health, or the release zip's name."
-      placeholder: 1.0.0
+      placeholder: 1.1.0
     validations:
       required: true
   - type: input

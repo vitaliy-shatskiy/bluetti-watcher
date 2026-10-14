@@ -118,12 +118,14 @@ public sealed class ServiceTests : IAsyncLifetime, IDisposable
         _store = new StationStore(Path.Combine(_dir, "station.db"));
     }
 
-    public Task InitializeAsync() => Task.CompletedTask;
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
 
-    /// <summary>The state actions run in the background and write their event to the store: they finish before <see cref="Dispose"/> closes it and deletes its folder.</summary>
-    public async Task DisposeAsync()
+    /// <summary>The state actions run in the background and write their event to the store: they finish before <see cref="Dispose"/> closes it and deletes its folder.
+    /// xUnit v3 calls only DisposeAsync on an IAsyncDisposable class, so it runs Dispose itself.</summary>
+    public async ValueTask DisposeAsync()
     {
         if (_onState is not null) await _onState.IdleAsync();
+        Dispose();
     }
 
     public void Dispose()
@@ -321,7 +323,7 @@ public sealed class ServiceTests : IAsyncLifetime, IDisposable
     {
         var h = new FakeHibernator(true);
         using var s = await ToHibernate(h);
-        await File.WriteAllTextAsync(Path.Combine(_dir, "no-hibernate"), "");
+        await File.WriteAllTextAsync(Path.Combine(_dir, "no-hibernate"), "", TestContext.Current.CancellationToken);
         _reader.Next.Enqueue(Bat(4));
         _reader.Next.Enqueue(Bat(4));
         await s.PollAsync(CancellationToken.None);
@@ -533,7 +535,7 @@ public sealed class ServiceTests : IAsyncLifetime, IDisposable
         var h = new FakeHibernator(true);
         using var s = Service(h);
         string kill = Path.Combine(_dir, "no-hibernate");
-        await File.WriteAllTextAsync(kill, "");
+        await File.WriteAllTextAsync(kill, "", TestContext.Current.CancellationToken);
         _reader.Default = Bat(4);
         for (int minute = 0; minute <= 30; minute++) { _clock.Now = T0.AddMinutes(minute); await s.PollAsync(CancellationToken.None); }
         var refused = _store.Events(0, long.MaxValue).Where(e => e.Kind == "hibernate-refused").Select(e => (e.At - T0.ToUnixTimeSeconds()) / 60).ToList();

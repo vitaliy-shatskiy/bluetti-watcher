@@ -3,7 +3,7 @@ namespace BluettiWatcher.Tests;
 /// <summary>The command line: help, version, argument errors, and which line starts the cloud login.</summary>
 public sealed class CliTests
 {
-    private static readonly string[] AllFlags = ["--config", "--data-dir", "--port", "--reader", "--flag", "--power-mode", "--dry-run", "--cloud-login", "--version", "--help"];
+    private static readonly string[] AllFlags = ["--config", "--data-dir", "--port", "--flag", "--power-mode", "--dry-run", "--cloud-login", "--version", "--help"];
 
     [Theory]
     [InlineData("--help")]
@@ -71,7 +71,7 @@ public sealed class CliTests
     [Fact]
     public void The_version_line_names_the_product_and_the_project_version()
     {
-        Assert.Equal("Bluetti Watcher 1.0.0", Cli.VersionText());
+        Assert.Equal("Bluetti Watcher 1.1.0", Cli.VersionText());
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public sealed class CliTests
     {
         using var run = await new Run().Execute("--version");
         Assert.Equal(0, run.Outcome!.Exit);
-        Assert.Equal("Bluetti Watcher 1.0.0" + Environment.NewLine, run.Out.ToString());
+        Assert.Equal("Bluetti Watcher 1.1.0" + Environment.NewLine, run.Out.ToString());
         Assert.Equal(0, run.Logins);
     }
 
@@ -158,7 +158,7 @@ public sealed class CliTests
         try
         {
             string file = Path.Combine(dir, "config.json");
-            await File.WriteAllTextAsync(file, "{ not json");
+            await File.WriteAllTextAsync(file, "{ not json", TestContext.Current.CancellationToken);
             using var run = await new Run().Execute("--config", file);
             Assert.Equal(2, run.Outcome!.Exit);
             Assert.StartsWith("Bluetti Watcher: COULD NOT RUN: ", run.Err.ToString(), StringComparison.Ordinal);

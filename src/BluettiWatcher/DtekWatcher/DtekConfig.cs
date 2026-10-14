@@ -12,12 +12,20 @@ internal sealed class DtekConfig
     public const string DefaultHost = "www.dtek-krem.com.ua";
     public const string DefaultDatasetUrl = "https://raw.githubusercontent.com/Baskerville42/outage-data-ua/main/data/kyiv-region.json";
 
+    public const int DefaultMinCutMin = 15;
+    public const int MaxMinCutMin = 1440;
+
     /// <summary>false = the module is off and no request is ever made.</summary>
     public bool Enabled { get; set; }
     /// <summary>The primary source: a public dataset with the same schedule as the site's page.</summary>
     public string DatasetUrl { get; set; } = DefaultDatasetUrl;
     /// <summary>The schedule is stale when its newest collection is older than this.</summary>
     public int StaleAfterMin { get; set; } = 90;
+    /// <summary>
+    /// A real cut shorter than this many minutes counts for no statistic: not the usual lateness, not the queue search, not the
+    /// manual queue's hint (design.md §11 rule 29). 0 = every cut counts. Exactly the minimum counts.
+    /// </summary>
+    public int MinCutMin { get; set; } = DefaultMinCutMin;
     /// <summary>The house's queues such as GPV1.1; without them the site's address answer names them.</summary>
     public string[]? Queues { get; set; }
     /// <summary>
@@ -38,6 +46,9 @@ internal sealed class DtekConfig
     /// <summary>The site can be asked about the house.</summary>
     public bool HasAddress => !string.IsNullOrWhiteSpace(City) && !string.IsNullOrWhiteSpace(Street) && !string.IsNullOrWhiteSpace(House);
 
+    /// <summary><see cref="MinCutMin"/> as a span; out-of-range values are clamped (<see cref="Problem"/> reports them).</summary>
+    public TimeSpan MinCut => TimeSpan.FromMinutes(Math.Clamp(MinCutMin, 0, MaxMinCutMin));
+
     /// <summary>The dataset's address; null when <see cref="DatasetUrl"/> is no plain https one.</summary>
     public Uri? DatasetUri() =>
         Uri.TryCreate(DatasetUrl, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps && u.IsDefaultPort && u.UserInfo.Length == 0 ? u : null;
@@ -52,6 +63,7 @@ internal sealed class DtekConfig
         if (Group == QueueSetConverter.Unreadable) return "dtekWatcher.group must be a queue name or an array of queue names";
         if (Group is { } g && DtekTime.Members(g) is { } members && (members.Count > MaxSet || members.Any(m => m.Length > DtekSnapshot.MaxName)))
             return $"dtekWatcher.group takes at most {MaxSet} queues of at most {DtekSnapshot.MaxName} characters";
+        if (MinCutMin is < 0 or > MaxMinCutMin) return $"dtekWatcher.minCutMin must be from 0 to {MaxMinCutMin}";
         return Uri.CheckHostName(Host) == UriHostNameType.Dns ? null : "dtekWatcher.host must be a plain host name";
     }
 }

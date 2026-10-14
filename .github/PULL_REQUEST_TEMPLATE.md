@@ -8,7 +8,7 @@
 
 ## Checklist
 
-- [ ] `dotnet test bluetti-watcher.slnx -c Release` and the node and pwsh tests pass
+- [ ] `dotnet test --solution bluetti-watcher.slnx -c Release` and the pwsh tests pass
 - [ ] The station stays read only: no write or control path to the station or the cloud
 - [ ] Behaviour changes are in `docs/design.md` (and `docs/configuration.md` or `docs/api.md` for keys and fields)
 - [ ] A change to the quick start or the reaction table updates both `README.md` and `README.uk.md`

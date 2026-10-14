@@ -1,9 +1,8 @@
 <Project>
   <ItemGroup>
-    <!-- MIT (Microsoft.Data.Sqlite), Apache-2.0 (SQLitePCLRaw), Apache-2.0 (xunit), MIT (Test SDK). -->
-    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.12" />
-    <PackageVersion Include="xunit" Version="2.9.3" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <!-- MIT (Microsoft.Data.Sqlite), Apache-2.0 (SQLitePCLRaw), Apache-2.0 (xunit.v3), BSD-2-Clause (Jint, tests only). -->
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.13" />
+    <PackageVersion Include="Jint" Version="4.17.0" />
+    <PackageVersion Include="xunit.v3" Version="4.0.2" />
   </ItemGroup>
 </Project>

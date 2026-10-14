@@ -94,6 +94,7 @@ internal sealed class StationService(StationConfig config, IStationReader reader
             string? sourceBefore = _last?.Source;
             if (status == ReadingStatus.Accepted) { _last = reading; _lastAt = now; }
             bool cutBefore = _state.Cut || _state.CutBeforeGap;
+            bool silentBefore = _state.Silent;
             _state = d.State;
             store.SaveState(_state);
             // Mains back confirmed: the cut is over, so the next cut's entries start their commands again.
@@ -103,7 +104,8 @@ internal sealed class StationService(StationConfig config, IStationReader reader
             if (status == ReadingStatus.Rejected) log($"reading rejected{From(reading)}: {d.Rejected} (miss {_state.Misses})");
             else if (status == ReadingStatus.Accepted && (reading!.Source == "cloud" || sourceBefore == "cloud"))
                 log($"reading accepted{From(reading)}: battery {Fmt(reading.Soc!.Value)} %");
-            else if (status == ReadingStatus.Missed) log($"no answer from the station (miss {_state.Misses}){(_state.Silent ? " - station silent" : "")}");
+            // A miss is logged at the first, at the turn to silent and every 15th after; each one is a row (an event) all the same.
+            else if (status == ReadingStatus.Missed && (_state.Misses <= 1 || _state.Silent != silentBefore || _state.Misses % MissLogEvery == 0)) log($"no answer from the station (miss {_state.Misses}){(_state.Silent ? " - station silent" : "")}");
 
             foreach (var a in d.Actions)
             {
@@ -274,6 +276,7 @@ internal sealed class StationService(StationConfig config, IStationReader reader
     }
 
     private const string RefusedKey = "hibernate-refused";
+    private const int MissLogEvery = 15;
 
     /// <summary>
     /// The page's Auto / Eco / Max: the choice is saved at once and its command left to the service loop

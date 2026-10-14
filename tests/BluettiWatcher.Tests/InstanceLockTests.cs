@@ -9,7 +9,7 @@ namespace BluettiWatcher.Tests;
 /// <summary>A task restart starts the new instance while the old one still holds the port's lock.</summary>
 public sealed class InstanceLockTests : IDisposable
 {
-    // Only the lock's name comes from it: nothing here binds a port.
+    // The lock's name comes from it; only RunWatcher binds it (so the watcher stops at the port).
     private readonly int _port = System.Security.Cryptography.RandomNumberGenerator.GetInt32(40000, 60000);
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "bluetti-watcher-test-" + Guid.NewGuid().ToString("N"));
     private readonly List<string> _log = [];
@@ -83,12 +83,16 @@ public sealed class InstanceLockTests : IDisposable
         holder.Join();
     }
 
-    /// <summary>Runs the watcher exe with the lock waiting <paramref name="lockWaitSec"/> and no reader: it never gets to the port.</summary>
+    /// <summary>
+    /// Runs the watcher exe with the lock waiting <paramref name="lockWaitSec"/>, no station address (nothing is polled,
+    /// no Bluetooth call) and its port taken by this test: past the lock it stops at the port.
+    /// </summary>
     private (int Exit, string Log) RunWatcher(int lockWaitSec)
     {
         string config = Path.Combine(_dir, "config.json");
-        string reader = Path.Combine(_dir, "no-venv", "Scripts", "bluetti-read.exe").Replace("\\", "\\\\", StringComparison.Ordinal);
-        File.WriteAllText(config, $$"""{"port": {{_port}}, "lockWaitSec": {{lockWaitSec}}, "mac": "00:11:22:33:44:55", "readerPath": "{{reader}}"}""");
+        File.WriteAllText(config, $$"""{"port": {{_port}}, "lockWaitSec": {{lockWaitSec}}, "cloudEnabled": false}""");
+        using var taken = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, _port) { ExclusiveAddressUse = true };
+        taken.Start();
         var psi = new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, "BluettiWatcher.exe"))
         {
             UseShellExecute = false,
@@ -118,8 +122,8 @@ public sealed class InstanceLockTests : IDisposable
         var (_, log) = RunWatcher(lockWaitSec: 20);
         Assert.Contains("the port's lock was released - starting", log, StringComparison.Ordinal);
         Assert.DoesNotContain("still holds this port's lock", log, StringComparison.Ordinal);
-        // Past the lock it stops at the next check: no reader in the temp dir.
-        Assert.Contains("DID NOT RUN - no reader at", log, StringComparison.Ordinal);
+        // Past the lock it stops at the port this test holds.
+        Assert.Contains($"DID NOT RUN - 127.0.0.1:{_port} is taken", log, StringComparison.Ordinal);
         holder.Join();
     }
 

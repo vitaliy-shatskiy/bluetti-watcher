@@ -111,114 +111,14 @@ public class BatteryWritePolicyTests
     }
 }
 
-public class ReaderParseTests
+public class ReadingCheckTests
 {
-    [Fact]
-    public void Parses_field_lines_strips_units_and_the_output_mode_prefix()
-    {
-        var r = BluettiReader.Parse([
-            "connecting...", "FieldName.BATTERY_SOC: 92.0 %", "FieldName.AC_INPUT_POWER: 0 W", "FieldName.AC_OUTPUT_POWER: 189",
-            "FieldName.DC_OUTPUT_POWER: 0.0", "FieldName.INTERNAL_AC_VOLTAGE: 229.0V", "FieldName.INTERNAL_AC_FREQUENCY: 49.9 Hz",
-            "FieldName.AC_OUTPUT_MODE: OutputMode.INVERTER_OUTPUT"]);
-        Assert.NotNull(r);
-        Assert.Equal(92, r.Soc);
-        Assert.Equal(0, r.InAc);
-        Assert.Equal(189, r.OutAc);
-        Assert.Equal(229, r.Volt);
-        Assert.Equal(49.9, r.Hz);
-        Assert.Equal("INVERTER_OUTPUT", r.Mode);
-        Assert.Null(r.InDc);
-    }
-
-    [Fact]
-    public void No_field_lines_is_no_answer() => Assert.Null(BluettiReader.Parse(["Error: device not found", ""]));
-
     // design.md §3 Readings
     [Fact]
-    public void Unparseable_value_stays_null_and_the_decision_calls_it_incomplete()
+    public void A_reading_without_a_valid_soc_is_incomplete()
     {
-        var r = BluettiReader.Parse(["FieldName.BATTERY_SOC: n/a", "FieldName.AC_INPUT_POWER: 0", "FieldName.AC_OUTPUT_POWER: 10", "FieldName.AC_OUTPUT_MODE: OutputMode.INVERTER_OUTPUT"]);
-        Assert.Null(r!.Soc);
+        var r = new Reading(null, 0, 10, "INVERTER_OUTPUT");
         Assert.StartsWith("incomplete (no valid SOC)", StationDecision.Check(r, new StationState(), T0, Cfg()), StringComparison.Ordinal);
-    }
-}
-
-public sealed class WriterGuardTests : IDisposable
-{
-    private readonly string _venv = Path.Combine(Path.GetTempPath(), "bluetti-watcher-test-venv-" + Guid.NewGuid().ToString("N"));
-
-    public void Dispose() => Directory.Delete(_venv, recursive: true);
-
-    private string Lib(params string[] rel) => Path.Combine([_venv, "Lib", "site-packages", "bluetti_bt_lib", .. rel]);
-
-    // design.md §1 Goals and limits
-    [Fact]
-    public void Removes_entry_points_modules_compiled_copies_and_strips_the_imports()
-    {
-        Directory.CreateDirectory(Path.Combine(_venv, "Scripts"));
-        Directory.CreateDirectory(Lib("scripts"));
-        Directory.CreateDirectory(Lib("bluetooth", "__pycache__"));
-        File.WriteAllText(Path.Combine(_venv, "Scripts", "bluetti-write.exe"), "x");
-        File.WriteAllText(Path.Combine(_venv, "Scripts", "bluetti-read.exe"), "x");
-        File.WriteAllText(Lib("scripts", "bluetti_write.py"), "x");
-        File.WriteAllText(Lib("bluetooth", "device_writer.py"), "x");
-        File.WriteAllText(Lib("bluetooth", "__pycache__", "device_writer.cpython-314.pyc"), "x");
-        File.WriteAllText(Lib("bluetooth", "__pycache__", "device_reader.cpython-314.pyc"), "x");
-        File.WriteAllText(Lib("bluetooth", "__init__.py"), "from .device_reader import *\nfrom .device_writer import *\n");
-        File.WriteAllText(Lib("__init__.py"), "from .x import (\n    DeviceReader,\n    DeviceWriter,\n)\n");
-        Assert.Equal(6, WriterGuard.Left(_venv).Count);
-
-        var left = WriterGuard.Remove(_venv, _ => { });
-
-        Assert.Empty(left);
-        Assert.True(File.Exists(Path.Combine(_venv, "Scripts", "bluetti-read.exe")));
-        Assert.True(File.Exists(Lib("bluetooth", "__pycache__", "device_reader.cpython-314.pyc")));
-        Assert.Equal("from .device_reader import *\n", File.ReadAllText(Lib("bluetooth", "__init__.py")));
-        Assert.Equal("from .x import (\n    DeviceReader,\n)\n", File.ReadAllText(Lib("__init__.py")));
-    }
-
-    // design.md §1 Goals and limits
-    [WindowsFact]
-    public void Writer_that_cannot_be_removed_is_reported()
-    {
-        Directory.CreateDirectory(Path.Combine(_venv, "Scripts"));
-        string w = Path.Combine(_venv, "Scripts", "bluetti-write.exe");
-        File.WriteAllText(w, "x");
-        using (new FileStream(w, FileMode.Open, FileAccess.Read, FileShare.None))
-            Assert.Single(WriterGuard.Remove(_venv, _ => { }));
-    }
-
-    private BluettiReader Reader(FakeRunner runner, List<string> log) =>
-        new(new StationConfig { ReaderPath = Path.Combine(_venv, "Scripts", "bluetti-read.exe") }, runner, log.Add);
-
-    // design.md §1 and §3
-    [Fact]
-    public async Task Writer_reappearing_before_a_read_is_removed_and_the_read_runs()
-    {
-        Directory.CreateDirectory(Path.Combine(_venv, "Scripts"));
-        string w = Path.Combine(_venv, "Scripts", "bluetti-write.exe");
-        await File.WriteAllTextAsync(w, "x");
-        var runner = new FakeRunner();
-        await Reader(runner, []).ReadAsync(CancellationToken.None);
-        Assert.False(File.Exists(w));
-        Assert.Single(runner.Calls);
-    }
-
-    // design.md §1 Goals and limits
-    [WindowsFact]
-    public async Task Writer_that_cannot_be_removed_refuses_the_read_as_a_miss()
-    {
-        Directory.CreateDirectory(Path.Combine(_venv, "Scripts"));
-        string w = Path.Combine(_venv, "Scripts", "bluetti-write.exe");
-        await File.WriteAllTextAsync(w, "x");
-        var runner = new FakeRunner();
-        var log = new List<string>();
-        Decision.Reading? r;
-        using (new FileStream(w, FileMode.Open, FileAccess.Read, FileShare.None))
-            r = await Reader(runner, log).ReadAsync(CancellationToken.None);
-        Assert.Null(r);
-        Assert.Empty(runner.Calls);
-        Assert.Contains(log, l => l.Contains("read refused", StringComparison.Ordinal));
     }
 }
 
