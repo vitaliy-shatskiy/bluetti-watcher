@@ -36,7 +36,9 @@ Every threshold is configurable. A level acts only after two agreeing readings; 
 
 ## Quick start
 
-Needs Windows 10 or 11 x64 with a Bluetooth LE adapter, PowerShell 7 (`pwsh`) and Chrome or Edge.
+Needs Windows 10 or 11 x64 with a Bluetooth LE adapter, PowerShell 7 (`pwsh`) and Chrome or Edge. The service uses
+the SQLite built into Windows (`winsqlite3.dll`) and needs version 3.24.0 or later: with an older one it does not start,
+and `service.log` names the version found.
 
 1. Download `bluetti-watcher-<version>-win-x64.zip` and its `.sha256` from
    [the latest release](https://github.com/vitaliy-shatskiy/bluetti-watcher/releases/latest), check the hash and
@@ -176,6 +178,12 @@ covers the gaps.
 **How do I stop a hibernation right now?**
 `New-Item "$env:LOCALAPPDATA\bluetti-watcher\no-hibernate"`. It is checked on every poll; delete the file to turn
 hibernation back on.
+
+**Task Manager shows the service at under 1 MB of memory. Is that real?**
+Partly. After each poll the service hands its pages back to Windows (`trimWorkingSet`, on by default), so the "Memory"
+column (private working set) drops under 1 MB after each poll; an open page raises it again until the next poll. The memory it has committed (private bytes, about
+5 to 8 MB) does not change, and the pages fault back in at the next poll. `"trimWorkingSet": false` in config.json
+turns it off.
 
 **Other brands (EcoFlow, Jackery, ...)?**
 No. The reader speaks the BLUETTI protocol only.

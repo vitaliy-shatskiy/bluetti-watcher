@@ -8,7 +8,11 @@ This document states the rules the service follows. Every key named here is desc
 
 ## 1. Goals and limits
 
-- Tiny footprint: about 20 MB working set at most and about 0 % CPU between readings; one process.
+- Tiny footprint: about 20 MB working set at most and about 0 % CPU between readings; one process, one file (SQLite is
+  Windows' own `winsqlite3.dll`). After each poll: a compacting garbage collection, the native heaps' free memory
+  decommitted (HeapCompact, HeapOptimizeResources), then the working set trimmed unless `trimWorkingSet` is false (the
+  Task Manager "Memory" column; commit is unchanged, the pages fault back in at the next poll). Known folders come from
+  `%LOCALAPPDATA%` and `%ProgramData%`, so reading them loads no shell32 (the shell call stays as the fallback).
 - Read only toward the station, forever. The Bluetooth reader can build one kind of frame, a read of holding
   registers (Modbus function 0x03) under register 2000, and its only GATT writes are that request and the
   notification subscription.
@@ -43,7 +47,7 @@ This document states the rules the service follows. Every key named here is desc
    unknown model is read through the cloud alone when the cloud fallback is on. Ported from bluetti-bt-lib 0.1.8 (MIT, [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md)).
 3. HTTP on `127.0.0.1` only (port 18940 by default): the dashboard and the API ([api.md](api.md)). The installer adds
    a Desktop and Start menu shortcut that opens the page as a Chrome or Edge app window.
-4. Storage: SQLite (`station.db` in the data directory), one row per minute (and one row per missed reading, marked);
+4. Storage: SQLite through Windows' `winsqlite3.dll` (`station.db` in the data directory), one row per minute (and one row per missed reading, marked);
    raw rows are kept `rawRetentionDays` (30), then 5-minute aggregates forever. A new file is created with 1 KB pages
    in WAL with `synchronous=NORMAL`: a poll's commits are not flushed, only the checkpoint every ~1000 pages is, and
    the WAL file is cut back to 1 MB after it. An existing file is opened as it is: its page size and journal mode are
@@ -80,7 +84,8 @@ This document states the rules the service follows. Every key named here is desc
    missing `mac`, and polls nothing. There is no default station address.
 
 Exit codes: 0 stopped normally; 2 did not run (the port taken, session 0, another instance still holding the port's
-lock after `lockWaitSec`).
+lock after `lockWaitSec`); 3 did not run: Windows' SQLite (`winsqlite3.dll`) is missing or older than 3.24.0 (the
+store's upserts need it), named in one `service.log` line with the version found.
 
 ## 3. Readings
 

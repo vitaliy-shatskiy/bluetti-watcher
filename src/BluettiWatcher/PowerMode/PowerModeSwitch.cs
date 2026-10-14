@@ -119,7 +119,7 @@ internal sealed partial class PowerModeSwitch : IDisposable
     /// <summary>The configured flag (POWER_MODE_FILE, else %ProgramData%\BluettiWatcher\power-mode.json), full path.</summary>
     public string DefaultFlagPath => Env("POWER_MODE_FILE") is { Length: > 0 } f
         ? Path.GetFullPath(f)
-        : Path.GetFullPath(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "BluettiWatcher", "power-mode.json"));
+        : Path.GetFullPath(Path.Combine(Io.KnownFolders.ProgramData, "BluettiWatcher", "power-mode.json"));
 
     private string FlagPathOf(string path) => path.Length == 0 ? DefaultFlagPath : Path.GetFullPath(path);
 

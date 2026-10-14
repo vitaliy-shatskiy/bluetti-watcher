@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using BluettiWatcher.Decision;
 using BluettiWatcher.DtekWatcher;
+using BluettiWatcher.Io;
 using BluettiWatcher.Io.Ble;
 
 namespace BluettiWatcher;
@@ -10,7 +11,7 @@ namespace BluettiWatcher;
 /// <summary>Thresholds, times and paths. Defaults, then <c>config.json</c> in the data directory, then the command line.</summary>
 internal sealed class StationConfig
 {
-    private static readonly string LocalAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+    private static readonly string LocalAppData = KnownFolders.LocalAppData;
 
     /// <summary>The station's Bluetooth address; required: without it nothing is polled and /api/health names the problem.</summary>
     public string? Mac { get; set; }
@@ -78,6 +79,11 @@ internal sealed class StationConfig
     public int RawRetentionDays { get; set; } = 30;
     /// <summary>Logs every power-mode command and hibernation instead of running it.</summary>
     public bool DryRun { get; set; }
+    /// <summary>
+    /// After each poll the process's pages leave its working set (the Task Manager "Memory" column drops under 1 MB);
+    /// commit is unchanged and the pages fault back in at the next poll. false = keep them.
+    /// </summary>
+    public bool TrimWorkingSet { get; set; } = true;
 
     /// <summary>
     /// A hibernation during a cut arms the wake task this many minutes ahead (10 to 1440); 0 = off, the default until the
@@ -109,7 +115,7 @@ internal sealed class StationConfig
     /// <summary>The flag file: <c>powerMode.flagPath</c>, then the top-level <c>flagPath</c>, then %ProgramData%\BluettiWatcher\power-mode.json.</summary>
     [JsonIgnore]
     public string FlagFile => NonEmpty(PowerMode.FlagPath) ?? NonEmpty(FlagPath)
-        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "BluettiWatcher", "power-mode.json");
+        ?? Path.Combine(KnownFolders.ProgramData, "BluettiWatcher", "power-mode.json");
 
     /// <summary>The switch script; not set = <c>&lt;exe dir&gt;\..\power-mode\power-mode.ps1</c>.</summary>
     [JsonIgnore]

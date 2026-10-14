@@ -1,7 +1,9 @@
 <Project>
   <ItemGroup>
-    <!-- MIT (Microsoft.Data.Sqlite), Apache-2.0 (SQLitePCLRaw), Apache-2.0 (xunit.v3), BSD-2-Clause (Jint, tests only). -->
-    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.13" />
+    <!-- MIT (Microsoft.Data.Sqlite.Core), Apache-2.0 (SQLitePCLRaw), Apache-2.0 (xunit.v3), BSD-2-Clause (Jint, tests only). -->
+    <PackageVersion Include="Microsoft.Data.Sqlite.Core" Version="10.0.13" />
+    <!-- SQLite is Windows' own winsqlite3.dll (System32): no e_sqlite3.dll ships beside the exe. 2.1.11 is the provider's last 2.1 release. -->
+    <PackageVersion Include="SQLitePCLRaw.provider.winsqlite3" Version="2.1.11" />
     <PackageVersion Include="Jint" Version="4.17.0" />
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
   </ItemGroup>

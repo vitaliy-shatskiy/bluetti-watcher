@@ -31,7 +31,7 @@ internal static class Cli
           --version              print the version
           -h, --help, /?         print this text
 
-        Exit codes: 0 stopped, printed, token saved or hook run - 1 the login failed - 2 could not run (bad arguments, port taken).
+        Exit codes: 0 stopped, printed, token saved or hook run - 1 the login failed - 2 could not run (bad arguments, port taken) - 3 Windows' SQLite older than 3.24.0.
         """;
 
     private static readonly HashSet<string> HelpTokens = new(["--help", "-h", "/?"], StringComparer.OrdinalIgnoreCase);

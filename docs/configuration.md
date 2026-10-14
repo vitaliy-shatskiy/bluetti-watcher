@@ -83,6 +83,7 @@ Every key with its default, except `mac`, `actions` and the DTEK address, which 
   "dataDir": "%LOCALAPPDATA%\\bluetti-watcher",
   "rawRetentionDays": 30,
   "dryRun": false,
+  "trimWorkingSet": true,
 
   "dtekWatcher": {
     "enabled": false,
@@ -206,6 +207,7 @@ Hibernation off: create an empty file `no-hibernate` in the data directory. It i
 | `lockWaitSec` | int | 30 | 0-600: a start waits this long for an older instance to release the port's lock. |
 | `dataDir` | string | `%LOCALAPPDATA%\bluetti-watcher` | Database, log, config and kill switch (also `--data-dir`). |
 | `rawRetentionDays` | int | 30 | Raw minute rows kept this long, then folded into 5-minute aggregates. |
+| `trimWorkingSet` | bool | true | After each poll the process's pages leave its working set, so the Task Manager "Memory" column (private working set) drops under 1 MB after each poll (an open page raises it again until the next one). Cosmetic: commit (private bytes) does not change, and the pages fault back in at the next poll (from RAM while Windows keeps them on its standby list). `false` keeps them. |
 
 ## DTEK module (`dtekWatcher`)
 

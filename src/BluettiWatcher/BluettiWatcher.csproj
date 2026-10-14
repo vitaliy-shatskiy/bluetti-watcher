@@ -15,7 +15,7 @@
     <ServerGarbageCollector>false</ServerGarbageCollector>
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <TieredPGO>false</TieredPGO>
-    <Version>1.1.1</Version>
+    <Version>1.2.0</Version>
     <!-- LibraryImport (AttachConsole for the cloud login) generates unsafe marshalling code. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
@@ -38,9 +38,15 @@
     <!-- GC conserve memory (0-9): no MSBuild property exists, the documented route is this runtimeconfig knob
          (learn.microsoft.com/dotnet/core/runtime-config/garbage-collector); NativeAOT reads it (GC.GetConfigurationVariables() shows GCConserveMem=5). -->
     <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
+    <!-- No GCRegionRange / GCRegionSize: a 64 MB range crashed the exe (access violation, not an OutOfMemoryException)
+         under concurrent 30-day /api/history requests (peak private memory over 100 MB; tools/bench.ps1 runs that load),
+         and 256 KB regions in the default range cost 1.4 MB more private memory than the default regions. -->
+
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <!-- SQLite through Windows' own winsqlite3.dll (Storage/SqliteSetup.cs): the release is the exe alone, 1.9 MB smaller. -->
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" />
+    <PackageReference Include="SQLitePCLRaw.provider.winsqlite3" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Web\station.html" LogicalName="station.html" />
