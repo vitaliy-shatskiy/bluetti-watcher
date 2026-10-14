@@ -15,15 +15,40 @@
     <ServerGarbageCollector>false</ServerGarbageCollector>
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <TieredPGO>false</TieredPGO>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <!-- LibraryImport (AttachConsole for the cloud login) generates unsafe marshalling code. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+  <!-- Footprint: features the service never uses, trimmed out of the NativeAOT exe. -->
+  <PropertyGroup Label="Footprint">
+    <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
+    <!-- Runtime data stays in the image (shared, paged from the file) instead of being unpacked into private memory at start:
+         private memory -1.3 MB for +1 MB of exe (+0.1 MB zipped). -->
+    <IlcDehydrate>false</IlcDehydrate>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
+    <MetricsSupport>false</MetricsSupport>
+    <DebuggerSupport>false</DebuggerSupport>
+    <NullabilityInfoContextSupport>false</NullabilityInfoContextSupport>
+    <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
+    <XmlResolverIsNetworkingEnabledByDefault>false</XmlResolverIsNetworkingEnabledByDefault>
+  </PropertyGroup>
+  <ItemGroup Label="Footprint">
+    <RuntimeHostConfigurationOption Include="System.Net.SocketsHttpHandler.Http3Support" Value="false" Trim="true" />
+    <!-- GC conserve memory (0-9): no MSBuild property exists, the documented route is this runtimeconfig knob
+         (learn.microsoft.com/dotnet/core/runtime-config/garbage-collector); NativeAOT reads it (GC.GetConfigurationVariables() shows GCConserveMem=5). -->
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Web\station.html" LogicalName="station.html" />
+    <!-- The Claude Code hook's rules texts (BluettiWatcher.exe hook): built in, no file beside the exe to lose. -->
+    <EmbeddedResource Include="..\..\integrations\claude-code\power-mode.rules.md" LogicalName="power-mode.rules.md" />
+    <EmbeddedResource Include="..\..\integrations\claude-code\power-mode.eco.rules.md" LogicalName="power-mode.eco.rules.md" />
+    <EmbeddedResource Include="..\..\integrations\claude-code\power-mode.stop.rules.md" LogicalName="power-mode.stop.rules.md" />
+    <EmbeddedResource Include="..\..\integrations\claude-code\power-mode.hibernate.rules.md" LogicalName="power-mode.hibernate.rules.md" />
   </ItemGroup>
   <!-- The doc-comment file feeds the analyzers at build time; the published folder does not carry it. -->
   <Target Name="DropDocFileFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">

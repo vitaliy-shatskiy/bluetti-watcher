@@ -404,7 +404,7 @@ public sealed class WakeTests : IDisposable
         using (s)
         {
             await Hibernated(s);
-            await File.WriteAllTextAsync(Path.Combine(_dir, "no-hibernate"), "");
+            await File.WriteAllTextAsync(Path.Combine(_dir, "no-hibernate"), "", TestContext.Current.CancellationToken);
             for (int m = 59; m <= 66; m++) await PollAt(s, m, null);
         }
         Assert.Equal(1, _hibernator.Calls);

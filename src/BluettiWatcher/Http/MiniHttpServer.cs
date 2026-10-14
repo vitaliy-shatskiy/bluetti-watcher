@@ -1,5 +1,8 @@
+using System.Buffers;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace BluettiWatcher.Http;
@@ -7,10 +10,102 @@ namespace BluettiWatcher.Http;
 internal sealed record HttpRequest(string Method, string Path, IReadOnlyDictionary<string, string> Query,
     IReadOnlyDictionary<string, string> Headers, byte[] Body);
 
+/// <summary>An answer. <see cref="ContentEncoding"/> set = the body is already encoded; <see cref="VaryEncoding"/> = it depends on Accept-Encoding.</summary>
 internal sealed record HttpResponse(int Status, string ContentType, byte[] Body)
 {
+    public string CacheControl { get; init; } = "no-store";
+    public string? ETag { get; init; }
+    public string? ContentEncoding { get; init; }
+    public bool VaryEncoding { get; init; }
+
     public static HttpResponse Text(int status, string text) => new(status, "text/plain; charset=utf-8", Encoding.UTF8.GetBytes(text + "\n"));
     public static HttpResponse Json(int status, byte[] body) => new(status, "application/json; charset=utf-8", body);
+}
+
+/// <summary>Brotli or gzip by Accept-Encoding; anything else is sent as it is.</summary>
+internal static class HttpEncoding
+{
+    /// <summary>Bodies under this size go as they are: they fit one packet either way.</summary>
+    public const int MinSize = 1400;
+
+    /// <summary>"br", "gzip" or null (identity). Brotli wins when both are acceptable; q=0 refuses a coding; "*" stands for any not named.</summary>
+    public static string? Pick(string? acceptEncoding)
+    {
+        if (string.IsNullOrEmpty(acceptEncoding)) return null;
+        bool? br = null, gzip = null, star = null;
+        foreach (var item in acceptEncoding.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var parts = item.Split(';', StringSplitOptions.TrimEntries);
+            bool ok = true;
+            foreach (var p in parts.Skip(1))
+                if (p.StartsWith("q=", StringComparison.OrdinalIgnoreCase)
+                    && double.TryParse(p[2..], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double q))
+                    ok = q > 0;
+            if (parts[0].Equals("br", StringComparison.OrdinalIgnoreCase)) br = ok;
+            else if (parts[0].Equals("gzip", StringComparison.OrdinalIgnoreCase)) gzip = ok;
+            else if (parts[0] == "*") star = ok;
+        }
+        if (br ?? star ?? false) return "br";
+        if (gzip ?? star ?? false) return "gzip";
+        return null;
+    }
+
+    /// <summary>The body encoded; <paramref name="best"/> = the smallest output (once, for content that never changes), else a fast level.</summary>
+    public static byte[] Encode(string encoding, ReadOnlySpan<byte> body, bool best)
+    {
+        if (encoding == "br")
+        {
+            byte[] buf = ArrayPool<byte>.Shared.Rent(BrotliEncoder.GetMaxCompressedLength(body.Length));
+            try
+            {
+                // The window just covers the body (10..22 bits): a smaller window is a smaller encoder state to set up per call.
+                int window = Math.Clamp(32 - System.Numerics.BitOperations.LeadingZeroCount((uint)body.Length), 10, 22);
+                if (!BrotliEncoder.TryCompress(body, buf, out int written, best ? 11 : 4, window)) throw new InvalidOperationException("brotli failed");
+                return buf.AsSpan(0, written).ToArray();
+            }
+            finally { ArrayPool<byte>.Shared.Return(buf); }
+        }
+        using var ms = new MemoryStream(body.Length / 4 + 64);
+        using (var z = new GZipStream(ms, best ? CompressionLevel.SmallestSize : CompressionLevel.Fastest, leaveOpen: true)) z.Write(body);
+        return ms.ToArray();
+    }
+
+    /// <summary>A compressible type: the page and JSON (plain-text answers are short errors).</summary>
+    public static bool Compressible(string contentType) =>
+        contentType.StartsWith("application/json", StringComparison.Ordinal) || contentType.StartsWith("text/html", StringComparison.Ordinal);
+}
+
+/// <summary>
+/// Content fixed for the life of the process (the page): encoded once per coding on first use, a weak ETag of its bytes,
+/// "no-cache" so every load revalidates and an unchanged page is a 304 with no body.
+/// </summary>
+internal sealed class StaticAsset(byte[] body, string contentType)
+{
+    private byte[]? _br, _gzip;
+    public string ETag { get; } = "W/\"" + Convert.ToHexStringLower(SHA256.HashData(body).AsSpan(0, 12)) + "\"";
+
+    public HttpResponse Respond(HttpRequest r)
+    {
+        if (r.Headers.TryGetValue("if-none-match", out var inm) && Matches(inm, ETag))
+            return new HttpResponse(304, contentType, []) { CacheControl = "no-cache", ETag = ETag, VaryEncoding = true };
+        string? enc = HttpEncoding.Pick(r.Headers.GetValueOrDefault("accept-encoding"));
+        byte[] bytes = enc switch
+        {
+            "br" => _br ??= HttpEncoding.Encode("br", body, best: true),
+            "gzip" => _gzip ??= HttpEncoding.Encode("gzip", body, best: true),
+            _ => body,
+        };
+        return new HttpResponse(200, contentType, bytes) { CacheControl = "no-cache", ETag = ETag, ContentEncoding = enc, VaryEncoding = true };
+    }
+
+    /// <summary>If-None-Match: "*" or a list of tags, compared weakly (the W/ prefix ignored on both sides).</summary>
+    internal static bool Matches(string header, string etag)
+    {
+        string bare = etag.StartsWith("W/", StringComparison.Ordinal) ? etag[2..] : etag;
+        foreach (var t in header.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            if (t == "*" || (t.StartsWith("W/", StringComparison.Ordinal) ? t[2..] : t) == bare) return true;
+        return false;
+    }
 }
 
 /// <summary>
@@ -86,6 +181,7 @@ internal sealed class MiniHttpServer(IPAddress address, int port, Func<HttpReque
                 log($"http: {req!.Method} {req.Path} failed with {(input ? 400 : 500)}: {e.GetType().Name}: {e.Message}");
                 resp = input ? HttpResponse.Text(400, "bad request") : HttpResponse.Text(500, "internal error");
             }
+            if (req is not null) resp = Negotiate(req, resp);
             await WriteAsync(stream, resp, cts.Token);
         }
         catch (Exception e) when (e is IOException or SocketException or OperationCanceledException)
@@ -94,34 +190,51 @@ internal sealed class MiniHttpServer(IPAddress address, int port, Func<HttpReque
         }
     }
 
+    /// <summary>
+    /// A 200 the handler left unencoded, of a compressible type and at least <see cref="HttpEncoding.MinSize"/> bytes, is
+    /// encoded by the request's Accept-Encoding at a fast level (the page comes pre-encoded from <see cref="StaticAsset"/>).
+    /// </summary>
+    internal static HttpResponse Negotiate(HttpRequest req, HttpResponse resp)
+    {
+        if (resp.ContentEncoding is not null || resp.Status != 200 || resp.Body.Length < HttpEncoding.MinSize || !HttpEncoding.Compressible(resp.ContentType))
+            return resp;
+        string? enc = HttpEncoding.Pick(req.Headers.GetValueOrDefault("accept-encoding"));
+        return enc is null ? resp with { VaryEncoding = true } : resp with { Body = HttpEncoding.Encode(enc, resp.Body, best: false), ContentEncoding = enc, VaryEncoding = true };
+    }
+
     internal static async Task<(HttpRequest? Request, HttpResponse? Bad)> ReadRequestAsync(Stream stream, CancellationToken ct)
     {
-        var buf = new byte[MaxHead + MaxBody];
-        int len = 0, headEnd = -1;
-        while (headEnd < 0)
+        byte[] buf = ArrayPool<byte>.Shared.Rent(MaxHead);
+        try
         {
-            if (len >= MaxHead) return (null, HttpResponse.Text(431, "headers too large"));
-            int n = await stream.ReadAsync(buf.AsMemory(len, MaxHead - len), ct);
-            if (n == 0) return (null, HttpResponse.Text(400, "incomplete request"));
-            len += n;
-            headEnd = buf.AsSpan(0, len).IndexOf("\r\n\r\n"u8);
+            int len = 0, headEnd = -1;
+            while (headEnd < 0)
+            {
+                if (len >= MaxHead) return (null, HttpResponse.Text(431, "headers too large"));
+                int n = await stream.ReadAsync(buf.AsMemory(len, MaxHead - len), ct);
+                if (n == 0) return (null, HttpResponse.Text(400, "incomplete request"));
+                len += n;
+                headEnd = buf.AsSpan(0, len).IndexOf("\r\n\r\n"u8);
+            }
+            var (req, bad) = ParseHead(Encoding.ASCII.GetString(buf, 0, headEnd));
+            if (bad is not null) return (null, bad);
+            int bodyLen = 0;
+            if (req!.Headers.TryGetValue("content-length", out var cl) && (!int.TryParse(cl, out bodyLen) || bodyLen < 0))
+                return (null, HttpResponse.Text(400, "bad content-length"));
+            if (bodyLen > MaxBody) return (null, HttpResponse.Text(413, "body too large"));
+            if (bodyLen == 0) return (req, null);
+            int have = len - (headEnd + 4);
+            var body = new byte[bodyLen];
+            Array.Copy(buf, headEnd + 4, body, 0, Math.Min(have, bodyLen));
+            while (have < bodyLen)
+            {
+                int n = await stream.ReadAsync(body.AsMemory(have, bodyLen - have), ct);
+                if (n == 0) return (null, HttpResponse.Text(400, "incomplete body"));
+                have += n;
+            }
+            return (req with { Body = body }, null);
         }
-        var (req, bad) = ParseHead(Encoding.ASCII.GetString(buf, 0, headEnd));
-        if (bad is not null) return (null, bad);
-        int bodyLen = 0;
-        if (req!.Headers.TryGetValue("content-length", out var cl) && (!int.TryParse(cl, out bodyLen) || bodyLen < 0))
-            return (null, HttpResponse.Text(400, "bad content-length"));
-        if (bodyLen > MaxBody) return (null, HttpResponse.Text(413, "body too large"));
-        int have = len - (headEnd + 4);
-        var body = new byte[bodyLen];
-        Array.Copy(buf, headEnd + 4, body, 0, Math.Min(have, bodyLen));
-        while (have < bodyLen)
-        {
-            int n = await stream.ReadAsync(body.AsMemory(have, bodyLen - have), ct);
-            if (n == 0) return (null, HttpResponse.Text(400, "incomplete body"));
-            have += n;
-        }
-        return (req with { Body = body }, null);
+        finally { ArrayPool<byte>.Shared.Return(buf); }
     }
 
     /// <summary>The request line and headers. A repeated Host, Origin or X-Station header is a bad request.</summary>
@@ -163,19 +276,36 @@ internal sealed class MiniHttpServer(IPAddress address, int port, Func<HttpReque
 
     private static string Reason(int status) => status switch
     {
-        200 => "OK", 202 => "Accepted", 400 => "Bad Request", 403 => "Forbidden", 404 => "Not Found", 405 => "Method Not Allowed", 409 => "Conflict",
+        200 => "OK", 202 => "Accepted", 304 => "Not Modified", 400 => "Bad Request", 403 => "Forbidden", 404 => "Not Found", 405 => "Method Not Allowed", 409 => "Conflict",
         413 => "Payload Too Large", 431 => "Request Header Fields Too Large", 500 => "Internal Server Error", 502 => "Bad Gateway",
         _ => "Status",
     };
 
+    private const string FixedHeaders = "X-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\n"
+        + "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'\r\n"
+        + "Connection: close\r\n\r\n";
+
+    /// <summary>The head and the body in one write (one send). A 304 carries no body, no Content-Length and no Content-Type.</summary>
     internal static async Task WriteAsync(Stream stream, HttpResponse r, CancellationToken ct)
     {
-        string head = $"HTTP/1.1 {r.Status} {Reason(r.Status)}\r\nContent-Type: {r.ContentType}\r\nContent-Length: {r.Body.Length}\r\n"
-            + "Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\n"
-            + "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'\r\n"
-            + "Connection: close\r\n\r\n";
-        await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct);
-        await stream.WriteAsync(r.Body, ct);
-        await stream.FlushAsync(ct);
+        var sb = new StringBuilder(512);
+        sb.Append("HTTP/1.1 ").Append(r.Status).Append(' ').Append(Reason(r.Status)).Append("\r\n");
+        if (r.Status != 304) sb.Append("Content-Type: ").Append(r.ContentType).Append("\r\nContent-Length: ").Append(r.Body.Length).Append("\r\n");
+        if (r.ContentEncoding is not null) sb.Append("Content-Encoding: ").Append(r.ContentEncoding).Append("\r\n");
+        if (r.VaryEncoding) sb.Append("Vary: Accept-Encoding\r\n");
+        if (r.ETag is not null) sb.Append("ETag: ").Append(r.ETag).Append("\r\n");
+        sb.Append("Cache-Control: ").Append(r.CacheControl).Append("\r\n").Append(FixedHeaders);
+        string head = sb.ToString();
+        int headLen = head.Length;   // ASCII: one byte per char
+        int bodyLen = r.Status == 304 ? 0 : r.Body.Length;
+        byte[] buf = ArrayPool<byte>.Shared.Rent(headLen + bodyLen);
+        try
+        {
+            Encoding.ASCII.GetBytes(head, buf);
+            r.Body.AsSpan(0, bodyLen).CopyTo(buf.AsSpan(headLen));
+            await stream.WriteAsync(buf.AsMemory(0, headLen + bodyLen), ct);
+            await stream.FlushAsync(ct);
+        }
+        finally { ArrayPool<byte>.Shared.Return(buf); }
     }
 }

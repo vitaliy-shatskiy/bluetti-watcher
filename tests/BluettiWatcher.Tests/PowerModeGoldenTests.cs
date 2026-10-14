@@ -84,7 +84,7 @@ public sealed class PowerModeGoldenTests : IDisposable
     public async Task Flags_power_mode_and_flag_still_set_the_script_and_the_flag_file()
     {
         string file = Path.Combine(_dir, "config.json");
-        await File.WriteAllTextAsync(file, $$"""{ "flagPath": "C:\\elsewhere.json", "powerMode": { "mutex": {{Json(Mutex)}}, "taskPrefix": "{{Prefix}}", "extraReaders": ["{{Reader}}"] } }""");
+        await File.WriteAllTextAsync(file, $$"""{ "flagPath": "C:\\elsewhere.json", "powerMode": { "mutex": {{Json(Mutex)}}, "taskPrefix": "{{Prefix}}", "extraReaders": ["{{Reader}}"] } }""", TestContext.Current.CancellationToken);
         var cfg = StationConfig.Load(["--config", file, "--power-mode", Script, "--flag", Flag]);
         var runner = new FakeRunner();
         Assert.Equal(Golden, await Lines(cfg, runner));

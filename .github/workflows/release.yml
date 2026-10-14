@@ -23,7 +23,7 @@ jobs:
           global-json-file: global.json
 
       - name: .NET tests
-        run: dotnet test bluetti-watcher.slnx -c Release
+        run: dotnet test --solution bluetti-watcher.slnx -c Release
 
       # NativeAOT needs the MSVC linker; the runner image carries Visual Studio with the C++ tools.
       - name: Publish NativeAOT (win-x64)
@@ -56,7 +56,7 @@ jobs:
           [IO.File]::WriteAllText((Join-Path $PWD $file), $text + "`n")
           "file=$file" >> $env:GITHUB_OUTPUT
 
-      # The zip: bin (no .pdb, .xml or logs) + power-mode + install.ps1 and the tools it loads + requirements.lock +
+      # The zip: bin (no .pdb, .xml or logs) + power-mode + install.ps1 and the tools it loads + THIRD-PARTY-NOTICES.md +
       # everything the READMEs link to (docs, CONTRIBUTING, SECURITY, CHANGELOG, LICENSE, integrations).
       - name: Package
         id: package
@@ -70,13 +70,15 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$pkg/power-mode", "$pkg/tools", "$pkg/docs" | Out-Null
           Copy-Item power-mode/*.ps1 "$pkg/power-mode/"
           if (Test-Path power-mode/README.md) { Copy-Item power-mode/README.md "$pkg/power-mode/" }
-          Copy-Item tools/swap.ps1, tools/wake-task.ps1, tools/build-venv.ps1 "$pkg/tools/"
+          Copy-Item tools/swap.ps1, tools/wake-task.ps1 "$pkg/tools/"
           Copy-Item docs/*.md, docs/*.png "$pkg/docs/"
           if (Test-Path integrations/claude-code) {
             New-Item -ItemType Directory -Force -Path "$pkg/integrations" | Out-Null
             Copy-Item integrations/claude-code "$pkg/integrations/" -Recurse
           }
-          Copy-Item install.ps1, requirements.lock, README.md, LICENSE $pkg
+          # The exe carries code ported from bluetti-bt-lib (MIT): no release without its notice.
+          if (-not (Test-Path -LiteralPath THIRD-PARTY-NOTICES.md)) { Write-Output 'no THIRD-PARTY-NOTICES.md: the release needs it'; exit 1 }
+          Copy-Item install.ps1, README.md, LICENSE, THIRD-PARTY-NOTICES.md $pkg
           foreach ($f in 'README.uk.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'SECURITY.md') { if (Test-Path $f) { Copy-Item $f $pkg } }
           # Every relative link and image in the READMEs must resolve inside the package.
           $missing = @()

@@ -295,7 +295,8 @@ en: {
   om_BYPASS_OUTPUT_C: "bypass output (C)",
   om_BYPASS_OUTPUT_D: "bypass output (D)",
   om_LOAD_MATCHING: "load matching",
-  om_CLOUD_MAINS: "mains (cloud reading)",},
+  om_CLOUD_MAINS: "mains (cloud reading)",
+  om_BLE_MAINS: "mains (Bluetooth reading)",},
 uk: {
   appName: "Bluetti Watcher",
   langEn: "EN",
@@ -498,7 +499,8 @@ uk: {
   om_BYPASS_OUTPUT_C: "байпас (C)",
   om_BYPASS_OUTPUT_D: "байпас (D)",
   om_LOAD_MATCHING: "підлаштування під навантаження",
-  om_CLOUD_MAINS: "мережа (дані з хмари)",},
+  om_CLOUD_MAINS: "мережа (дані з хмари)",
+  om_BLE_MAINS: "мережа (дані з Bluetooth)",},
 };
 // The page's language: the stored choice (an older 'ru' choice becomes 'uk'), else the browser's (uk* = Ukrainian), else English.
 function startLang() {
@@ -587,13 +589,14 @@ const gc = $('gridChip'); gc.className = 'chip ' + (now.mains ? 'ok' : 'warn'); 
   if (D.eco) { e.className = 'chip acc'; e.lastChild.textContent = D.ecoNote ? noteText(D.ecoNote) : D.eco; }
   else if (D.ecoAt) { const at = Date.parse(D.ecoAt); e.className = 'chip warn';
     const tick = () => { const s = Math.ceil((at - Date.now()) / 1000); e.lastChild.textContent = s > 0 ? t('ecoIn', { m: Math.floor(s / 60), s: pad(s % 60), at: hm(at) }) : t('ecoNext'); };
-    tick(); ecoTimer = setInterval(tick, 1000); } }
+    tick(); if (!document.hidden) ecoTimer = setInterval(tick, 1000); } }
 $('readAt').textContent = t('readAt', { at: `${dmy(now.t)} ${hm(now.t)}` });
 { const s = $('staleChip'); s.hidden = !(NOW - now.t > 5 * 60000); if (!s.hidden) s.lastChild.textContent = t('noReadingFor', { d: dur(NOW - now.t) }); }
 
 // Tab title and icon carry the charge, so the taskbar shows it without opening the page.
 document.title = t('tabTitle', { soc: now.soc, state: now.mains ? t('tabGridOn') : t('tabOnBattery') });
-try { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d'), col = now.soc <= 10 ? '#db5c5c' : now.soc <= 20 ? '#e0a53a' : '#5fad65';
+// the icon is drawn again only when the charge it shows changed
+if (iconSoc !== now.soc) try { iconSoc = now.soc; const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d'), col = now.soc <= 10 ? '#db5c5c' : now.soc <= 20 ? '#e0a53a' : '#5fad65';
   g.fillStyle = '#191a1c'; g.beginPath(); g.roundRect(0, 0, 64, 64, 12); g.fill();
   g.lineWidth = 7; g.strokeStyle = '#34363b'; g.beginPath(); g.arc(32, 32, 24, 0, 2 * Math.PI); g.stroke();
   g.strokeStyle = col; g.lineCap = 'round'; g.beginPath(); g.arc(32, 32, 24, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * now.soc / 100); g.stroke();
@@ -716,11 +719,20 @@ const nc = $('noteChip'); nc.hidden = !note; nc.lastChild.textContent = note;
 if (D.dryRun) { $('readAt').textContent += ` · ${t('dryRun')}`; }
 }
 
+// An Intl formatter, built once per zone and name and kept for the page's life (building one is the costly part); zone null =
+// the browser's own. null when the browser cannot build it (a zone an old ICU does not know): the caller falls back.
+function dtf(zone, name, o) {
+  const cache = dtf.cache || (dtf.cache = new Map()), key = `${zone || ''}|${name}`;
+  if (!cache.has(key)) {
+    let f = null;
+    try { f = new Intl.DateTimeFormat('en-GB', zone ? { timeZone: zone, ...o } : o); } catch (e) { /* unknown zone or option */ }
+    cache.set(key, f);
+  }
+  return cache.get(key);
+}
 // The zone the DTEK schedule is published in: 'Europe/Kyiv', or the former name 'Europe/Kiev' in an older browser; null when neither is known.
 function kyivZone() {
-  for (const z of ['Europe/Kyiv', 'Europe/Kiev']) {
-    try { new Intl.DateTimeFormat('en-GB', { timeZone: z }); return z; } catch (e) { /* this browser does not know the name */ }
-  }
+  for (const z of ['Europe/Kyiv', 'Europe/Kiev']) if (dtf(z, 'zone', {})) return z;
   return null;
 }
 // True when the browser's UTC offset at that moment (ms) differs from Kyiv's: the schedule rows then say they are Kyiv time.
@@ -729,7 +741,7 @@ function kyivOffsetDiffers(ms) {
   if (!zone) return false;
   try {
     const p = {};
-    for (const x of new Intl.DateTimeFormat('en-GB', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' }).formatToParts(new Date(ms))) p[x.type] = Number(x.value);
+    for (const x of dtf(zone, 'parts', { hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' }).formatToParts(new Date(ms))) p[x.type] = Number(x.value);
     const kyivOffsetMin = Math.round((Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - Math.floor(ms / 60000) * 60000) / 60000);
     return kyivOffsetMin !== -new Date(ms).getTimezoneOffset();
   } catch (e) { return false; }
@@ -744,10 +756,10 @@ function renderDtek(w, th) {
   const hm = (iso) => { const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
   const dmy = (iso) => { const d = new Date(iso); return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`; };
   // The schedule's day rows are the server's Kyiv wall time (w.today, q.today): an interval named beside them uses the same clock.
-  const kyiv = (iso, o) => { const zone = kyivZone(); return new Intl.DateTimeFormat('en-GB', zone ? { timeZone: zone, ...o } : o).format(new Date(iso)); };
+  const kyiv = (iso, name, o) => { const zone = kyivZone(), f = (zone && dtf(zone, name, o)) || dtf(null, name, o); return f ? f.format(new Date(iso)) : ''; };
   const kyivTag = kyivOffsetDiffers(Date.now()) ? ` <span class="dim">(${t('kyivTime')})</span>` : '';
-  const kyivHm = (iso) => kyiv(iso, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-  const kyivDmy = (iso) => kyiv(iso, { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '.');
+  const kyivHm = (iso) => kyiv(iso, 'hm', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const kyivDmy = (iso) => kyiv(iso, 'dmy', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '.');
   const row = (k, v) => `<div class="rowbar" style="grid-template-columns:150px 1fr"><span class="dim" title="${esc(k)}">${esc(k)}</span><span>${v}</span></div>`;
   const chip = $('dtekChip'), label = { ok: t('dtekOk'), stale: t('dtekStale'), none: t('dtekNone') }[w.state] || w.state;
   chip.className = 'chip ' + (w.state === 'ok' ? 'ok' : w.state === 'stale' ? 'warn' : 'bad'); chip.lastChild.textContent = label;
@@ -795,18 +807,42 @@ function show() {
   renderDtek(lastNow.dtekWatcher, lastNow.thresholds);
   render({ ...lastNow, rows: lastRows });
 }
-async function load() {
+// Readings come once a minute, so the page asks once a minute, and only while it is seen. The 26 h of history is read whole
+// once (and every 30 minutes, to stay honest); in between only the rows after the last one. Nothing new = no repaint, unless
+// the last reading is old enough for the stale chip to count up.
+const SPAN = 26 * 3600000, POLL = 60000, FULL = 30 * 60000, STALE = 5 * 60000;
+let nowText = '', histAt = 0, fullAt = 0, pollTimer = null, loading = null;
+// One request pair at a time; a forced one (a mode press, the page seen again) waits for the running one, then reads anew.
+function load(force) {
+  if (loading) return force ? loading.then(() => load(true)) : loading;
+  return (loading = fetchAndShow(force).finally(() => { loading = null; }));
+}
+async function fetchAndShow(force) {
   try {
-    const to = Date.now(), from = to - 26 * 3600000;
+    const to = Date.now(), full = !lastRows || to - fullAt >= FULL, from = full ? to - SPAN : histAt + 1000;
     const [n, h] = await Promise.all([fetch('/api/now', { cache: 'no-store' }), fetch(`/api/history?from=${from}&to=${to}&step=60`, { cache: 'no-store' })]);
     if (!n.ok || !h.ok) throw new Error(`HTTP ${n.status}/${h.status}`);
-    const now = await n.json(), hist = await h.json();
-    lastNow = now; lastRows = hist.rows.filter((r) => r.soc !== null);
-    show();
+    const text = await n.text(), hist = await h.json();
+    const fresh = hist.rows.filter((r) => r.soc !== null), changed = full || fresh.length > 0 || text !== nowText;
+    histAt = hist.rows.length ? Date.parse(hist.rows[hist.rows.length - 1].at) : Math.max(histAt, from - 1000);
+    if (full) { lastRows = fresh; fullAt = to; }
+    else if (fresh.length) {
+      const keep = lastRows.findIndex((r) => Date.parse(r.at) >= to - SPAN);
+      lastRows = (keep < 0 ? [] : keep ? lastRows.slice(keep) : lastRows).concat(fresh);
+    }
+    if (text !== nowText) { lastNow = JSON.parse(text); nowText = text; }
+    const lastT = lastRows.length ? Date.parse(lastRows[lastRows.length - 1].at) : 0;
+    if (changed || force || to - lastT > STALE) show();
   } catch (e) {
     const s = $('staleChip'); s.hidden = false; s.lastChild.textContent = t('serviceDown', { e: e.message });
   }
 }
+function schedule() { clearTimeout(pollTimer); pollTimer = document.hidden ? null : setTimeout(() => load().then(schedule), POLL); }
+// Hidden: no requests and no countdown. Seen again: fresh data at once, then the minute rhythm.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { clearTimeout(pollTimer); pollTimer = null; clearInterval(ecoTimer); ecoTimer = null; }
+  else load(true).then(schedule);
+});
 document.querySelectorAll('#langSeg button').forEach((b) => { b.onclick = () => {
   lang = b.dataset.lang === 'uk' ? 'uk' : 'en';
   try { localStorage.setItem('station.lang', lang); } catch (e) { /* private window */ }
@@ -814,7 +850,8 @@ document.querySelectorAll('#langSeg button').forEach((b) => { b.onclick = () => 
 }; });
 // The last mode button's failure stays on the note chip across refreshes until the next press.
 var modeError = '';
-var ecoTimer = null; // the eco countdown's one-second tick
+var ecoTimer = null; // the eco countdown's one-second tick, stopped while the page is hidden
+var iconSoc = null; // the charge the tab icon was last drawn for
 document.querySelectorAll('#modeSeg button').forEach((b) => { b.onclick = async () => {
   modeError = '';
   try {
@@ -825,10 +862,9 @@ document.querySelectorAll('#modeSeg button').forEach((b) => { b.onclick = async 
     modeError = `${b.textContent}: ${t('serviceDown', { e: e.message })}`;
   } finally {
     if (modeError) { const nc = $('noteChip'); nc.hidden = false; nc.lastChild.textContent = modeError; }
-    load();
+    load(true);
   }
 }; });
 applyStatic();
-load();
-setInterval(load, 60000);
+load().then(schedule);
 </script></body></html>

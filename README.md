@@ -36,8 +36,7 @@ Every threshold is configurable. A level acts only after two agreeing readings; 
 
 ## Quick start
 
-Needs Windows 10 or 11 x64 with a Bluetooth LE adapter, PowerShell 7 (`pwsh`), Python 3.12, 3.13 or 3.14 on `PATH`
-(a regular build, not free-threaded) and Chrome or Edge.
+Needs Windows 10 or 11 x64 with a Bluetooth LE adapter, PowerShell 7 (`pwsh`) and Chrome or Edge.
 
 1. Download `bluetti-watcher-<version>-win-x64.zip` and its `.sha256` from
    [the latest release](https://github.com/vitaliy-shatskiy/bluetti-watcher/releases/latest), check the hash and
@@ -55,7 +54,7 @@ Needs Windows 10 or 11 x64 with a Bluetooth LE adapter, PowerShell 7 (`pwsh`), P
    pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -Apply   # install
    ```
 
-Everything lands in `%LOCALAPPDATA%\bluetti-watcher` (`bin\`, `power-mode\`, `.venv\`, `config.json`, `station.db`,
+Everything lands in `%LOCALAPPDATA%\bluetti-watcher` (`bin\`, `power-mode\`, `config.json`, `station.db`,
 `service.log`). The installer registers the logon task `BluettiWatcher` (current user, no elevation), starts it, waits
 for `/api/health`, registers the wake task (disabled) and creates the `Bluetti Watcher` shortcut on the Desktop and in
 the Start menu.
@@ -70,6 +69,7 @@ pwsh -NoProfile -File "$env:LOCALAPPDATA\bluetti-watcher\power-mode\power-mode.p
 ## Features
 
 - Reads the station over Bluetooth LE, read only; optional fallback to the BLUETTI cloud when Bluetooth is silent.
+- Built-in Bluetooth reader, nothing else to install: all 29 supported models, IoT V1 (AC200L/M/PL, AC300, AC500, EB3A, EP500/P) and V2 (AC2A/P, AC50B, AC60/P, AC70/P, AC180/T/P, AP300, EL10, EL30V2, EL100V2, EP600, EP760, EP800, EP2000, Handsfree 1, PR30V2, PR100V2); a station that encrypts its Bluetooth link is read through the cloud fallback.
 - Eco, emergency, stop, hibernate warning and hibernation by mains state and battery level, all thresholds configurable.
 - Guards against bad readings: implausible jumps rejected, a longer confirmation after the station recalibrates.
 - Dashboard in English and Ukrainian: battery, time left at the current load, power cuts, history, events.
@@ -89,15 +89,25 @@ Both were taken during a simulated cut (synthetic readings).
 ## Supported hardware
 
 - BLUETTI AC200PL: tested.
-- Other BLUETTI models that [bluetti-bt-lib](https://pypi.org/project/bluetti-bt-lib/) supports may work (set `type`
-  in the configuration); untested. A report helps: [station support](https://github.com/vitaliy-shatskiy/bluetti-watcher/issues/new?template=station_support.yml).
+- The other IoT V1 models, read over Bluetooth the same way (set `type` in the configuration): AC200L, AC200M, AC300,
+  AC500, EB3A, EP500, EP500P; untested. The AC300 gives the full reading (battery, AC and DC power, output mode,
+  inverter voltage and frequency); its battery packs are not read.
+- The IoT V2 models, read over Bluetooth too (set `type`): AC2A, AC2P, AC50B, AC60, AC60P, AC70, AC70P, AC180, AC180T,
+  AC180P, AP300, EL10, EL30V2, EL100V2, EP600, EP760, EP800, EP2000, Handsfree 1, PR30V2, PR100V2; untested. The EP600,
+  EP760, EP800 and EP2000 report the battery level only over Bluetooth, which cannot tell mains from battery: they are not
+  read over Bluetooth, and the cloud fallback answers (one log line says so). A station that encrypts its Bluetooth link
+  (it opens with a key exchange) is not read over Bluetooth, and not connected to again until the service restarts; with the cloud fallback on ([Optional modules](#optional-modules)) the cloud
+  answers instead: battery, AC input and AC output.
+
+A report helps: [station support](https://github.com/vitaliy-shatskiy/bluetti-watcher/issues/new?template=station_support.yml).
 
 Bluetti Watcher is an independent project, not affiliated with or endorsed by BLUETTI.
 
 ## Safety and privacy
 
-- Read only toward the station: the library's writer is deleted from the venv, and the service refuses to start while
-  any piece of it is on disk. No setting on the station is ever changed.
+- Read only toward the station: the Bluetooth reader can build one kind of request, a read (Modbus function 0x03)
+  under the control registers, and writes nothing else but that request and its notification subscription. No
+  setting on the station is ever changed.
 - The HTTP API listens on `127.0.0.1` only and refuses any request whose `Host` is not `127.0.0.1:<port>` or
   `localhost:<port>`. The one write route (`POST /api/mode`) needs a custom header that other web pages cannot send.
 - Kill switch: an empty file `no-hibernate` in `%LOCALAPPDATA%\bluetti-watcher` turns hibernation off, checked on
@@ -123,8 +133,8 @@ Reporting a vulnerability: [SECURITY.md](SECURITY.md).
 - **Cloud fallback** (unofficial, read only): when Bluetooth does not answer, the reading comes from the BLUETTI cloud.
   Sign in once with `& "$env:LOCALAPPDATA\bluetti-watcher\bin\BluettiWatcher.exe" --cloud-login`; it may stop working
   if BLUETTI changes its API. Details: [docs/design.md](docs/design.md#4-cloud-fallback).
-- **Claude Code integration**: a hook that tells each Claude Code session on the PC the power mode and battery level,
-  so sessions save work and avoid heavy jobs during a cut: [integrations/claude-code](integrations/claude-code/README.md).
+- **Claude Code integration**: `BluettiWatcher.exe hook` tells each Claude Code session on the PC the power mode and battery
+  level, so sessions save work and avoid heavy jobs during a cut; no Node.js needed: [integrations/claude-code](integrations/claude-code/README.md).
 
 <details>
 <summary>Wake check: run once before setting <code>wakeEveryMinutes</code></summary>
@@ -150,21 +160,18 @@ The release is not code-signed. Compare `(Get-FileHash <zip>).Hash` with the `.s
 unblock the extracted folder: `Get-ChildItem -Recurse | Unblock-File`.
 
 **Does it change any setting on the station?**
-No. It only reads; the code that could write to the station is deleted from the venv, and the cloud client never sends
-a control command.
+No. It only reads; the Bluetooth reader can send nothing but read requests, and the cloud client never sends a
+control command.
 
 **My station is not an AC200PL.**
-Set `type` to your model; if [bluetti-bt-lib](https://pypi.org/project/bluetti-bt-lib/) supports it, it may work.
-Please open a [station support](https://github.com/vitaliy-shatskiy/bluetti-watcher/issues/new?template=station_support.yml)
+Set `type` to your model. All 29 models (IoT V1 and V2) are read over Bluetooth; an encrypted station, or a model not in the list, only through the cloud fallback
+([Supported hardware](#supported-hardware)). Please open a [station support](https://github.com/vitaliy-shatskiy/bluetti-watcher/issues/new?template=station_support.yml)
 issue either way.
 
 **Bluetooth does not answer.**
 Keep the station in range and close the BLUETTI app on your phone, which may hold the connection. `service.log` in the
-data directory names each miss; the cloud fallback covers the gaps.
-
-**`bluetti-read` fails with `DLL load failed ... The filename or extension is too long`.**
-The venv sits on too long a path (winrt). `%LOCALAPPDATA%\bluetti-watcher\.venv` is short enough; from source, keep
-`-VenvDir` short.
+data directory names the first miss, the turn to "station silent" and every 15th miss after it; the cloud fallback
+covers the gaps.
 
 **How do I stop a hibernation right now?**
 `New-Item "$env:LOCALAPPDATA\bluetti-watcher\no-hibernate"`. It is checked on every poll; delete the file to turn

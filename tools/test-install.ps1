@@ -26,8 +26,9 @@ function Check([string] $name, [bool] $ok, [string] $detail = '') {
 # A free port: the dry run reports a taken one as a problem.
 function Get-FreePort { $l = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0); $l.Start(); $p = $l.LocalEndpoint.Port; $l.Stop(); $p }
 
-# The dry run in a child pwsh whose LOCALAPPDATA is a fresh temp folder. Config: $null = none, else its text.
-function Invoke-DryRun([string] $Script = $installer, $Config = $null, [string[]] $Extra = @(), [hashtable] $Env = @{}) {
+# The dry run in a child pwsh whose LOCALAPPDATA is a fresh temp folder. Config: $null = none, else its text. Dirs: folders
+# (relative to the data directory) that exist before the run.
+function Invoke-DryRun([string] $Script = $installer, $Config = $null, [string[]] $Extra = @(), [hashtable] $Env = @{}, [string[]] $Dirs = @()) {
     $script:n++
     $local = Join-Path $base "local$script:n"
     $null = New-Item -ItemType Directory -Path $local
@@ -35,6 +36,7 @@ function Invoke-DryRun([string] $Script = $installer, $Config = $null, [string[]
         $null = New-Item -ItemType Directory -Path (Join-Path $local 'bluetti-watcher')
         [IO.File]::WriteAllText((Join-Path $local 'bluetti-watcher\config.json'), $Config)
     }
+    foreach ($d in $Dirs) { $null = New-Item -ItemType Directory -Force -Path (Join-Path $local "bluetti-watcher\$d") }
     # Only the data directory: pwsh itself may write its caches under LOCALAPPDATA.
     $data = Join-Path $local 'bluetti-watcher'
     $list = { if (Test-Path -LiteralPath $data) { @($data) + @(Get-ChildItem -LiteralPath $data -Recurse -Force | ForEach-Object FullName) } else { @() } }
@@ -84,6 +86,13 @@ try {
     Check 'config with mac: no mac problem' ($r.Text -notmatch 'no station MAC|not a Bluetooth address') $r.Text
     Check 'config with mac: the wake task name from the config' ($r.Text -match "register the wake task 'MyWakeTask'") $r.Text
 
+    # the 1.0.0 Python venv in the data directory: the dry run says it would be removed (after the health check), and removes nothing
+    $r = Invoke-DryRun -Config '{ "mac": "AA:BB:CC:DD:EE:06" }' -Dirs @('.venv\Scripts')
+    Check 'old venv: named as removed' ($r.Text -match 'would\s+remove the 1\.0\.0 Python venv .+\.venv') $r.Text
+    Check 'old venv: nothing removed' $r.Unchanged
+    $r = Invoke-DryRun -Config '{ "mac": "AA:BB:CC:DD:EE:07" }'
+    Check 'no old venv: nothing about it' ($r.Text -notmatch 'Python venv') $r.Text
+
     # a config that is no JSON
     $r = Invoke-DryRun -Config '{ "mac": '
     Check 'broken config: named' ($r.Text -match 'blocked: .+config\.json cannot be read as JSON' -and $r.Code -eq 1) $r.Text
@@ -92,7 +101,7 @@ try {
     $rel = Join-Path $base 'release'
     foreach ($d in 'bin', 'tools', 'power-mode') { $null = New-Item -ItemType Directory -Path (Join-Path $rel $d) }
     Copy-Item -LiteralPath $installer -Destination $rel
-    foreach ($f in 'swap.ps1', 'wake-task.ps1', 'build-venv.ps1') { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $f) -Destination (Join-Path $rel 'tools') }
+    foreach ($f in 'swap.ps1', 'wake-task.ps1') { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $f) -Destination (Join-Path $rel 'tools') }
     [IO.File]::WriteAllText((Join-Path $rel 'bin\BluettiWatcher.exe'), 'stand-in')
     [IO.File]::WriteAllText((Join-Path $rel 'power-mode\power-mode.ps1'), '# stand-in')
     $r = Invoke-DryRun -Script (Join-Path $rel 'install.ps1') -Extra @('-Mac', 'AA:BB:CC:DD:EE:04')
@@ -134,20 +143,63 @@ try {
     $r = Invoke-DryRun -Config '{ "mac": "AA:BB:CC:DD:EE:07", "MAC": "x" }'
     Check 'mac key present: a second MAC key is no problem' ($r.Text -notmatch 'no station MAC') $r.Text
 
-    # Python 3.12-3.14, a regular build: a stand-in python first on PATH
+    # no Python: a python that fails first on PATH changes nothing, and no step names a venv
     $fake = Join-Path $base 'fakepython'
     $null = New-Item -ItemType Directory -Path $fake
-    [IO.File]::WriteAllText((Join-Path $fake 'python.cmd'), "@echo %BW_FAKE_PYTHON%`r`n")
-    foreach ($case in @(@('3 12 0', $true), @('3 13 0', $true), @('3 14 0', $true), @('3 11 0', $false), @('3 15 0', $false), @('2 7 0', $false), @('3 13 1', $false), @('3 14 1', $false), @('garbage', $false))) {
-        $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:08') -Env @{ PATH = "$fake;$env:PATH"; BW_FAKE_PYTHON = $case[0] }
-        $blocked = $r.Text -match 'blocked: python on PATH'
-        Check "python '$($case[0])': $(if ($case[1]) { 'accepted' } else { 'blocked' })" ($blocked -ne $case[1]) $r.Text
-    }
-    $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:08') -Env @{ PATH = "$fake;$env:PATH"; BW_FAKE_PYTHON = '3 13 1' }
-    Check 'free-threaded python: named, exit 1' ($r.Code -eq 1 -and $r.Text -match 'blocked: python on PATH is a free-threaded build \(3\.13t\)') $r.Text
-    $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:08') -Env @{ PATH = "$fake;$env:PATH"; BW_FAKE_PYTHON = '3 15 0' }
-    Check 'python 3.15: named' ($r.Text -match 'blocked: python on PATH is 3\.15; the venv needs 3\.12, 3\.13 or 3\.14') $r.Text
-}
+    [IO.File]::WriteAllText((Join-Path $fake 'python.cmd'), "@exit /b 9`r`n")
+    $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:08') -Env @{ PATH = "$fake;$env:PATH" }
+    Check 'no Python needed: no python or venv in any line' ($r.Text -notmatch '(?i)python|venv|requirements\.lock') $r.Text
+    Check 'no Python needed: nothing blocked by it' ($r.Text -notmatch 'blocked: .*(?i)python') $r.Text
+    # the 1.0.0 venv's removal (the function out of install.ps1, run on temp folders only): a plain folder goes whole; a
+    # junction or symlink at the venv, or inside it, is unlinked alone and what it points at stays; a file is refused
+    $ast = [Management.Automation.Language.Parser]::ParseFile($installer, [ref] $null, [ref] $null)
+    $fn = $ast.FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Remove-WatcherOldVenv' }, $true) | Select-Object -First 1
+    Check 'old venv removal: install.ps1 has Remove-WatcherOldVenv' ($null -ne $fn)
+    if ($fn) {
+        . ([scriptblock]::Create($fn.Extent.Text))
+        $v = Join-Path $base 'venvtest'
+        $null = New-Item -ItemType Directory -Path $v
+        $keepDir = Join-Path $v 'keep'
+        $null = New-Item -ItemType Directory -Path $keepDir
+        $keep = Join-Path $keepDir 'keep.txt'
+        [IO.File]::WriteAllText($keep, 'x')
+
+        $plain = Join-Path $v 'plain'
+        $null = New-Item -ItemType Directory -Path (Join-Path $plain 'Scripts')
+        [IO.File]::WriteAllText((Join-Path $plain 'Scripts\python.txt'), 'x')
+        $text = Remove-WatcherOldVenv $plain
+        Check 'old venv removal: a plain folder goes' (-not (Test-Path -LiteralPath $plain)) $text
+        Check 'old venv removal: a plain folder is named removed' ($text -match 'removed the 1\.0\.0 Python venv') $text
+
+        $link = Join-Path $v 'linked'
+        $null = New-Item -ItemType Junction -Path $link -Target $keepDir
+        $text = Remove-WatcherOldVenv $link
+        Check 'old venv removal: a junction at the venv is unlinked' (-not (Test-Path -LiteralPath $link)) $text
+        Check 'old venv removal: what the junction pointed at stays' (Test-Path -LiteralPath $keep) $text
+        Check 'old venv removal: a junction is named a link' ($text -match 'removed the link') $text
+
+        $nested = Join-Path $v 'nested'
+        $null = New-Item -ItemType Directory -Path $nested
+        $null = New-Item -ItemType Junction -Path (Join-Path $nested 'Lib') -Target $keepDir
+        $null = Remove-WatcherOldVenv $nested
+        Check 'old venv removal: a venv holding a junction goes' (-not (Test-Path -LiteralPath $nested))
+        Check 'old venv removal: what the inner junction pointed at stays' (Test-Path -LiteralPath $keep)
+
+        $symlink = Join-Path $v 'symlinked'
+        $made = $false
+        try { $null = New-Item -ItemType SymbolicLink -Path $symlink -Target $keepDir; $made = $true } catch { $made = $false }   # needs a privilege: skipped without it
+        if ($made) {
+            $null = Remove-WatcherOldVenv $symlink
+            Check 'old venv removal: a symlink at the venv is unlinked' (-not (Test-Path -LiteralPath $symlink))
+            Check 'old venv removal: what the symlink pointed at stays' (Test-Path -LiteralPath $keep)
+        }
+
+        $file = Join-Path $v 'afile'
+        [IO.File]::WriteAllText($file, 'x')
+        $threw = $false
+        try { $null = Remove-WatcherOldVenv $file } catch { $threw = $true }
+        Check 'old venv removal: a plain file is refused and stays' ($threw -and (Test-Path -LiteralPath $file))
+    }}
 catch {
     Write-Output "FAIL  unexpected: $($_.Exception.Message) at $($_.InvocationInfo.ScriptLineNumber)"
     $script:failed++

@@ -57,22 +57,25 @@ internal sealed class DtekWatcherService(StationConfig config, Func<IDtekSource>
         {
             var snap = store.GetMeta(MetaKey) is { } json ? DtekSnapshot.Normalize(JsonSerializer.Deserialize(json, StationJson.Default.DtekSnapshot)) : new DtekSnapshot();
             snap.Hint = DtekHint.For(snap.Hint, DtekOutlook.Manual(cfg));
-            snap.Late = LoadLate(store, log);
+            snap.Late = LoadLate(store, log, cfg.MinCut);
             return snap;
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
             log($"dtek watcher: saved state unreadable, starting fresh: {e.GetType().Name}");
-            return new DtekSnapshot { Late = LoadLate(store, log) };
+            return new DtekSnapshot { Late = LoadLate(store, log, cfg.MinCut) };
         }
     }
 
-    /// <summary>The lateness list, on its own key: damaged, wrong-typed or unreadable is an empty list, the rest of the state kept.</summary>
-    private static List<DtekLate> LoadLate(IDtekStore store, Action<string> log)
+    /// <summary>
+    /// The lateness list, on its own key: damaged, wrong-typed or unreadable is an empty list, the rest of the state kept. An entry
+    /// of a cut shorter than <paramref name="minCut"/> (saved before the minimum existed, or under a smaller one) is dropped.
+    /// </summary>
+    private static List<DtekLate> LoadLate(IDtekStore store, Action<string> log, TimeSpan minCut)
     {
         try
         {
-            return store.GetMeta(LateKey) is { } json ? DtekLate.Sound(JsonSerializer.Deserialize(json, StationJson.Default.ListDtekLate)) : [];
+            return store.GetMeta(LateKey) is { } json ? [.. DtekLate.Sound(JsonSerializer.Deserialize(json, StationJson.Default.ListDtekLate)).Where(e => e.End - e.Start >= minCut)] : [];
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -346,7 +349,7 @@ internal sealed class DtekWatcherService(StationConfig config, Func<IDtekSource>
                 // Lateness: against the plan as it stands now, edits during the cut included (design.md §11 rule 25).
                 // Only with one queue in play (fixed, manual or the only one): several shown queues say nothing of one's lateness.
                 // A manual set of queues is one in play: the house loses power for their union, recorded as such (Union).
-                if (edges && DtekOutlook.Shown(Cfg, _snap) is [_] one && DtekOutlook.Lateness(new DtekCut(open.Start, s.MainsBackAt!.Value), _snap.Schedule, open.Held, one, _tz) is { } late
+                if (edges && DtekOutlook.Shown(Cfg, _snap) is [_] one && DtekOutlook.Lateness(new DtekCut(open.Start, s.MainsBackAt!.Value), _snap.Schedule, open.Held, one, _tz, Cfg.MinCut) is { } late
                     && !_snap.Late.Exists(e => e.Start == late.Start))
                 {
                     _snap.Late.Add(late);
@@ -356,7 +359,7 @@ internal sealed class DtekWatcherService(StationConfig config, Func<IDtekSource>
                 if (edges && open.Held is { } held && _snap.Schedule is { } current && DtekOutlook.SameWindows(held, current, compared, _tz))
                 {
                     var seen = new DtekCut(open.Start, s.MainsBackAt!.Value);
-                    var match = DtekMatcher.Apply(_snap.Match, seen, held, queues, _tz);
+                    var match = DtekMatcher.Apply(_snap.Match, seen, held, queues, _tz, Cfg.MinCut);
                     if (!ReferenceEquals(match, _snap.Match))
                     {
                         if (match.Fixed != _snap.Match.Fixed) log($"dtek watcher: queue {(match.Fixed is { } f ? $"fixed: {f}" : $"open again (was {_snap.Match.Fixed})")}");
@@ -377,7 +380,7 @@ internal sealed class DtekWatcherService(StationConfig config, Func<IDtekSource>
     private void Hint(string manual, DtekCut seen, DtekSchedule held, IReadOnlyList<string> queues)
     {
         bool stood = DtekOutlook.RefutedBy(Cfg, _snap) is null;
-        _snap.Hint = DtekMatcher.Hint(_snap.Hint, manual, seen, held, queues, _tz);
+        _snap.Hint = DtekMatcher.Hint(_snap.Hint, manual, seen, held, queues, _tz, Cfg.MinCut);
         if (!stood || _snap.Hint.RefutedBy is not { } by) return;
         _snap.Match = new DtekMatch { Fixed = by, Candidate = by, Count = DtekMatcher.Needed };
         Tell(time.GetUtcNow(), "dtek-watcher-queue-changed", $"{manual} -> {by}: two cuts in a row followed {by}, not dtekWatcher.group {manual}");

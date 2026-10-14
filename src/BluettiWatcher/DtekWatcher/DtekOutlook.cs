@@ -285,10 +285,12 @@ internal static class DtekOutlook
 
     /// <summary>
     /// A finished cut's lateness (design.md §11 rule 25): against the window it belonged to in the plan as it stood at its end, and
-    /// the window it belonged to in the schedule held at its start; null when it began in no planned window then.
+    /// the window it belonged to in the schedule held at its start; null when it began in no planned window then, or when it
+    /// lasted less than <paramref name="minCut"/> (design.md §11 rule 29).
     /// </summary>
-    public static DtekLate? Lateness(DtekCut seen, DtekSchedule? current, DtekSchedule? held, IReadOnlyList<string> queues, TimeZoneInfo tz)
+    public static DtekLate? Lateness(DtekCut seen, DtekSchedule? current, DtekSchedule? held, IReadOnlyList<string> queues, TimeZoneInfo tz, TimeSpan minCut)
     {
+        if (seen.End - seen.Start < minCut) return null;
         if (Belonged(Plan(current, held, tz), queues, seen.Start, seen.End, tz) is not { } end) return null;
         var first = Belonged(held, queues, seen.Start, seen.End, tz);
         return new DtekLate

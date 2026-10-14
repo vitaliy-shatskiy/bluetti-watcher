@@ -14,21 +14,41 @@ internal sealed record EventRow(long At, string Kind, string Detail);
 /// <summary>
 /// station.db: one row per reading (accepted, missed or rejected with its reason), raw rows kept RawRetentionDays, then
 /// folded into 5-minute aggregates kept forever; events; the decision state; meta. Times are Unix seconds.
+/// On disk: a NEW file is created with 1 KB pages (a poll rewrites about three pages, so the WAL takes ~3.5 KB a poll
+/// instead of ~13 KB at 4 KB pages), in WAL with synchronous=NORMAL (a commit is never flushed; a checkpoint every ~1000
+/// pages flushes twice), and the WAL file is cut back to <see cref="WalLimitBytes"/> after each checkpoint. An EXISTING
+/// file is opened as it is, whatever its page size: its page size and journal mode are never changed (a rebuild in place
+/// is unsafe while another process holds the -wal file open).
 /// </summary>
 internal sealed class StationStore : IDisposable
 {
+    /// <summary>The page size a new database is created with.</summary>
+    internal const int PageSize = 1024;
+
+    /// <summary>The WAL file is truncated to this after a checkpoint (it peaks at ~1000 pages between checkpoints).</summary>
+    internal const long WalLimitBytes = 1_048_576;
+
     private readonly SqliteConnection _db;
     private readonly Lock _gate = new();
+    private SqliteCommand? _insertReading;
+    private SqliteCommand? _setMeta;
 
     public StationStore(string path)
     {
+        // A missing or empty file is new; anything else keeps the layout it has.
+        bool isNew = !File.Exists(path) || new FileInfo(path).Length == 0;
         _db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString());
-        _db.Open();
+        _db.Open();   // waits on a busy file (the default 30 s busy timeout) rather than throwing
         using var ddl = _db.CreateCommand();
+        // Per-connection settings, nothing is written to the file (journal_size_limit = WalLimitBytes).
+        ddl.CommandText = "PRAGMA synchronous=NORMAL; PRAGMA cache_size=-512; PRAGMA journal_size_limit=1048576;";
+        ddl.ExecuteNonQuery();
+        if (isNew)
+        {
+            ddl.CommandText = "PRAGMA page_size=1024; PRAGMA journal_mode=WAL;";   // the page size is fixed by the first write
+            ddl.ExecuteNonQuery();
+        }
         ddl.CommandText = """
-            PRAGMA journal_mode=WAL;
-            PRAGMA synchronous=NORMAL;
-            PRAGMA cache_size=-512;
             CREATE TABLE IF NOT EXISTS reading(at INTEGER NOT NULL, status INTEGER NOT NULL, soc REAL, in_ac REAL, in_dc REAL,
               out_ac REAL, out_dc REAL, volt REAL, hz REAL, mode TEXT, reason TEXT);
             CREATE INDEX IF NOT EXISTS reading_at ON reading(at);
@@ -40,35 +60,68 @@ internal sealed class StationStore : IDisposable
             """;
         ddl.ExecuteNonQuery();
     }
-
-    public void Dispose() => _db.Dispose();
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            _insertReading?.Dispose();
+            _setMeta?.Dispose();
+            _db.Dispose();
+        }
+    }
 
     private static object Db(double? v) => v is { } x ? x : DBNull.Value;
     private static object Db(string? v) => v is null ? DBNull.Value : v;
     private static double? D(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetDouble(i);
 
-    public void AddReading(DateTimeOffset at, Reading? r, ReadingStatus status, string reason)
+    /// <summary>The file's page size, the connection's WAL size limit, synchronous level and journal mode, for tests.</summary>
+    internal (long PageSize, long WalLimit, long Synchronous, string Journal) Layout()
     {
-        lock (_gate) AddReadingCore(null, at.ToUnixTimeSeconds(), r, status, reason);
+        lock (_gate)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = "PRAGMA page_size; PRAGMA journal_size_limit; PRAGMA synchronous; PRAGMA journal_mode";
+            using var r = cmd.ExecuteReader();
+            r.Read();
+            long pageSize = r.GetInt64(0);
+            r.NextResult();
+            r.Read();
+            long walLimit = r.GetInt64(0);
+            r.NextResult();
+            r.Read();
+            long sync = r.GetInt64(0);
+            r.NextResult();
+            r.Read();
+            return (pageSize, walLimit, sync, r.GetString(0));
+        }
     }
 
-    private void AddReadingCore(SqliteTransaction? tx, long at, Reading? r, ReadingStatus status, string reason)
+    public void AddReading(DateTimeOffset at, Reading? r, ReadingStatus status, string reason)
     {
-        using var cmd = _db.CreateCommand();
-        cmd.Transaction = tx;
-        cmd.CommandText = "INSERT INTO reading(at,status,soc,in_ac,in_dc,out_ac,out_dc,volt,hz,mode,reason) VALUES($at,$st,$soc,$ia,$id,$oa,$od,$v,$hz,$m,$why)";
-        cmd.Parameters.AddWithValue("$at", at);
-        cmd.Parameters.AddWithValue("$st", (int)status);
-        cmd.Parameters.AddWithValue("$soc", Db(r?.Soc));
-        cmd.Parameters.AddWithValue("$ia", Db(r?.InAc));
-        cmd.Parameters.AddWithValue("$id", Db(r?.InDc));
-        cmd.Parameters.AddWithValue("$oa", Db(r?.OutAc));
-        cmd.Parameters.AddWithValue("$od", Db(r?.OutDc));
-        cmd.Parameters.AddWithValue("$v", Db(r?.Volt));
-        cmd.Parameters.AddWithValue("$hz", Db(r?.Hz));
-        cmd.Parameters.AddWithValue("$m", Db(r?.Mode));
-        cmd.Parameters.AddWithValue("$why", reason.Length == 0 ? DBNull.Value : reason);
-        cmd.ExecuteNonQuery();
+        lock (_gate)
+        {
+            // Kept for the connection's life: SQLite prepares the statement once, not every poll.
+            if (_insertReading is null)
+            {
+                _insertReading = _db.CreateCommand();
+                _insertReading.CommandText = "INSERT INTO reading(at,status,soc,in_ac,in_dc,out_ac,out_dc,volt,hz,mode,reason) VALUES($at,$st,$soc,$ia,$id,$oa,$od,$v,$hz,$m,$why)";
+                foreach (var n in (string[])["$at", "$st", "$soc", "$ia", "$id", "$oa", "$od", "$v", "$hz", "$m", "$why"])
+                    _insertReading.Parameters.Add(new SqliteParameter { ParameterName = n });
+            }
+            var p = _insertReading.Parameters;
+            p[0].Value = at.ToUnixTimeSeconds();
+            p[1].Value = (int)status;
+            p[2].Value = Db(r?.Soc);
+            p[3].Value = Db(r?.InAc);
+            p[4].Value = Db(r?.InDc);
+            p[5].Value = Db(r?.OutAc);
+            p[6].Value = Db(r?.OutDc);
+            p[7].Value = Db(r?.Volt);
+            p[8].Value = Db(r?.Hz);
+            p[9].Value = Db(r?.Mode);
+            p[10].Value = reason.Length == 0 ? DBNull.Value : reason;
+            _insertReading.ExecuteNonQuery();
+        }
     }
 
     public void AddEvent(DateTimeOffset at, string kind, string detail)
@@ -99,11 +152,16 @@ internal sealed class StationStore : IDisposable
     {
         lock (_gate)
         {
-            using var cmd = _db.CreateCommand();
-            cmd.CommandText = "INSERT INTO meta(key,value) VALUES($k,$v) ON CONFLICT(key) DO UPDATE SET value=excluded.value";
-            cmd.Parameters.AddWithValue("$k", key);
-            cmd.Parameters.AddWithValue("$v", value);
-            cmd.ExecuteNonQuery();
+            if (_setMeta is null)
+            {
+                _setMeta = _db.CreateCommand();
+                _setMeta.CommandText = "INSERT INTO meta(key,value) VALUES($k,$v) ON CONFLICT(key) DO UPDATE SET value=excluded.value";
+                _setMeta.Parameters.Add(new SqliteParameter { ParameterName = "$k" });
+                _setMeta.Parameters.Add(new SqliteParameter { ParameterName = "$v" });
+            }
+            _setMeta.Parameters[0].Value = key;
+            _setMeta.Parameters[1].Value = value;
+            _setMeta.ExecuteNonQuery();
         }
     }
 

@@ -5,19 +5,52 @@ using BluettiWatcher.Decision;
 
 namespace BluettiWatcher.Io;
 
-/// <summary>Bluetooth first; when it does not answer, the cloud (design.md §4 Cloud fallback). Each reading carries its source.</summary>
-internal sealed class FallbackReader(IStationReader bluetooth, IStationReader? cloud) : IStationReader
+/// <summary>
+/// Bluetooth first; when it does not answer, the cloud (design.md §4 Cloud fallback). Each reading carries its source.
+/// <paramref name="cloudOn"/> is asked at each poll (the token file may appear while the service runs); without it the cloud is always on.
+/// <paramref name="check"/> is the decision's own acceptance check (<c>""</c> = accepted): a Bluetooth reading it rejects as incomplete
+/// (a model with no mode, a field that did not answer) is read again from the cloud, and the cloud's reading is used when it passes;
+/// otherwise the Bluetooth reading goes on as it is, so the decision records the miss. <paramref name="log"/> names the answering
+/// source once per change.
+/// </summary>
+internal sealed class FallbackReader(IStationReader bluetooth, IStationReader? cloud, Func<bool>? cloudOn = null, Func<Reading, string>? check = null, Action<string>? log = null) : IStationReader
 {
+    private string? _state = "Bluetooth answers";
+
     public async Task<Reading?> ReadAsync(CancellationToken ct)
     {
         var r = await bluetooth.ReadAsync(ct);
-        if (r is not null) return r with { Source = "bluetooth" };
-        if (cloud is null) return null;
-        var c = await cloud.ReadAsync(ct);
+        bool cloudReady = cloud is not null && cloudOn?.Invoke() != false;
+        if (r is not null)
+        {
+            string why = check?.Invoke(r) ?? "";
+            if (why.Length == 0 || !cloudReady)
+            {
+                State("Bluetooth answers");
+                return r with { Source = "bluetooth" };
+            }
+            var again = await cloud!.ReadAsync(ct);
+            if (again is not null && (check?.Invoke(again) ?? "").Length == 0)
+            {
+                State($"cloud answers: the Bluetooth reading is {why}");
+                return again with { Source = "cloud" };
+            }
+            State($"Bluetooth answers, though {why}: the cloud has no usable reading either");
+            return r with { Source = "bluetooth" };
+        }
+        if (!cloudReady) return null;
+        var c = await cloud!.ReadAsync(ct);
+        State(c is null ? "no source answers" : "cloud answers: Bluetooth gave no reading");
         return c is null ? null : c with { Source = "cloud" };
     }
-}
 
+    private void State(string text)
+    {
+        if (string.Equals(text, _state, StringComparison.Ordinal)) return;
+        _state = text;
+        log?.Invoke($"reading source: {text}");
+    }
+}
 /// <summary>The cloud token file: <c>{access_token, refresh_token, token_type, expires_in, created_at}</c>, created_at in unix seconds.</summary>
 internal sealed record CloudToken(string Access, string Refresh, string TokenType, long ExpiresIn, long CreatedAt)
 {

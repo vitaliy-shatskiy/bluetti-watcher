@@ -176,16 +176,16 @@ public sealed class DtekWatcherQueueSetTests : IDisposable
         var union = Cut("2026-10-07 17:05", "2026-10-07 23:50");
         var only41 = Cut("2026-10-07 17:05", "2026-10-07 21:05");     // one line of the set alone: the house followed 4.1, not the union
         var other = Cut("2026-10-07 09:05", "2026-10-07 12:10");      // 2.2
-        var h = DtekMatcher.Hint(null, Set, union, s, Houses, Kyiv);
+        var h = DtekMatcher.Hint(null, Set, union, s, Houses, Kyiv, TimeSpan.Zero);
         Assert.Equal((Set, null, 0, null), (h.Group, h.Candidate, h.Count, h.RefutedBy));
-        h = DtekMatcher.Hint(h, Set, only41, s, Houses, Kyiv);
+        h = DtekMatcher.Hint(h, Set, only41, s, Houses, Kyiv, TimeSpan.Zero);
         Assert.Equal(("GPV4.1", 1), (h.Candidate, h.Count));
-        h = DtekMatcher.Hint(h, Set, union, s, Houses, Kyiv);           // ends the row
+        h = DtekMatcher.Hint(h, Set, union, s, Houses, Kyiv, TimeSpan.Zero);           // ends the row
         Assert.Equal((null, 0), (h.Candidate, h.Count));
-        h = DtekMatcher.Hint(DtekMatcher.Hint(h, Set, other, s, Houses, Kyiv), Set, other, s, Houses, Kyiv);
+        h = DtekMatcher.Hint(DtekMatcher.Hint(h, Set, other, s, Houses, Kyiv, TimeSpan.Zero), Set, other, s, Houses, Kyiv, TimeSpan.Zero);
         Assert.Equal("GPV2.2", h.RefutedBy);
         // the 00:38 return fits no window: an unplanned cut says nothing
-        Assert.Equal(0, DtekMatcher.Hint(null, Set, Cut("2026-10-07 17:05", "2026-10-08 00:38"), s, Houses, Kyiv).Count);
+        Assert.Equal(0, DtekMatcher.Hint(null, Set, Cut("2026-10-07 17:05", "2026-10-08 00:38"), s, Houses, Kyiv, TimeSpan.Zero).Count);
     }
 
     // design.md §11 DTEK module, rule 28 (e)

@@ -163,35 +163,58 @@ public sealed partial class PageI18nTests
         Assert.Empty(RussianWord().Matches("\u0443\u0441\u0435 \u0449\u043E \u043D\u0456\u0447\u043E\u0433\u043E"));
     }
 
-    /// <summary>Runs page script under node (stdin), in the time zone given.</summary>
-    private static string RunNode(string script, string? timeZone = null)
+    /// <summary>
+    /// Runs page script in the Jint engine (no Node), the browser's local time zone set to <paramref name="timeZone"/> (the
+    /// machine's own when null). Returns what the script printed with console.log. An engine that cannot run the script
+    /// (a missing API, a script error, a promise left pending) fails the test: nothing is skipped.
+    /// </summary>
+    private static string RunScript(string script, string? timeZone = null)
     {
-        var psi = new System.Diagnostics.ProcessStartInfo(NodeFactAttribute.NodePath()!, "-")
+        var printed = new System.Text.StringBuilder();
+        using var engine = new Jint.Engine(o =>
         {
-            RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true,
-        };
-        if (timeZone is not null) psi.Environment["TZ"] = timeZone;
-        using var p = System.Diagnostics.Process.Start(psi)!;
-        p.StandardInput.Write(script);
-        p.StandardInput.Close();
-        var err = p.StandardError.ReadToEndAsync();
-        string output = p.StandardOutput.ReadToEnd();
-        Assert.True(p.WaitForExit(30_000), "node did not finish");
-        Assert.True(p.ExitCode == 0, $"node failed: {err.Result}");
-        return output.Trim();
+            if (timeZone is not null) o.TimeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZone);
+        });
+        engine.SetValue("__print", new Action<string>(s => printed.AppendLine(s)));
+        // Jint ships Intl.DateTimeFormat (time zones, formatToParts) but no console and no URLSearchParams: the two stubs the page tests need.
+        engine.Execute("var console = { log: function () { __print(Array.prototype.join.call(arguments, ' ')); } };");
+        engine.Execute("""
+            var URLSearchParams = function (s) {
+              this.m = {};
+              String(s).split('&').forEach(function (kv) {
+                if (!kv) return;
+                var i = kv.indexOf('=');
+                this.m[decodeURIComponent(i < 0 ? kv : kv.slice(0, i))] = i < 0 ? '' : decodeURIComponent(kv.slice(i + 1));
+              }, this);
+            };
+            URLSearchParams.prototype.get = function (k) { return Object.prototype.hasOwnProperty.call(this.m, k) ? this.m[k] : null; };
+            """);
+        try
+        {
+            engine.Execute(script.Replace("})();", "})().catch(e => console.log('ERR ' + e + ' ' + e.stack));", StringComparison.Ordinal));
+            for (int i = 0; i < 10_000 && printed.Length == 0; i++) engine.Advanced.ProcessTasks();   // the async page functions (fetchAndShow...) run to the end
+        }
+        catch (Jint.Runtime.JavaScriptException e)
+        {
+            Assert.Fail($"the script failed under Jint: {e.Message} ({e.Location})");
+        }
+        string output = printed.ToString().Trim();
+        Assert.False(output.StartsWith("ERR ", StringComparison.Ordinal), output);   // an async page function rejected
+        Assert.False(output.Length == 0, "the script printed nothing: Jint did not run it to the end");
+        return output;
     }
 
     /// <summary>The text of a top-level function of the page, from its first line to the closing brace at column 0.</summary>
     private static string FunctionText(string page, string name)
     {
-        var m = Regex.Match(page.Replace("\r\n", "\n", StringComparison.Ordinal), $@"^function {name}\(.*?^\}}$", RegexOptions.Multiline | RegexOptions.Singleline);
+        var m = Regex.Match(page.Replace("\r\n", "\n", StringComparison.Ordinal), $@"^(?:async )?function {name}\(.*?^\}}$", RegexOptions.Multiline | RegexOptions.Singleline);
         Assert.True(m.Success, $"function {name} is not where the test reads it");
         return m.Value;
     }
 
     private sealed record LangCase(string? Stored, bool GetThrows, bool SetThrows, string? Browser, string ExpectLang, string? ExpectWritten);
 
-    [NodeFact]
+    [Fact]
     public void The_language_defaults_to_the_browser_and_remembers_the_choice()
     {
         string page = Page();
@@ -234,14 +257,14 @@ public sealed partial class PageI18nTests
             });
             console.log(JSON.stringify(out));
             """;
-        using var doc = System.Text.Json.JsonDocument.Parse(RunNode(script));
+        using var doc = System.Text.Json.JsonDocument.Parse(RunScript(script));
         var got = doc.RootElement.EnumerateArray().Select(e => (e.GetProperty("lang").GetString(), e.GetProperty("written").GetString())).ToList();
         var want = cases.Select(c => (c.ExpectLang, c.ExpectWritten is null ? null : "station.lang=" + c.ExpectWritten)).ToList();
         for (int i = 0; i < cases.Length; i++)
             Assert.True(want[i] == got[i], $"case {i} {cases[i]}: expected {want[i]}, got {got[i]}");
     }
 
-    [NodeFact]
+    [Fact]
     public void The_eco_countdown_shows_the_browser_clock()
     {
         string page = Page().Replace("\r\n", "\n", StringComparison.Ordinal);
@@ -269,18 +292,18 @@ public sealed partial class PageI18nTests
             """;
         foreach (var (zone, clock) in new[] { ("Asia/Tokyo", "03:30"), ("America/New_York", "14:30"), ("Europe/Kyiv", "21:30") })
         {
-            using var doc = System.Text.Json.JsonDocument.Parse(RunNode(script, zone));
+            using var doc = System.Text.Json.JsonDocument.Parse(RunScript(script, zone));
             var shown = doc.RootElement.EnumerateArray().Select(e => e.GetString()).ToList();
             Assert.Equal($$"""["ecoIn",{"m":1,"s":"30","at":"{{clock}}"}]""", shown[0]);
             Assert.Equal("""["ecoNext",null]""", shown[1]);   // the moment has passed: the next reading
         }
     }
 
-    [NodeFact]
+    [Fact]
     public void The_schedule_rows_name_Kyiv_time_only_when_the_browser_clock_differs()
     {
         string page = Page();
-        string code = FunctionText(page, "kyivZone") + "\n" + FunctionText(page, "kyivOffsetDiffers");
+        string code = FunctionText(page, "dtf") + "\n" + FunctionText(page, "kyivZone") + "\n" + FunctionText(page, "kyivOffsetDiffers");
         string script = $$"""
             const src = {{System.Text.Json.JsonSerializer.Serialize(code)}};
             const make = (intl) => new Function('Intl', src + '; return { kyivZone, kyivOffsetDiffers };')(intl);
@@ -296,7 +319,7 @@ public sealed partial class PageI18nTests
             };
             console.log(JSON.stringify(out));
             """;
-        string Result(string zone, string field) => System.Text.Json.JsonDocument.Parse(RunNode(script, zone)).RootElement.GetProperty(field).ToString();
+        string Result(string zone, string field) => System.Text.Json.JsonDocument.Parse(RunScript(script, zone)).RootElement.GetProperty(field).ToString();
 
         Assert.True(Result("Asia/Tokyo", "zone") is "Europe/Kyiv" or "Europe/Kiev");
         Assert.Equal("Europe/Kiev", Result("Asia/Tokyo", "old"));   // the old name is the fallback
@@ -316,17 +339,89 @@ public sealed partial class PageI18nTests
         Assert.Contains("from(w.tomorrow) + kyivTag", page, StringComparison.Ordinal);
     }
 
-    /// <summary>A fact that runs page script under node: skipped, with the reason, when node is not on PATH.</summary>
-    private sealed class NodeFactAttribute : FactAttribute
+    // Intl: a formatter is built once per zone and name; an unknown zone gives null, never a throw
+    [Fact]
+    public void Intl_formatters_are_built_once_and_an_unknown_zone_falls_back()
     {
-        internal static string? NodePath() =>
-            (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-                .Select(d => Path.Combine(d, OperatingSystem.IsWindows() ? "node.exe" : "node")).FirstOrDefault(File.Exists);
+        string page = Page().Replace("\r\n", "\n", StringComparison.Ordinal);
+        string script = $$"""
+            const src = {{System.Text.Json.JsonSerializer.Serialize(FunctionText(page, "dtf") + "\n" + FunctionText(page, "kyivZone") + "\n" + FunctionText(page, "kyivOffsetDiffers"))}};
+            let built = 0;
+            const counting = (known) => ({ DateTimeFormat: function (loc, o) { built++; if (o && o.timeZone && !known.includes(o.timeZone)) throw new RangeError('unknown zone'); return new Intl.DateTimeFormat(loc, o); } });
+            const make = (intl) => new Function('Intl', src + '; return { dtf, kyivZone, kyivOffsetDiffers };')(intl);
+            const ms = Date.UTC(2026, 9, 13, 12);
+            const a = make(counting(['Europe/Kyiv']));
+            for (let i = 0; i < 100; i++) { a.kyivZone(); a.kyivOffsetDiffers(ms); a.dtf('Europe/Kyiv', 'hm', { hour: '2-digit' }); }
+            const once = built;
+            built = 0;
+            const b = make(counting([]));
+            const out = { once, zone: b.kyivZone(), unknown: b.dtf('Mars/Base', 'hm', {}), local: typeof b.dtf(null, 'hm', { hour: '2-digit' }).format, differs: b.kyivOffsetDiffers(ms) };
+            for (let i = 0; i < 100; i++) b.kyivZone();
+            out.tries = built;
+            console.log(JSON.stringify(out));
+            """;
+        using var doc = System.Text.Json.JsonDocument.Parse(RunScript(script, "Asia/Tokyo"));
+        var r = doc.RootElement;
+        Assert.Equal(3, r.GetProperty("once").GetInt32());            // zone probe, the parts formatter, hm: once each over 100 rounds
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, r.GetProperty("zone").ValueKind);
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, r.GetProperty("unknown").ValueKind);
+        Assert.Equal("function", r.GetProperty("local").GetString());  // the browser's own zone still formats
+        Assert.False(r.GetProperty("differs").GetBoolean());
+        Assert.Equal(4, r.GetProperty("tries").GetInt32());             // Kyiv, Kiev, Mars, local: a refused zone is not tried again
+        Assert.DoesNotContain("new Intl.DateTimeFormat", page.Replace(FunctionText(page, "dtf"), "", StringComparison.Ordinal), StringComparison.Ordinal);
+    }
 
-        public NodeFactAttribute()
+    // The page reads the 26 h once, then only the rows after the last one; nothing new = no repaint
+    [Fact]
+    public void The_page_reads_history_incrementally_and_skips_an_unchanged_repaint()
+    {
+        string page = Page().Replace("\r\n", "\n", StringComparison.Ordinal);
+        string Line(string pattern)
         {
-            if (NodePath() is null) Skip = "node is not on PATH: this test runs the page's script under node";
+            var m = Regex.Match(page, pattern, RegexOptions.Multiline);
+            Assert.True(m.Success, $"{pattern} is not where the test reads it");
+            return m.Value;
         }
+        string code = string.Join("\n", Line(@"^const SPAN = .*;$"), Line(@"^let nowText = .*;$"), FunctionText(page, "load"), FunctionText(page, "fetchAndShow"));
+        string script = $$"""
+            const src = {{System.Text.Json.JsonSerializer.Serialize(code)}};
+            const MIN = 60000, T = Date.UTC(2026, 9, 13, 12, 0, 30);
+            let clock = T, shows = 0, asked = [];
+            const iso = (ms) => new Date(ms).toISOString();
+            const rows = (from, to) => { const out = []; for (let m = Math.ceil(from / MIN) * MIN; m <= to; m += MIN) if (m <= T - 2 * MIN + (clock - T)) out.push({ at: iso(m), soc: 50 }); return out; };
+            const fetch = async (url) => {
+              asked.push(url);
+              if (url === '/api/now') return { ok: true, status: 200, text: async () => '{"n":' + Math.floor((clock - T) / (2 * MIN)) + '}' };
+              const q = new URLSearchParams(url.split('?')[1]);
+              return { ok: true, status: 200, json: async () => ({ rows: rows(Number(q.get('from')), Number(q.get('to'))) }) };
+            };
+            const FakeDate = { now: () => clock, parse: (s) => Date.parse(s) };
+            const page = new Function('fetch', 'Date', '$', 't', 'show', 'let lastNow = null, lastRows = null;\n' + src + '; return { load, rows: () => lastRows };')(fetch, FakeDate, () => ({ lastChild: {} }), (k) => k, () => { shows++; });
+            (async () => {
+              const out = [];
+              await page.load(); out.push({ shows, n: page.rows().length, first: asked[1] });
+              clock += MIN; asked = []; await page.load(); out.push({ shows, n: page.rows().length, from: Number(new URLSearchParams(asked[1].split('?')[1]).get('from')) });
+              asked = []; await page.load(); out.push({ shows, n: page.rows().length });
+              await page.load(true); out.push({ shows });
+              clock += 31 * MIN; asked = []; await page.load(); out.push({ shows, from: Number(new URLSearchParams(asked[1].split('?')[1]).get('from')), n: page.rows().length, firstAt: page.rows()[0].at });
+              console.log(JSON.stringify({ out, T, MIN }));
+            })();
+            """;
+        using var doc = System.Text.Json.JsonDocument.Parse(RunScript(script));
+        var r = doc.RootElement;
+        long t = r.GetProperty("T").GetInt64(), min = r.GetProperty("MIN").GetInt64();
+        var o = r.GetProperty("out").EnumerateArray().ToList();
+        Assert.Equal(1, o[0].GetProperty("shows").GetInt32());
+        Assert.Equal(26 * 60 - 2, o[0].GetProperty("n").GetInt32());                         // the whole 26 h: 10:01 to 11:58 next day
+        Assert.Contains($"from={t - 26 * 3600000}", o[0].GetProperty("first").GetString(), StringComparison.Ordinal);
+        Assert.Equal(2, o[1].GetProperty("shows").GetInt32());                               // a new row: a repaint
+        Assert.Equal(26 * 60 - 2, o[1].GetProperty("n").GetInt32());                         // one in, the oldest out
+        long lastRow = (t - 2 * min) / min * min;
+        Assert.Equal(lastRow + 1000, o[1].GetProperty("from").GetInt64());                   // only after the last row held
+        Assert.Equal(2, o[2].GetProperty("shows").GetInt32());                               // nothing new: no repaint
+        Assert.Equal(3, o[3].GetProperty("shows").GetInt32());                               // forced: a repaint
+        Assert.Equal(4, o[4].GetProperty("shows").GetInt32());
+        Assert.Equal(t + 32 * min - 26 * 3600000, o[4].GetProperty("from").GetInt64());      // 30 minutes on: the whole 26 h again
     }
 
     [Fact]
@@ -374,7 +469,7 @@ public sealed partial class PageI18nTests
         Assert.Equal("4.1 + 6.2", string.Join(qd.Groups[3].Value, "GPV4.1+GPV6.2".Split(qd.Groups[1].Value[0]).Select(x => Regex.Replace(x, qd.Groups[2].Value, ""))));
     }
 
-    [NodeFact]
+    [Fact]
     public void The_gap_finder_marks_exactly_where_the_chart_line_breaks()
     {
         string page = Page().Replace("\r\n", "\n", StringComparison.Ordinal);
@@ -416,7 +511,7 @@ public sealed partial class PageI18nTests
             };
             console.log(JSON.stringify(out));
             """;
-        using var doc = System.Text.Json.JsonDocument.Parse(RunNode(script));
+        using var doc = System.Text.Json.JsonDocument.Parse(RunScript(script));
         string J(string name) => doc.RootElement.GetProperty(name).GetRawText();
         Assert.Equal("[[14,31]]", J("hole"));   // no reading from minute 14 to 31: 17 min
         Assert.Equal("[]", J("regular"));

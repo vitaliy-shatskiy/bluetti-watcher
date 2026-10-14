@@ -33,7 +33,7 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Three jobs in parallel: the run takes as long as the slowest one, not the sum.
+# Two jobs in parallel: the run takes as long as the slowest one, not the sum.
 jobs:
   dotnet:
     name: .NET tests
@@ -50,25 +50,13 @@ jobs:
           global-json-file: global.json
 
       - name: .NET tests
-        run: dotnet test bluetti-watcher.slnx -c Release
+        run: dotnet test --solution bluetti-watcher.slnx -c Release
 
-  node:
-    name: Node tests
-    runs-on: windows-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        shell: pwsh
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-
-      # Two files in parallel; inside power-mode.test.js the independent tests run one per CPU (TEST_CONCURRENCY overrides).
-      - name: Node tests (power-mode switch and its integration hook)
-        run: node --test power-mode/power-mode.test.js integrations/claude-code/power-mode.test.js
+      # The power-mode tests again, every call through the forwarder scripts (pwsh power-mode.ps1, 5.1 power-mode-end.ps1).
+      - name: Power-mode tests through the scripts
+        run: |
+          $env:PM_SWITCH_ENTRY = 'script'
+          dotnet test --solution bluetti-watcher.slnx -c Release --no-build --filter FullyQualifiedName~BluettiWatcher.Tests.PowerModeScript
 
   tools:
     name: PowerShell tool tests
@@ -80,14 +68,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # install.ps1's dry run (tools/test-install.ps1) checks for dotnet and for Python 3.12-3.14 on PATH.
+      # install.ps1's dry run (tools/test-install.ps1) checks for dotnet on PATH.
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.12'
 
       - name: PowerShell tool tests
         run: |

@@ -16,18 +16,19 @@ enabled and started, a bin that never passed the health check replaced by bin.ol
 -Apply:
   1. config.json: written from a template only when there is none (with -Mac as the station's address); an existing
      one is never changed. No station MAC in it blocks the install.
-  2. the venv (Python 3.12, 3.13 or 3.14, a regular build, not free-threaded): <data dir>\.venv from requirements.lock with --require-hashes, the library's writer deleted and its
-     imports stripped (tools/build-venv.ps1)
-  3. the power-mode switch: power-mode\*.ps1 copied to <data dir>\power-mode\ (each file replaced whole)
-  4. the exe into the staging directory <data dir>\bin.new, never into the live bin: copied from the release, or
+  2. the exe into the staging directory <data dir>\bin.new, never into the live bin: copied from the release, or
      published (tools/publish.ps1; -Fallback = trimmed self-contained single file instead of NativeAOT). The service
      keeps running; a failure here changes nothing
-  5. the swap (tools/swap.ps1), the only downtime, seconds: the task disabled and stopped, a bounded wait until no
+  3. the swap (tools/swap.ps1), the only downtime, seconds: the task disabled and stopped, a bounded wait until no
      process runs from bin and its files are unlocked, bin -> bin.old, bin.new -> bin; then the logon task
      "BluettiWatcher": as the current user, Interactive (the user's session, never session 0: the power-mode mutex is
      Local\), Limited, hidden, no time limit, restarted every minute on failure, one instance (IgnoreNew); a second
      trigger every 5 minutes brings it back after any exit; started at once, then /api/health must answer and
-     bin.old is removed. A failed swap or no health answer: bin.old is bin again, the task enabled and started, exit 1
+     bin.old is removed. A failed swap or no health answer: bin.old is bin again, the task enabled and started, exit 1.
+  4. only then (the new exe answered): power-mode\*.ps1 copied to <data dir>\power-mode\ (each file replaced whole;
+     they forward to BluettiWatcher.exe power-mode, which an older exe has not got)
+  5. the 1.0.0 Python venv <data dir>\.venv, if there is one, deleted (the built-in reader does not use it); a junction
+     or symlink there is unlinked, its target never followed; a failure is named, not fatal
   6. the wake task (config wakeTaskName, default "BluettiWatcherWake"; tools/wake-task.ps1): disabled, WakeToRun, one
      time trigger, a no-op action (System32 conhost.exe --headless cmd.exe /d /c exit 0) as the current user,
      interactive token, least privilege; security: Administrators, SYSTEM and the user full control (the unelevated
@@ -52,7 +53,6 @@ $repo = $PSScriptRoot
 . (Join-Path $repo 'tools\swap.ps1')
 . (Join-Path $repo 'tools\wake-task.ps1')
 $root = Join-Path $env:LOCALAPPDATA 'bluetti-watcher'
-$venv = Join-Path $root '.venv'
 $bin = Join-Path $root 'bin'
 $exe = Join-Path $bin 'BluettiWatcher.exe'
 # Same volume as bin: the swap is two renames.
@@ -64,6 +64,24 @@ $task = 'BluettiWatcher'
 $config = Join-Path $root 'config.json'
 $powerModeFrom = Join-Path $repo 'power-mode'
 $powerModeTo = Join-Path $root 'power-mode'
+# The Python venv of 1.0.0; nothing uses it since 1.1.0.
+$oldVenv = Join-Path $root '.venv'
+# Deletes the old venv: a plain folder goes whole; a junction or symlink (at the venv, or inside it) is unlinked alone, never
+# followed, so what it points at stays. A plain file is not a venv: refused. Throws on failure.
+function Remove-WatcherOldVenv([string] $Path) {
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    $isLink = { param($i) $i.LinkType -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) }
+    if (& $isLink $item) {
+        if ($item.PSIsContainer) { [IO.Directory]::Delete($item.FullName) } else { [IO.File]::Delete($item.FullName) }
+        return "removed the link $Path (what it points at was left as it is)"
+    }
+    if (-not $item.PSIsContainer) { throw "$Path is a file, not a venv" }
+    foreach ($inner in @(Get-ChildItem -LiteralPath $Path -Recurse -Force -Attributes ReparsePoint -ErrorAction Stop)) {
+        if ($inner.PSIsContainer) { [IO.Directory]::Delete($inner.FullName) } else { [IO.File]::Delete($inner.FullName) }
+    }
+    Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+    "removed the 1.0.0 Python venv $Path"
+}
 # A release zip carries the exe; a checkout carries the source.
 $releaseBin = Join-Path $repo 'bin'
 $fromRelease = (Test-Path -LiteralPath (Join-Path $releaseBin 'BluettiWatcher.exe')) -and -not (Test-Path -LiteralPath (Join-Path $repo 'src'))
@@ -143,15 +161,6 @@ else { Get-WatcherPending -Bin $bin -Previous $previous -Marker $marker -TaskNam
 Write-Output "task '$task': $(Get-WatcherTaskState -TaskName $task -Ops $ops)"
 
 # ---- preconditions (both modes)
-$python = Get-Command python -ErrorAction SilentlyContinue
-if (-not $python) { $problems += 'no python on PATH (the venv needs Python 3.12, 3.13 or 3.14)' }
-else {
-    # "3 13 0": major, minor, 1 for a free-threaded build. requirements.lock holds hashes of the regular 3.12-3.14 wheels only.
-    $pyInfo = "$(& $python.Source -c 'import sys, sysconfig; print(sys.version_info[0], sys.version_info[1], int(bool(sysconfig.get_config_var(''Py_GIL_DISABLED''))))' 2>$null)".Trim()
-    if ($pyInfo -notmatch '^(\d+) (\d+) ([01])$') { $problems += 'python on PATH is unreadable; the venv needs Python 3.12, 3.13 or 3.14' }
-    elseif ("$($Matches[1]).$($Matches[2])" -cnotin '3.12', '3.13', '3.14') { $problems += "python on PATH is $($Matches[1]).$($Matches[2]); the venv needs 3.12, 3.13 or 3.14 (the versions requirements.lock has hashes for)" }
-    elseif ($Matches[3] -eq '1') { $problems += "python on PATH is a free-threaded build ($($Matches[1]).$($Matches[2])t); the venv needs a regular 3.12, 3.13 or 3.14 build" }
-}
 if (-not $fromRelease) {
     if (-not (Test-Path -LiteralPath (Join-Path $repo 'src\BluettiWatcher\BluettiWatcher.csproj'))) { $problems += "neither $releaseBin\BluettiWatcher.exe (a release) nor src\ (a checkout) beside install.ps1" }
     elseif (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { $problems += 'no dotnet on PATH (a source install publishes the exe; a release zip needs none)' }
@@ -166,13 +175,14 @@ if ($holder) {
 if ($problems) { $problems | ForEach-Object { Write-Output "blocked: $_" }; if ($Apply) { exit 2 } }
 
 Step "config: $configNote"
-Step "build the venv $venv from requirements.lock (--require-hashes), writer removed"
-Step "copy the power-mode switch $powerModeFrom\*.ps1 to $powerModeTo"
+
 if ($fromRelease) { Step "copy the release's $releaseBin to the staging directory $staging (one left by a failed run is removed first)" }
 else { Step "publish $(if ($Fallback) { 'trimmed self-contained single file' } else { 'NativeAOT' }) to the staging directory $staging (one left by a failed run is removed first); Bluetti Watcher keeps running through the build, a failed publish changes nothing" }
 Step "swap, the only downtime (seconds): disable and stop the task '$task', wait up to 30 s until no process runs from $bin and its files are unlocked, move $bin to $previous and $staging to $bin"
 Step "register the logon task '$task': $exe --port $Port as $env:USERDOMAIN\$env:USERNAME, Interactive, Limited, hidden, restart on failure, also every 5 minutes (one instance); start it and wait for ${url}api/health"
 Step "after the health check passed: remove $previous. A failed swap or no health answer: $previous is $bin again, the task '$task' enabled and started, exit 1"
+Step "copy the power-mode switch $powerModeFrom\*.ps1 to $powerModeTo (after the health check: the scripts forward to BluettiWatcher.exe power-mode)"
+if (Test-Path -LiteralPath $oldVenv) { Step "remove the 1.0.0 Python venv $oldVenv (after the health check; the built-in reader does not use it)" }
 Step "register the wake task '$script:WatcherWakeTask': disabled, WakeToRun, a time trigger the service sets, action $([Environment]::GetFolderPath('System'))\conhost.exe --headless cmd.exe /d /c exit 0 (a no-op) as $env:USERDOMAIN\$env:USERNAME, interactive token, least privilege; security: Administrators, SYSTEM, the user; read back after registering"
 Step "create the shortcuts $($shortcuts -join ' and ') -> $browser --app=$url"
 if (-not $Apply) { Write-Output 'dry run: nothing changed. Run with -Apply to install.'; exit $(if ($problems) { 1 } else { 0 }) }
@@ -191,20 +201,7 @@ try {
         Write-Output "install: wrote $config"
     }
 
-    # ---- 2. venv
-    & pwsh -NoProfile -File (Join-Path $repo 'tools\build-venv.ps1') -VenvDir $venv
-    if ($LASTEXITCODE -ne 0) { throw "the venv failed (exit $LASTEXITCODE)" }
-
-    # ---- 3. the power-mode switch, before the new exe can run it; each file replaced whole
-    $null = New-Item -ItemType Directory -Force -Path $powerModeTo
-    foreach ($f in @(Get-ChildItem -LiteralPath $powerModeFrom -Filter '*.ps1' -File)) {
-        $to = Join-Path $powerModeTo $f.Name
-        Copy-Item -LiteralPath $f.FullName -Destination "$to.new" -Force
-        Move-Item -LiteralPath "$to.new" -Destination $to -Force
-    }
-    Write-Output "install: power-mode switch in $powerModeTo"
-
-    # ---- 4. exe, into the staging directory: the service keeps running
+    # ---- 2. exe, into the staging directory: the service keeps running
     Clear-WatcherStaging -Staging $staging -Log $log
     if ($fromRelease) {
         Copy-Item -LiteralPath $releaseBin -Destination $staging -Recurse
@@ -217,7 +214,7 @@ try {
         if ($code -ne 0) { throw "the publish failed (exit $code); $bin was not touched; the task '$task' is $(Get-WatcherTaskState -TaskName $task -Ops $ops)" }
     }
 
-    # ---- 5. swap, logon task, health
+    # ---- 3. swap, logon task, health
     # The logon trigger plus one every 5 minutes, one instance (tools/swap.ps1)
     $def = New-WatcherTaskDefinition -Exe $exe -Port $Port -WorkingDirectory $root -User "$env:USERDOMAIN\$env:USERNAME"
     $register = {
@@ -234,6 +231,24 @@ try {
     }
     Install-WatcherBinaries -Bin $bin -Staging $staging -Previous $previous -TaskName $task -Marker $marker -Ops $ops -Register $register -Health $health -Log $log
     Write-Output "install: ${url}api/health answers"
+
+    # ---- 4. the power-mode scripts, once the new exe answers: they forward to BluettiWatcher.exe power-mode, which an
+    # older exe has not got (a failed swap keeps the older scripts with the older exe); each file replaced whole
+    $null = New-Item -ItemType Directory -Force -Path $powerModeTo
+    foreach ($f in @(Get-ChildItem -LiteralPath $powerModeFrom -Filter '*.ps1' -File)) {
+        $to = Join-Path $powerModeTo $f.Name
+        Copy-Item -LiteralPath $f.FullName -Destination "$to.new" -Force
+        Move-Item -LiteralPath "$to.new" -Destination $to -Force
+    }
+    Write-Output "install: power-mode scripts in $powerModeTo"
+
+    # ---- 5. the 1.0.0 Python venv: the built-in reader does not use it; a failure is named, not fatal
+    if (Test-Path -LiteralPath $oldVenv) {
+        try {
+            Write-Output "install: $(Remove-WatcherOldVenv $oldVenv)"
+        }
+        catch { Write-Output "install: could not remove the 1.0.0 Python venv $oldVenv ($($_.Exception.Message)); delete it by hand" }
+    }
 }
 catch { Stop-Install $_.Exception.Message }
 Write-Output "install: no-hibernate $(if (Test-Path -LiteralPath $switch) { "present ($switch): hibernation off" } else { 'absent: hibernation on' })"

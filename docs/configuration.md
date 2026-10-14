@@ -55,7 +55,6 @@ Every key with its default, except `mac`, `actions` and the DTEK address, which 
   "rateMinSpanMin": 20,
 
   "powerMode": {
-    "script": "<exe dir>\\..\\power-mode\\power-mode.ps1",
     "flagPath": "C:\\ProgramData\\BluettiWatcher\\power-mode.json",
     "mutex": "Local\\BluettiWatcherPowerMode",
     "taskPrefix": "BluettiWatcherEco",
@@ -82,7 +81,6 @@ Every key with its default, except `mac`, `actions` and the DTEK address, which 
   "port": 18940,
   "lockWaitSec": 30,
   "dataDir": "%LOCALAPPDATA%\\bluetti-watcher",
-  "readerPath": "%LOCALAPPDATA%\\bluetti-watcher\\.venv\\Scripts\\bluetti-read.exe",
   "rawRetentionDays": 30,
   "dryRun": false,
 
@@ -92,6 +90,7 @@ Every key with its default, except `mac`, `actions` and the DTEK address, which 
     "group": "GPV1.1",
     "datasetUrl": "https://raw.githubusercontent.com/Baskerville42/outage-data-ua/main/data/kyiv-region.json",
     "staleAfterMin": 90,
+    "minCutMin": 15,
     "site": false,
     "host": "www.dtek-krem.com.ua",
     "city": "",
@@ -108,8 +107,11 @@ key out for its default. JSON strings need `\\` for each backslash.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `mac` | string | none (required) | The station's Bluetooth address. |
-| `type` | string | `AC200PL` | The model name passed to `bluetti-read` and matched against the cloud's device model. |
+| `mac` | string | none (required) | The station's Bluetooth address, `AA:BB:CC:DD:EE:FF`. A model only the cloud reads (below) needs none. |
+| `type` | string | `AC200PL` | The model, as BLUETTI names it; also matched against the cloud's device model. Bluetooth reads 29 models: the IoT V1 models AC200L, AC200M, AC200PL, AC300, AC500, EB3A, EP500, EP500P (the AC300 without its battery packs) and the IoT V2 models AC2A, AC2P, AC50B, AC60, AC60P, AC70, AC70P, AC180, AC180T, AC180P, AP300, EL10, EL30V2, EL100V2, EP600, EP760, EP800, EP2000, Handsfree 1, PR30V2, PR100V2 (the EP600, EP760, EP800 and EP2000 report the battery level only, no mains state: they are a missed reading over Bluetooth, and the cloud fallback answers); read only: Modbus function 0x03 under register 2000. A model with no output-mode register (every V2 model and the EB3A) gets the mode derived from the AC powers, as the cloud reading does: AC input above 0 W = `BLE_MAINS`, 0 W with AC output above 0 W = `INVERTER_OUTPUT`. A station that encrypts its Bluetooth link is a missed reading, not connected to again until the service restarts, and the cloud fallback answers. Any other model (an unknown name) is read through the cloud fallback alone when it is on; without it, it is reported in `/api/health` `problem` and nothing is polled, as is a `mac` that is not a Bluetooth address. |
+
+Since 1.1.0 the Python reader's keys `bleBackend` and `readerPath` (and the flag `--reader`) are ignored: an old
+config.json still loads, and `service.log` names them once at start.
 | `capacityWh` | number | 2304 | Battery capacity, Wh, for the battery-time formula. |
 | `efficiency` | number | 0.85 | Inverter efficiency for the formula, until a learned value exists. |
 
@@ -120,7 +122,7 @@ key out for its default. JSON strings need `\\` for each backslash.
 | `pollSec` | int | 60 | Seconds between readings. |
 | `fastPollSec` | int | 60 | Seconds between readings on battery under `fastBelow`. |
 | `fastBelow` | number | 25 | Battery percent under which `fastPollSec` applies. |
-| `readerTimeoutSec` | int | 30 | Time limit of one `bluetti-read` run. |
+| `readerTimeoutSec` | int | 30 | Time limit of one Bluetooth read (connect, every request, disconnect); a Bluetooth call that does not return is given up 2 s after it. |
 | `maxGapSec` | int | 600 | A gap between accepted readings over this resets the decision state. |
 | `socRatePerMin` | number | 5 | Largest plausible SOC change, points per minute. |
 | `socJumpFloor` | number | 3 | The allowed SOC change is never under this many points. |
@@ -154,13 +156,13 @@ key out for its default. JSON strings need `\\` for each backslash.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `powerMode.script` | string | `<exe dir>\..\power-mode\power-mode.ps1` | The power-mode switch the service runs. |
+| `powerMode.script` | string | not set | Not set: the service runs the power-mode switch in its own process (`BluettiWatcher.exe power-mode`). Set: that script, through `pwshPath`, instead. |
 | `powerMode.flagPath` | string | `%ProgramData%\BluettiWatcher\power-mode.json` | The flag file; passed to the switch as `-Path` and `POWER_MODE_FILE`. |
 | `powerMode.mutex` | string | `Local\BluettiWatcherPowerMode` | The named mutex guarding the flag; passed as `POWER_MODE_MUTEX`. |
 | `powerMode.taskPrefix` | string | `BluettiWatcherEco` | Prefix of the switch's scheduled tasks (`<prefix>End`, `<prefix>GpuCap`, `<prefix>GpuRestore`); passed as `POWER_MODE_TASK_PREFIX`. |
 | `powerMode.extraReaders` | string[] | `[]` | Local accounts allowed to read the flag folder besides the user, SYSTEM and Administrators (e.g. a service that shows the mode); passed as `POWER_MODE_EXTRA_READERS`, comma-joined. Each name `A-Z a-z 0-9 _ . - space`, 1-64 chars; an invalid one is reported in `/api/health` `problem` and none are passed. |
 | `flagPath` | string | - | Older name of `powerMode.flagPath`; still read. |
-| `pwshPath` | string | `pwsh.exe` | PowerShell 7 used to run the switch and the wake-task commands. |
+| `pwshPath` | string | `pwsh.exe` | PowerShell 7 used to run the wake-task commands and a configured `powerMode.script`. |
 | `powerModeTimeoutSec` | int | 60 | 1-600: time limit of each power-mode command and each wake-task command. A command over it is killed and counts as failed. |
 | `actionTimeoutSec` | int | 30 | 1-600: time limit of each action (only actions). |
 | `actions` | object | none | Commands run when the service enters a state: keys `eco`, `emergency`, `stop`, `hibernate-warn`, `normal`. See below. |
@@ -203,7 +205,6 @@ Hibernation off: create an empty file `no-hibernate` in the data directory. It i
 | `port` | int | 18940 | HTTP port on 127.0.0.1 (also `--port`). |
 | `lockWaitSec` | int | 30 | 0-600: a start waits this long for an older instance to release the port's lock. |
 | `dataDir` | string | `%LOCALAPPDATA%\bluetti-watcher` | Database, log, config and kill switch (also `--data-dir`). |
-| `readerPath` | string | `<data dir>\.venv\Scripts\bluetti-read.exe` | The Bluetooth reader (also `--reader`). |
 | `rawRetentionDays` | int | 30 | Raw minute rows kept this long, then folded into 5-minute aggregates. |
 
 ## DTEK module (`dtekWatcher`)
@@ -217,14 +218,15 @@ Off by default; it makes no request while off. `null` = off.
 | `group` | string, string[] or null | null | The queue to follow, a hint real cuts can refute; an array = a set whose planned outage is the union (at most 4). |
 | `datasetUrl` | string | the Baskerville42/outage-data-ua Kyiv region file | Primary schedule source; must be plain https. |
 | `staleAfterMin` | int | 90 | The schedule is stale when its newest collection is older. |
+| `minCutMin` | int | 15 | A cut shorter than this many minutes is a blip: it counts in no DTEK statistic (the "usually back N min before/after the plan" median, the queue search, the manual queue's hint); it stays on the chart and in the cut history. 0 = every cut counts; a cut of exactly this length counts. 0 to 1440, else the module is off with the reason. |
 | `site` | bool | false | Opt-in. false = the distributor's site is never asked; only the public dataset is read. true = the watcher also reads the distributor's website the way a browser does, which picks up plan edits sooner and, with `city`, `street` and `house`, names the house's queues. Use of the site is subject to its own terms; you turn it on at your own responsibility. |
 | `host` | string | `www.dtek-krem.com.ua` | The site's host; with the dataset's, the only hosts a request may go to. |
 | `city`, `street`, `house` | string | "" | Optional address, sent to the site only, to learn the house's queues and current outage. |
 
 ## Command line
 
-`BluettiWatcher.exe [--config <file>] [--data-dir <dir>] [--port <n>] [--reader <bluetti-read.exe>] [--flag <file>]
-[--power-mode <power-mode.ps1>] [--dry-run]` - flags override config.json. `--flag` sets `powerMode.flagPath`,
+`BluettiWatcher.exe [--config <file>] [--data-dir <dir>] [--port <n>] [--flag <file>] [--power-mode <power-mode.ps1>]
+[--dry-run]` - flags override config.json. `--flag` sets `powerMode.flagPath`,
 `--power-mode` sets `powerMode.script`.
 
 `BluettiWatcher.exe --cloud-login [--data-dir <dir>]` - signs in to the BLUETTI cloud in the browser and writes the

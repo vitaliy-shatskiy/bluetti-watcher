@@ -20,10 +20,13 @@ internal static class DtekMatcher
     public static List<string> Matching(DtekCut cut, DtekSchedule schedule, IReadOnlyList<string> queues, TimeZoneInfo tz) =>
         [.. queues.Where(q => DtekTime.Windows(schedule, q, DtekSlot.Off, tz).Exists(w => Near(cut.Start, w.Start) && Near(cut.End, w.End)))];
 
-    public static DtekMatch Apply(DtekMatch m, DtekCut cut, DtekSchedule? schedule, IReadOnlyList<string> queues, TimeZoneInfo tz)
+    /// <summary>A cut shorter than <paramref name="minCut"/> is a blip, not evidence of a queue (design.md §11 rule 29).</summary>
+    private static bool TooShort(DtekCut cut, TimeSpan minCut) => cut.End - cut.Start < minCut;
+
+    public static DtekMatch Apply(DtekMatch m, DtekCut cut, DtekSchedule? schedule, IReadOnlyList<string> queues, TimeZoneInfo tz, TimeSpan minCut)
     {
-        // No schedule saved for the cut's time: the cut does not count.
-        if (schedule is null || queues.Count == 0 || !DtekTime.Covers(schedule, cut.Start, tz) || !DtekTime.Covers(schedule, cut.End, tz)) return m;
+        // No schedule saved for the cut's time, or a cut too short to count: the cut does not count.
+        if (TooShort(cut, minCut) || schedule is null || queues.Count == 0 || !DtekTime.Covers(schedule, cut.Start, tz) || !DtekTime.Covers(schedule, cut.End, tz)) return m;
         var matched = Matching(cut, schedule, queues, tz);
         if (matched.Count == 0) return m;   // an unplanned cut says nothing about the queue
         string? only = matched.Count == 1 ? matched[0] : null;
@@ -43,10 +46,10 @@ internal static class DtekMatcher
     /// ends the row, and so does one that fits several queues without the one being counted. An unplanned cut (it matches
     /// no queue) and a cut with no schedule for its time tell nothing. The manual queue is compared even when it is not among the house's queues.
     /// </summary>
-    public static DtekHint Hint(DtekHint? saved, string group, DtekCut cut, DtekSchedule? schedule, IReadOnlyList<string> queues, TimeZoneInfo tz)
+    public static DtekHint Hint(DtekHint? saved, string group, DtekCut cut, DtekSchedule? schedule, IReadOnlyList<string> queues, TimeZoneInfo tz, TimeSpan minCut)
     {
         var h = DtekHint.For(saved, group);
-        if (h.RefutedBy is not null) return h;
+        if (h.RefutedBy is not null || TooShort(cut, minCut)) return h;
         if (schedule is null || !DtekTime.Covers(schedule, cut.Start, tz) || !DtekTime.Covers(schedule, cut.End, tz)) return h;
         var matched = Matching(cut, schedule, queues.Contains(group) ? queues : [.. queues, group], tz);
         if (matched.Count == 0) return h;   // an unplanned cut says nothing about the queue

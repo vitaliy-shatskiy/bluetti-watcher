@@ -16,13 +16,14 @@ namespace BluettiWatcher.Http;
 /// </summary>
 internal sealed class StationApi(StationConfig config, StationService service, StationStore store, TimeProvider time, DateTimeOffset startedAt, IDtekWatcher? dtek = null, Action<string>? log = null)
 {
-    private static readonly Lazy<byte[]> Page = new(() =>
+    /// <summary>The page, read once; encoded once per coding on first use; a reload with its ETag is a 304.</summary>
+    private static readonly Lazy<StaticAsset> Page = new(() =>
     {
         using var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("station.html")
             ?? throw new InvalidOperationException("station.html is not embedded");
         using var ms = new MemoryStream();
         s.CopyTo(ms);
-        return ms.ToArray();
+        return new StaticAsset(ms.ToArray(), "text/html; charset=utf-8");
     });
 
     /// <summary>A time people read, in the PC's local zone (the time provider's).</summary>
@@ -41,7 +42,7 @@ internal sealed class StationApi(StationConfig config, StationService service, S
         var now = time.GetLocalNow();
         return r.Path switch
         {
-            "/" or "/index.html" => new HttpResponse(200, "text/html; charset=utf-8", Page.Value),
+            "/" or "/index.html" => Page.Value.Respond(r),
             "/api/now" => HttpResponse.Json(200, Now(now)),
             "/api/health" => HttpResponse.Json(200, Health(now)),
             "/api/history" => History(r, now),

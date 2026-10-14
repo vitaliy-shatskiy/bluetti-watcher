@@ -433,7 +433,7 @@ public sealed class ApiTests : IDisposable
         var idle = Enumerable.Range(0, 10).Select(_ => { var c = new TcpClient(); c.Connect(IPAddress.Loopback, port); return c; }).ToList();
         try
         {
-            await Task.Delay(200);
+            await Task.Delay(200, TestContext.Current.CancellationToken);
             var sw = System.Diagnostics.Stopwatch.StartNew();
             string answer = Get(port, "/api/health");
             sw.Stop();
@@ -458,10 +458,10 @@ public sealed class ApiTests : IDisposable
         using var cts = new CancellationTokenSource();
         var run = server.RunAsync(cts.Token);
         using var c = new TcpClient();
-        await c.ConnectAsync(IPAddress.Loopback, port);
+        await c.ConnectAsync(IPAddress.Loopback, port, TestContext.Current.CancellationToken);
         var sw = System.Diagnostics.Stopwatch.StartNew();
         int n;
-        try { n = await c.GetStream().ReadAsync(new byte[16]).AsTask().WaitAsync(TimeSpan.FromSeconds(4)); }
+        try { n = await c.GetStream().ReadAsync(new byte[16], TestContext.Current.CancellationToken).AsTask().WaitAsync(TimeSpan.FromSeconds(4), TestContext.Current.CancellationToken); }
         catch (IOException) { n = 0; }   // a reset is a close too
         sw.Stop();
         await cts.CancelAsync();

@@ -1,21 +1,24 @@
 # power-mode: the power-mode switch
 
-Three PowerShell scripts that switch the PC between **normal**, **eco** (save electricity, keep working) and
-**emergency** (save electricity, wind down), and keep the mode in one flag file. Bluetti Watcher runs them when the
-battery station's state changes; you can run them by hand; any other program (a script, an agent hook from [`integrations/`](../integrations/)) can read the flag.
+The switch between **normal**, **eco** (save electricity, keep working) and **emergency** (save electricity, wind
+down), with the mode kept in one flag file. It is `BluettiWatcher.exe power-mode`: the watcher runs it inside its own
+process when the battery station's state changes (no PowerShell); you can run it by hand, through the exe or the
+scripts below; any other program (a script, an agent hook from [`integrations/`](../integrations/)) can read the flag.
 
 | File | What it is |
 |---|---|
-| `power-mode.ps1` | the switch (PowerShell 7, `pwsh`) |
-| `power-mode-flag.ps1` | the library both scripts dot-source: the one reader of the flag and the one place its names are read. Dot-source it from your own scripts to read the flag (`Read-PowerModeFlag (Get-PowerModeFlagPath)`). |
-| `power-mode-end.ps1` | what the eco end task runs at the end time (Windows PowerShell 5.1) |
+| `power-mode.ps1` | forwards its arguments to `BluettiWatcher.exe power-mode` and passes back its lines and exit code (Windows PowerShell 5.1 or PowerShell 7). The exe: `BLUETTI_WATCHER_EXE`, else `..\bin\BluettiWatcher.exe` (the install layout). |
+| `power-mode-flag.ps1` | the PowerShell reader of the flag, for your own scripts: dot-source it (`Read-PowerModeFlag (Get-PowerModeFlagPath)`). |
+| `power-mode-end.ps1` | what an eco end task registered before 1.1.0 runs; forwards to `BluettiWatcher.exe power-mode end`. Tasks registered from 1.1.0 on run the exe itself. |
 
-Installed beside the watcher at `<data dir>\power-mode\`; the watcher's default `powerMode.script` points there.
+Installed beside the watcher at `<data dir>\power-mode\`. A configured `powerMode.script` makes the watcher run that
+script through `pwshPath` instead of the switch in its own process.
 
 ## Commands
 
 ```powershell
-pwsh -NoProfile -File power-mode.ps1 <command> [options]
+BluettiWatcher.exe power-mode <command> [options] | Write-Output   # the exe: a windowless app, PowerShell waits for it (and sets $LASTEXITCODE) only when its output is piped
+powershell -NoProfile -File power-mode.ps1 <command> [options]  # the same through the script (pwsh works too)
 ```
 
 | Command | What it does |
@@ -105,10 +108,10 @@ eco works without the cap.
 ### What needs administrator rights
 
 Only setting the GPU power limit. An elevated shell runs `nvidia-smi -pl` itself. For everything else (the watcher,
-a normal shell) run once, in an elevated PowerShell 7:
+a normal shell) run once, in an elevated shell:
 
 ```powershell
-pwsh -NoProfile -File power-mode.ps1 gpu-task install            # -RestoreWatts <W> to restore to another limit than the card's default
+powershell -NoProfile -File power-mode.ps1 gpu-task install      # -RestoreWatts <W> to restore to another limit than the card's default
 ```
 
 It registers two on-demand tasks, `<prefix>GpuCap` (`nvidia-smi -pl <card minimum>`) and `<prefix>GpuRestore`
@@ -118,10 +121,13 @@ remove` (elevated) deletes them. The eco end task and the power plan need no ele
 
 ## Tests
 
-From the repository root, on Windows with PowerShell 7 (`pwsh`) on PATH and Node.js 20 or later:
+From the repository root, on Windows with PowerShell 7 (`pwsh`) on PATH (the stand-ins and the reader library run
+in it). The switch is the exe built beside the tests, or `BLUETTI_WATCHER_EXE` (a published one); `PM_SWITCH_ENTRY=script`
+runs every call through the forwarder scripts instead:
 
 ```powershell
-node --test power-mode/power-mode.test.js
+dotnet test --solution bluetti-watcher.slnx -c Release --filter "FullyQualifiedName~BluettiWatcher.Tests.PowerModeScript"
+$env:PM_SWITCH_ENTRY = 'script'; dotnet test --solution bluetti-watcher.slnx -c Release --filter "FullyQualifiedName~BluettiWatcher.Tests.PowerModeScript"
 ```
 
 The tests never touch the real flag, power plan, Task Scheduler or GPU: every flag lives in a temp folder, and

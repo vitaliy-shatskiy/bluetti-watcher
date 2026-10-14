@@ -64,7 +64,6 @@ internal sealed class ProcessRunner : IProcessRunner, ICommandLineRunner
             StandardErrorEncoding = Encoding.UTF8,
         };
         psi.Environment["NO_COLOR"] = "1";
-        psi.Environment["PYTHONIOENCODING"] = "utf-8";
         if (env is not null)
             foreach (var (k, v) in env) psi.Environment[k] = v;
         return psi;

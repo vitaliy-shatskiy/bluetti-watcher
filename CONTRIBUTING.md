@@ -2,14 +2,13 @@
 
 ## Build and run
 
-Requirements: Windows, the .NET SDK named in `global.json`, PowerShell 7, Python 3.12 to 3.14 (regular build), Node.js 22 (for the
-power-mode tests).
+Requirements: Windows, the .NET SDK named in `global.json`, PowerShell 7.
 
 ```powershell
 dotnet build bluetti-watcher.slnx
-pwsh -NoProfile -File tools/build-venv.ps1 -VenvDir C:\bw-venv                      # keep the path short (winrt)
++
 pwsh -NoProfile -File tools/publish.ps1 -Out C:\bw-out                              # NativeAOT; -Fallback without the MSVC linker
-C:\bw-out\BluettiWatcher.exe --dry-run --data-dir C:\bw-data --reader C:\bw-venv\Scripts\bluetti-read.exe --flag $env:TEMP\power-mode-dev.json
+C:\bw-out\BluettiWatcher.exe --dry-run --data-dir C:\bw-data --flag $env:TEMP\power-mode-dev.json
 ```
 
 `--dry-run` logs every power-mode command and hibernation instead of running it. Put a `config.json` with `mac` in the
@@ -18,8 +17,7 @@ data directory first ([docs/configuration.md](docs/configuration.md)).
 ## Tests
 
 ```powershell
-dotnet test bluetti-watcher.slnx -c Release
-node --test power-mode/power-mode.test.js integrations/claude-code/power-mode.test.js
+dotnet test --solution bluetti-watcher.slnx -c Release
 pwsh -NoProfile -File tools/test-swap.ps1
 pwsh -NoProfile -File tools/test-wake-sddl.ps1
 pwsh -NoProfile -File tools/test-install.ps1
@@ -27,6 +25,18 @@ pwsh -NoProfile -File tools/test-install.ps1
 
 The pwsh tests exit 0 when every case passed, 1 when one failed, 2 when they could not run. None of the tests touches
 the station, the installed service or a scheduled task. CI runs all of them on every push and pull request.
+
+The .NET tests are xUnit.net v3 on Microsoft.Testing.Platform (`global.json` selects it): `dotnet test` takes the
+solution through `--solution` (a project through `--project`). To run a subset:
+
+```powershell
+dotnet test --solution bluetti-watcher.slnx -c Release --filter "FullyQualifiedName~CloudReaderTests"  # VSTest syntax
+dotnet test --solution bluetti-watcher.slnx -c Release --filter-class "*.CloudReaderTests"             # '*' at either end
+dotnet test --solution bluetti-watcher.slnx -c Release --filter-method "*.CloudReaderTests.The_allow_list_refuses_any_other_call"
+```
+
+`--filter-namespace`, `--filter-trait`, `--filter-display-name`, their `--filter-not-*` forms and `--filter-query` also
+work; `dotnet test --project tests/BluettiWatcher.Tests --help` lists them. A filter that matches nothing exits 8.
 
 ## Style
 
