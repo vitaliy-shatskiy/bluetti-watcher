@@ -14,6 +14,9 @@ Runs:
            library the release ships, driven through inline C#): the page's load (/api/now and the 26-hour /api/history
            every 2 s), the HTTP sizes and latencies, and the memory after it. Unless -NoNetwork the DTEK module is on (the
            public dataset over HTTPS), so the TLS stack is loaded as on a live install.
+  stress   on the same instance after the page run: -StressRounds rounds of -StressConcurrency concurrent /api/history
+           requests over the whole seeded month of minute rows (the largest answers, MBs each). The process must
+           survive them: an exit (a crash) or a failed request is a missed budget.
 NOT MEASURED: CPU per poll and disk bytes per day (the MaxPollCpuMs and MaxDiskMBPerDay budgets). Since 1.1.0 the service
 reads over Bluetooth or the BLUETTI cloud, and the cloud address is fixed in the exe, so there is no station to stand in
 for it without a product change, and polling a made-up MAC would drive this machine's radio. The report names both as
@@ -32,6 +35,8 @@ param(
     [int] $PageWindowSec = 30,
     [int] $StartRuns = 5,
     [int] $LatencyRuns = 60,
+    [int] $StressConcurrency = 32,
+    [int] $StressRounds = 3,
     [switch] $NoNetwork,
     # NAME=value pairs put into the exe's environment (GC settings such as DOTNET_GCgen0size, for experiments).
     [string[]] $EnvVars = @(),
@@ -239,6 +244,45 @@ COMMIT;
         }
     }
 
+    function Invoke-HistoryStress($p) {
+        # The whole seeded month of minute rows, -StressConcurrency requests at once (half asking for Brotli), -StressRounds times.
+        $h = [System.Net.Http.SocketsHttpHandler]::new()
+        $h.AutomaticDecompression = [System.Net.DecompressionMethods]::None
+        $h.MaxConnectionsPerServer = [math]::Max(1, $StressConcurrency)
+        $h.PooledConnectionLifetime = [TimeSpan]::Zero
+        $c = [System.Net.Http.HttpClient]::new($h)
+        $c.Timeout = [TimeSpan]::FromSeconds(60)
+        $ok = 0; $failed = 0; $peak = 0L; $largest = 0L
+        try {
+            for ($r = 0; $r -lt $StressRounds -and -not $p.HasExited; $r++) {
+                $to = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+                $tasks = @(for ($i = 0; $i -lt $StressConcurrency; $i++) {
+                        $m = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Get, "$base/api/history?from=$($to - 30L * 86400000)&to=$to&step=1")
+                        if ($i % 2) { $null = $m.Headers.TryAddWithoutValidation('Accept-Encoding', 'br') }
+                        $c.SendAsync($m)
+                    })
+                while (@($tasks | Where-Object { -not $_.IsCompleted }).Count -gt 0) {
+                    $p.Refresh()
+                    if (-not $p.HasExited) {
+                        try { if ($p.PrivateMemorySize64 -gt $peak) { $peak = $p.PrivateMemorySize64 } }
+                        catch [System.InvalidOperationException] { $null = $_ }   # exited between the check and the read: counted below
+                    }
+                    Start-Sleep -Milliseconds 10
+                }
+                foreach ($t in $tasks) {
+                    if ($t.IsFaulted -or $t.IsCanceled) { $failed++; continue }
+                    if ([int]$t.Result.StatusCode -eq 200) { $ok++; $largest = [math]::Max($largest, $t.Result.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult().Length) }
+                    else { $failed++ }
+                    $t.Result.Dispose()
+                }
+            }
+            Start-Sleep -Seconds 3   # an exit just after the last answer still counts
+        }
+        finally { $c.Dispose() }
+        [pscustomobject]@{ Requests = $StressRounds * $StressConcurrency; Ok = $ok; Failed = $failed; PeakPrivateMB = [math]::Round($peak / 1MB, 1)
+            LargestBytes = $largest; Exited = $p.HasExited; ExitCode = $(if ($p.HasExited) { $p.ExitCode } else { $null }) }
+    }
+
     function Get-DirBytes([string] $dir) { [long](Get-ChildItem -LiteralPath $dir -File -Force | Measure-Object Length -Sum).Sum }
 
     function Get-Percentile([double[]] $v, [double] $q) {
@@ -308,6 +352,9 @@ COMMIT;
     Start-Sleep -Seconds 10
     $live = Get-Snapshot $p
     if ($SnapshotScript) { & pwsh -NoProfile -File $SnapshotScript -ProcessId $p.Id | Write-Output }
+
+    # --- 4. stress: concurrent month-long history requests on the same instance (after the memory snapshot) --------------
+    $stress = Invoke-HistoryStress $p
     Stop-Bw $p
 }
 catch {
@@ -329,6 +376,8 @@ Write-Output ('page phase: database seeded with {0:N1} MB (30 days of minutes, a
 Write-Output 'poll CPU per poll: NOT MEASURED (no station to poll without a product change); disk MB/day: NOT MEASURED (the same)'
 Write-Output ('live-like after page load: private {0} MB, private WS {1} MB, WS {2} MB, threads {3}, handles {4}' -f `
         $live.PrivateMB, $live.PrivateWsMB, $live.WorkingSetMB, $live.Threads, $live.Handles)
+Write-Output ('history stress: {0} x {1} concurrent 30-day /api/history: ok {2}, failed {3}, peak private {4} MB, largest answer {5:N0} bytes, process {6}' -f `
+        $StressRounds, $StressConcurrency, $stress.Ok, $stress.Failed, $stress.PeakPrivateMB, $stress.LargestBytes, $(if ($stress.Exited) { "EXITED with code $($stress.ExitCode)" } else { 'alive' }))
 foreach ($k in $lat.Keys) { Write-Output ('latency {0}: p50 {1} ms, p95 {2} ms' -f $k, $lat[$k].P50, $lat[$k].P95) }
 $sizes | Format-Table Route, Status, Plain, Wire, Encoding, CacheControl, ETag, Revalidate -AutoSize | Out-String -Width 200 | Write-Output
 
@@ -336,6 +385,8 @@ $over = [System.Collections.Generic.List[string]]::new()
 if ($exeBytes / 1MB -gt $MaxExeMB) { $over.Add(('exe {0:N2} MB > {1}' -f ($exeBytes / 1MB), $MaxExeMB)) }
 if ($live.PrivateMB -gt $MaxPrivateMB) { $over.Add("live-like private $($live.PrivateMB) MB > $MaxPrivateMB") }
 if ($startupMs -gt $MaxStartupMs) { $over.Add(('startup {0:N1} ms > {1}' -f $startupMs, $MaxStartupMs)) }
+if ($stress.Exited) { $over.Add("the exe exited (code $($stress.ExitCode)) under the history stress") }
+if ($stress.Failed -gt 0) { $over.Add("$($stress.Failed) of $($stress.Requests) history stress requests failed") }
 if ($idle.WakeupsPerMin -gt $MaxIdleWakeupsPerMin) { $over.Add("idle context switches $($idle.WakeupsPerMin)/min > $MaxIdleWakeupsPerMin") }
 foreach ($z in $sizes | Where-Object { $_.Route -in '/', '/api/history?26h' }) { if (-not $z.Encoding) { $over.Add("$($z.Route) not compressed") } }
 $page = $sizes | Where-Object Route -EQ '/'
@@ -343,7 +394,7 @@ if ($page.Revalidate -ne 304 -and $page.CacheControl -notmatch 'max-age=[1-9]') 
 
 if ($JsonOut) {
     $json = [ordered]@{ exe = $Exe; provisional = $provisional; exeBytes = $exeBytes; binBytes = $binBytes; zipBytes = $zipBytes; startupMs = $startupMs
-        startups = $startups; idle = $idle; live = $live; latency = $lat; sizes = $sizes; seedBytes = $seedBytes; notMeasured = @('pollCpuMsPerPoll', 'diskMBPerDay'); over = $over } | ConvertTo-Json -Depth 5
+        startups = $startups; idle = $idle; live = $live; stress = $stress; latency = $lat; sizes = $sizes; seedBytes = $seedBytes; notMeasured = @('pollCpuMsPerPoll', 'diskMBPerDay'); over = $over } | ConvertTo-Json -Depth 5
     [IO.File]::WriteAllText([IO.Path]::GetFullPath($JsonOut), $json)
 }
 Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
