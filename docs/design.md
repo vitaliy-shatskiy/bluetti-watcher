@@ -84,7 +84,8 @@ This document states the rules the service follows. Every key named here is desc
    missing `mac`, and polls nothing. There is no default station address.
 
 Exit codes: 0 stopped normally; 2 did not run (the port taken, session 0, another instance still holding the port's
-lock after `lockWaitSec`).
+lock after `lockWaitSec`); 3 did not run: Windows' SQLite (`winsqlite3.dll`) is missing or older than 3.24.0 (the
+store's upserts need it), named in one `service.log` line with the version found.
 
 ## 3. Readings
 

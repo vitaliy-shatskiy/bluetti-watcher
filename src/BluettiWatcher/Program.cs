@@ -10,7 +10,7 @@ using BluettiWatcher.Storage;
 
 // Command line: see Cli.Usage (--help). The service prints nothing (it logs to service.log); every other command prints
 // into the terminal it was started from.
-// Exit: 0 stopped (or token saved, help, version) · 1 the login failed · 2 could not run (bad arguments, another instance past lockWaitSec, the port taken).
+// Exit: 0 stopped (or token saved, help, version) · 1 the login failed · 2 could not run (bad arguments, another instance past lockWaitSec, the port taken) · 3 Windows' SQLite missing or older than 3.24.0.
 using var console = ConsoleOut.Attach();
 var outcome = await Cli.ExecuteAsync(args, Console.Out, Console.Error, async cfg =>
 {
@@ -38,6 +38,9 @@ if (config.ExtraReadersProblem is { } badReaders) Log($"CONFIG - {badReaders}");
 if (config.IgnoredKeysNote is { } ignored) Log($"CONFIG - {ignored}");
 if (config.PollProblem is { } noPoll) Log($"NOT POLLING - {noPoll}");
 else if (config.BluetoothProblem is { } noBluetooth) Log($"CLOUD ONLY - {noBluetooth}");
+
+// SQLite is Windows' own winsqlite3.dll: one too old for the store's upserts is refused here, named in service.log.
+if (SqliteSetup.StartGate(Log) is { } sqliteExit) return sqliteExit;
 
 using var store = new StationStore(Path.Combine(config.DataDir, "station.db"));
 var runner = new ProcessRunner();

@@ -129,6 +129,46 @@ public sealed class MemoryLeverTests : IDisposable
     // --- SQLite ------------------------------------------------------------------------------------------------------
 
     [Fact]
+    public void A_Windows_SQLite_older_than_3_24_is_refused_with_one_line_and_exit_3()
+    {
+        var log = new List<string>();
+        int? exit = SqliteSetup.StartGate(() => 3_023_002, () => "3.23.2", log.Add);
+        Assert.Equal(3, exit);
+        Assert.Equal(SqliteSetup.ExitTooOld, exit);
+        string line = Assert.Single(log);
+        Assert.StartsWith("DID NOT RUN - ", line, StringComparison.Ordinal);
+        Assert.Contains("3.23.2", line, StringComparison.Ordinal);
+        Assert.Contains("3.24.0", line, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(3_024_000, "3.24.0")]
+    [InlineData(3_051_001, "3.51.1")]
+    public void SQLite_3_24_or_later_passes_the_start_check_silently(int number, string version)
+    {
+        var log = new List<string>();
+        Assert.Null(SqliteSetup.StartGate(() => number, () => version, log.Add));
+        Assert.Empty(log);
+    }
+
+    [Fact]
+    public void A_missing_winsqlite3_is_refused_not_thrown()
+    {
+        var log = new List<string>();
+        int? exit = SqliteSetup.StartGate(() => throw new DllNotFoundException("winsqlite3"), () => "?", log.Add);
+        Assert.Equal(SqliteSetup.ExitTooOld, exit);
+        Assert.Contains("could not be loaded", Assert.Single(log), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void This_Windows_SQLite_passes_the_start_check()
+    {
+        var log = new List<string>();
+        Assert.Null(SqliteSetup.StartGate(log.Add));
+        Assert.Empty(log);
+    }
+
+    [Fact]
     public void The_store_runs_on_the_SQLite_Windows_ships_and_no_bundled_copy_is_loaded()
     {
         using (var store = new StationStore(Path.Combine(_dir, "station.db")))
