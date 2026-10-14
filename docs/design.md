@@ -27,12 +27,17 @@ This document states the rules the service follows. Every key named here is desc
    connect, read, disconnect per poll, so the phone
    app can connect between reads; the reading fields in batched function-0x03 reads (notifications on ff01, requests
    on ff02), each answer reassembled to its full length and CRC-checked. An answer that timed out or came back invalid
-   ends its connection and the next request goes over a new one, so a late answer never fills another request; the
-   whole read is bounded by `readerTimeoutSec` plus 2 s whatever the Bluetooth stack does. A station it cannot reach
+   ends its connection and the next request goes over a new one; as a reconnect may reuse the radio link, an answer
+   that an earlier unanswered request of the poll could have sent (same byte count, so any one-register read) is set
+   aside and the registers are asked again, so a late answer never fills another request; the
+   whole read is bounded by `readerTimeoutSec` plus 2 s whatever the Bluetooth stack does, and one read runs at a time:
+   while a read abandoned at that bound is still alive, a poll starts no Bluetooth read (a miss, the cloud answers) and
+   the abandoned read releases its connection when it ends. A station it cannot reach
    is a missed reading, so the cloud fallback answers; so does a model with no AC input power field (EP600, EP760, EP800,
    EP2000: battery % only, no mains state; no connection is made); a model with no output-mode register (every V2 model,
    the EB3A) gets the mode derived as in the AC2a rule below (`BLE_MAINS` for AC input above 0 W); so does a station that encrypts its Bluetooth link (it opens with
-   a key-exchange message, "**" and a checksum, which no Modbus answer can be: the poll ends at once, no reading, and it is not connected to again until the service restarts); an
+   a key-exchange message, "**" and a checksum, which no Modbus answer can be: the poll ends at once, no reading, and it is not connected to again until the service restarts; `/api/health`
+   `bluetoothEncrypted` says so); an
    unknown model is read through the cloud alone when the cloud fallback is on. Ported from bluetti-bt-lib 0.1.8 (MIT, [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md)).
 3. HTTP on `127.0.0.1` only (port 18940 by default): the dashboard and the API ([api.md](api.md)). The installer adds
    a Desktop and Start menu shortcut that opens the page as a Chrome or Edge app window.

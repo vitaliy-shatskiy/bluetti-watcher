@@ -99,6 +99,7 @@ Stored events, same time defaults: `{ "events": [ { "at", "kind", "detail" } ] }
 | `dryRun` | true in a dry run. |
 | `lastPollAt`, `lastAcceptedAt` | Times of the last poll and the last accepted reading, or null. |
 | `lastSource` | `bluetooth` or `cloud`: the source of the last accepted reading, or null. |
+| `bluetoothEncrypted` | true once the station opened the encrypted Bluetooth handshake: the built-in reader reads unencrypted stations only, so it is not connected to again until the service restarts and the cloud fallback answers. Information, not a problem: `ok` does not change. false otherwise. |
 | `misses` | Misses in a row. |
 | `silent` | true while the station does not answer. |
 | `rawRows`, `aggregateRows` | Rows in the database. |
