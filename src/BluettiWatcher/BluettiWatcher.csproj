@@ -38,10 +38,10 @@
     <!-- GC conserve memory (0-9): no MSBuild property exists, the documented route is this runtimeconfig knob
          (learn.microsoft.com/dotnet/core/runtime-config/garbage-collector); NativeAOT reads it (GC.GetConfigurationVariables() shows GCConserveMem=5). -->
     <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
-    <!-- 256 KB GC regions in a 64 MB range: less GC bookkeeping and a smaller first region commit (-0.3 to -0.4 MB private
-         working set measured). The managed heap cannot grow past about 64 MB, far above what the service holds. -->
-    <RuntimeHostConfigurationOption Include="System.GC.RegionRange" Value="67108864" />
-    <RuntimeHostConfigurationOption Include="System.GC.RegionSize" Value="262144" />
+    <!-- No GCRegionRange / GCRegionSize: a 64 MB range crashed the exe (access violation, not an OutOfMemoryException)
+         under concurrent 30-day /api/history requests (peak private memory over 100 MB; tools/bench.ps1 runs that load),
+         and 256 KB regions in the default range cost 1.4 MB more private memory than the default regions. -->
+
   </ItemGroup>
   <ItemGroup>
     <!-- SQLite through Windows' own winsqlite3.dll (Storage/SqliteSetup.cs): the release is the exe alone, 1.9 MB smaller. -->
