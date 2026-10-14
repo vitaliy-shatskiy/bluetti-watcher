@@ -40,7 +40,8 @@ param(
     [string] $SnapshotScript,
     # Budgets.
     [double] $MaxPrivateMB = 15,
-    [double] $MaxExeMB = 5,
+    # NativeAOT keeps hydrated data (IlcDehydrate=false): a bigger file for less private memory.
+    [double] $MaxExeMB = 12,
     [double] $MaxStartupMs = 100,
     [double] $MaxIdleWakeupsPerMin = 30
 )
