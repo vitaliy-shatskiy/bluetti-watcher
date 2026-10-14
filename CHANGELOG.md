@@ -28,12 +28,14 @@ config, database and history stay. Requirements and details: [README](https://gi
 
 - SQLite is Windows' own `winsqlite3.dll` (System32): the release ships `BluettiWatcher.exe` alone, without
   `e_sqlite3.dll` (1.9 MB less). The SQLite version now follows Windows Update; an existing `station.db` opens as
-  before.
-- Memory: 256 KB garbage-collector regions in a 64 MB range; after each poll the native heaps' free memory is
+  before. It needs SQLite 3.24.0 or later in Windows: with an older one (or none) the service does not start, logs
+  one `DID NOT RUN` line with the version found and exits with code 3.
+- Memory: after each poll the native heaps' free memory is
   decommitted (HeapCompact, HeapOptimizeResources); the data and flag folders come from `%LOCALAPPDATA%` and
   `%ProgramData%` (the shell call only when a variable is missing or not an absolute path), so reading them loads no
-  shell32. Private bytes in `tools/bench.ps1`: 4.4 MB idle and 7.7 MB after a page load on a 30-day database (about
-  5 MB and 9 MB in 1.1).
+  shell32. Private bytes in `tools/bench.ps1`: 4.9 MB idle and 8.3 MB after a page load on a 30-day database (5.2 MB
+  and 9.1 MB for 1.1.1 on the same bench). The bench also sends 32 concurrent 30-day `/api/history` requests, three
+  times, and fails if the process exits.
 
 ## [1.1.1] - 2026-10-14
 
