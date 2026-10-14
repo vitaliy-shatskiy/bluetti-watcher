@@ -28,11 +28,13 @@ This document states the rules the service follows. Every key named here is desc
    app can connect between reads; the reading fields in batched function-0x03 reads (notifications on ff01, requests
    on ff02), each answer reassembled to its full length and CRC-checked. An answer that timed out or came back invalid
    ends its connection and the next request goes over a new one; as a reconnect may reuse the radio link, an answer
-   that an earlier unanswered request of the poll could have sent (same byte count, so any one-register read) is set
-   aside and the registers are asked again, so a late answer never fills another request; the
+   that an earlier unanswered request (of this poll or an earlier one) could have sent (same byte count, so any
+   one-register read) is set aside and the registers are asked again, so a late answer never fills another request; the
    whole read is bounded by `readerTimeoutSec` plus 2 s whatever the Bluetooth stack does, and one read runs at a time:
-   while a read abandoned at that bound is still alive, a poll starts no Bluetooth read (a miss, the cloud answers) and
-   the abandoned read releases its connection when it ends. A station it cannot reach
+   while a read abandoned at that bound is still alive, a poll starts no Bluetooth read (a miss, the cloud answers;
+   `/api/health` `bluetoothStalled`) and the abandoned read releases its connection when it ends; one still alive after
+   max(4 x that bound, 2 minutes) is given up (logged) and the next poll reads again, its late end touching no newer
+   read. A station it cannot reach
    is a missed reading, so the cloud fallback answers; so does a model with no AC input power field (EP600, EP760, EP800,
    EP2000: battery % only, no mains state; no connection is made); a model with no output-mode register (every V2 model,
    the EB3A) gets the mode derived as in the AC2a rule below (`BLE_MAINS` for AC input above 0 W); so does a station that encrypts its Bluetooth link (it opens with

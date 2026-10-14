@@ -100,6 +100,7 @@ Stored events, same time defaults: `{ "events": [ { "at", "kind", "detail" } ] }
 | `lastPollAt`, `lastAcceptedAt` | Times of the last poll and the last accepted reading, or null. |
 | `lastSource` | `bluetooth` or `cloud`: the source of the last accepted reading, or null. |
 | `bluetoothEncrypted` | true once the station opened the encrypted Bluetooth handshake: the built-in reader reads unencrypted stations only, so it is not connected to again until the service restarts and the cloud fallback answers. Information, not a problem: `ok` does not change. false otherwise. |
+| `bluetoothStalled` | true while a Bluetooth read abandoned at `readerTimeoutSec` plus 2 s (a Bluetooth call that ignored its timeout) is still running: no new Bluetooth read starts and the cloud fallback answers, until it ends or, after max(4 x that bound, 2 minutes), is given up. Information, not a problem: `ok` does not change. false otherwise. |
 | `misses` | Misses in a row. |
 | `silent` | true while the station does not answer. |
 | `rawRows`, `aggregateRows` | Rows in the database. |

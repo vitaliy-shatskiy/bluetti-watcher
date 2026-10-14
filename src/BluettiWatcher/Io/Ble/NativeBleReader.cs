@@ -52,11 +52,11 @@ internal interface IBleConnector
 /// few batched function-0x03 reads, nothing else written. A station that cannot be reached, or does not answer in time,
 /// is no reading (null), never an exception: the cloud fallback then answers. An answer that timed out or came back
 /// invalid ends its connection, and the next request goes over a new one; as a reconnect may reuse the radio link, an
-/// answer that an earlier unanswered request of the poll could have sent is set aside: a late answer never fills another
+/// answer that an earlier unanswered request (of this poll or an earlier one) could have sent is set aside: a late answer never fills another
 /// request. One read at a time: a poll while an abandoned read is alive is a miss.
 /// </summary>
 internal sealed partial class NativeBleReader(StationConfig config, IBleConnector connector, Action<string> log,
-    TimeSpan? commandTimeout = null, TimeSpan? hardMargin = null) : IStationReader
+    TimeSpan? commandTimeout = null, TimeSpan? hardMargin = null, TimeProvider? time = null) : IStationReader
 {
     /// <summary>The library's per-command wait (device_reader.py: wait_for(future, 5)).</summary>
     private readonly TimeSpan _commandTimeout = commandTimeout ?? TimeSpan.FromSeconds(5);
@@ -71,8 +71,24 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
     private string? _lastKey;
     /// <summary>The station opened the encrypted handshake once: it is not connected to again until the service restarts.</summary>
     private volatile bool _encrypted;
-    /// <summary>1 while a read runs (also one abandoned at the hard bound): a poll starts no Bluetooth read until it has ended.</summary>
-    private int _running;
+    private readonly TimeProvider _time = time ?? TimeProvider.System;
+    /// <summary>The shortest wait for an abandoned read before it is given up (4 x the read's hard budget when longer).</summary>
+    private static readonly TimeSpan MinStallCap = TimeSpan.FromMinutes(2);
+    private readonly Lock _flightLock = new();
+    /// <summary>The generation of the last read started; each read has its own, so a read given up never touches a newer one's state.</summary>
+    private long _generation;
+    /// <summary>The generation of the read a poll waits for (0 = none): no other starts until it ends or is given up at the cap.</summary>
+    private long _running;
+    private DateTimeOffset _runningSince;
+    /// <summary>The generation abandoned at the hard bound and still alive: Bluetooth is stalled.</summary>
+    private long _abandoned;
+    /// <summary>The generation of the read running on this async flow (0 outside a read); a superseded read logs nothing.</summary>
+    private static readonly AsyncLocal<long> FlowGeneration = new();
+    /// <summary>
+    /// Requests written whose answer has not come, oldest first, carried across polls: a reconnect may reuse the radio link,
+    /// so their answers may still arrive. Owned by the one live read; a read given up at the cap keeps its own.
+    /// </summary>
+    private List<ReadRequest> _unanswered = [];
     /// <summary>An abandoned read may log when it finally ends, beside the next poll's line.</summary>
     private readonly Lock _noteLock = new();
     private const string EncryptedMiss = EncryptedStationException.Cause + "; not connecting to it again until the service restarts";
@@ -84,23 +100,53 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
     /// <summary>True once the station opened the encrypted handshake: it is read through the cloud only until the service restarts.</summary>
     public bool StationEncrypted => _encrypted;
 
+    /// <summary>True while a read abandoned at the hard bound is still alive and waited for: no Bluetooth read starts until it ends or the cap gives it up.</summary>
+    public bool BluetoothStalled
+    {
+        get { lock (_flightLock) return _running != 0 && _abandoned == _running; }
+    }
+
     /// <summary>
     /// One read, bounded as a whole by readerTimeoutSec plus a margin, whatever the Bluetooth stack does. Single flight: while
     /// an earlier read is still alive (abandoned at that bound, a Bluetooth call ignoring its cancellation), no other starts;
-    /// the poll is a miss and the cloud fallback answers. The abandoned read releases its link when it ends.
+    /// the poll is a miss and the cloud fallback answers. The abandoned read releases its link when it ends; one still alive
+    /// after max(4 x the hard budget, 2 minutes) is given up, and the next poll reads again.
     /// </summary>
     public async Task<Reading?> ReadAsync(CancellationToken ct)
     {
         var limit = TimeSpan.FromSeconds(Math.Max(1, config.ReaderTimeoutSec)) + _hardMargin;
-        if (Interlocked.CompareExchange(ref _running, 1, 0) != 0)
+        long generation = 0;
+        string? gaveUp = null;
+        lock (_flightLock)
+        {
+            var now = _time.GetUtcNow();
+            var cap = TimeSpan.FromTicks(Math.Max(4 * limit.Ticks, MinStallCap.Ticks));
+            if (_running != 0 && now - _runningSince >= cap)
+            {
+                gaveUp = string.Create(CultureInfo.InvariantCulture,
+                    $"gave up waiting for a Bluetooth read still running after {cap.TotalSeconds:0} s (a Bluetooth call that never returned); reading again");
+                _running = 0;
+                _abandoned = 0;
+                _unanswered = [];   // the given-up read keeps its own list
+            }
+            if (_running == 0)
+            {
+                generation = ++_generation;
+                _running = generation;
+                _runningSince = now;
+            }
+        }
+        if (generation == 0)
             return Miss("the previous Bluetooth read is still running (a Bluetooth call ignored its timeout); no new one starts until it ends");
-        var read = SingleFlightAsync(ct);
+        if (gaveUp is not null) Note(gaveUp);
+        var read = SingleFlightAsync(generation, ct);
         try
         {
             return await read.WaitAsync(limit, ct);
         }
         catch (TimeoutException)
         {
+            lock (_flightLock) if (_running == generation) _abandoned = generation;
             // The abandoned read ends on its own, or never; its outcome is dropped (observed, so it never surfaces).
             _ = read.ContinueWith(static t => t.Exception, CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
@@ -109,16 +155,20 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         }
     }
 
-    /// <summary>The read itself; the single-flight flag is cleared only when it has really ended (its link released).</summary>
-    private async Task<Reading?> SingleFlightAsync(CancellationToken ct)
+    /// <summary>The read itself; its generation is released only when it has really ended (its link released), and only if no newer read took over.</summary>
+    private async Task<Reading?> SingleFlightAsync(long generation, CancellationToken ct)
     {
+        FlowGeneration.Value = generation;
         try
         {
             return await ReadOnceAsync(ct);
         }
         finally
         {
-            Volatile.Write(ref _running, 0);
+            lock (_flightLock)
+            {
+                if (_running == generation) { _running = 0; _abandoned = 0; }
+            }
         }
     }
 
@@ -135,8 +185,8 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         bool stopped = false;
         var values = new Dictionary<string, FieldValue>(StringComparer.Ordinal);
         var problems = new List<string>();
-        // Requests written this poll whose answer has not come (in order): a reconnect may reuse the radio link, so their answers may still arrive.
-        var unanswered = new List<ReadRequest>();
+        List<ReadRequest> unanswered;
+        lock (_flightLock) unanswered = _unanswered;
 
         // One request over the current connection, opening one first when there is none; null = no further request this poll.
         async Task<ResponseAssembler?> NextAsync(int start, int quantity)
@@ -235,13 +285,14 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         var late = new List<byte>();
         while (link.Notifications.TryRead(out var note)) late.AddRange(note);
         SettleLate(late, unanswered);
-        unanswered.Add(request);   // until its answer is in; a failed write may still have reached the station
+        Expect(unanswered, request);   // until its answer is in; a failed write may still have reached the station
         var answer = new ResponseAssembler(request);
         ReadRequest? setAside = null;
         int asks = 0;
-        using var wait = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        wait.CancelAfter(_commandTimeout);
         if (!await TryWriteAsync(link, request, answer, ct)) return answer;
+        // Each write gets its own per-command timeout: at most 1 + MaxReasks of them, inside the poll's budget (ct).
+        var wait = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        wait.CancelAfter(_commandTimeout);
         try
         {
             while (true)
@@ -260,8 +311,11 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
                 {
                     // The set-aside answer may have been this request's own (the earlier one then lost): ask the same registers
                     // again, so an answer that can only be theirs follows. Still the one read request, nothing else.
-                    unanswered.Add(request);
+                    Expect(unanswered, request);
                     if (!await TryWriteAsync(link, request, answer, ct)) return answer;
+                    wait.Dispose();
+                    wait = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    wait.CancelAfter(_commandTimeout);
                 }
             }
         }
@@ -278,7 +332,20 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
             answer.TimedOut(string.Create(CultureInfo.InvariantCulture,
                 $"the link dropped before the answer to registers {request.Start}+{request.Quantity} ({answer.Received} of {request.ExpectedLength} bytes): {e.Message}"));
         }
+        finally
+        {
+            wait.Dispose();
+        }
         return answer;
+    }
+
+    /// <summary>The most unanswered requests remembered; older ones are taken as lost, so a station that keeps garbling never grows the list.</summary>
+    private const int MaxUnanswered = 16;
+
+    private static void Expect(List<ReadRequest> unanswered, ReadRequest request)
+    {
+        unanswered.Add(request);
+        if (unanswered.Count > MaxUnanswered) unanswered.RemoveRange(0, unanswered.Count - MaxUnanswered);
     }
 
     /// <summary>Writes the request; false (the answer invalid, naming why) when the write fails.</summary>
@@ -335,6 +402,7 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
     {
         // The first line keeps its byte counts; a repeat that differs only in them is the same line.
         string key = ByteCounts.Replace(text, "(bytes)");
+        if (Superseded()) return;
         lock (_noteLock)
         {
             if (string.Equals(key, _lastKey, StringComparison.Ordinal)) return;
@@ -344,8 +412,16 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         }
     }
 
+    /// <summary>True on the flow of a read given up at the cap after a newer one started: it leaves the log state alone.</summary>
+    private bool Superseded()
+    {
+        long mine = FlowGeneration.Value;
+        return mine != 0 && mine != Interlocked.Read(ref _generation);
+    }
+
     private void Recovered()
     {
+        if (Superseded()) return;
         lock (_noteLock)
         {
             if (_lastMiss is null) return;

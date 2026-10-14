@@ -63,7 +63,7 @@ var started = time.GetLocalNow();
 // The outage schedule: its own task and cadence, never on the poll path; off (no source, no request) unless dtekWatcher.enabled.
 // The guard is the module's whole boundary: no call into it ever throws into this loop or into /api/now.
 using var dtek = DtekWatcherGuard.Create(config, store, time, Log);
-var api = new StationApi(config, service, store, time, started, dtek, Log, () => bluetooth.StationEncrypted);
+var api = new StationApi(config, service, store, time, started, dtek, Log, () => bluetooth.StationEncrypted, () => bluetooth.BluetoothStalled);
 using var http = new MiniHttpServer(IPAddress.Loopback, config.Port, api.HandleAsync, Log);
 try { http.Start(); }
 catch (SocketException e) { Log($"DID NOT RUN - 127.0.0.1:{config.Port} is taken ({e.SocketErrorCode})"); return 2; }
