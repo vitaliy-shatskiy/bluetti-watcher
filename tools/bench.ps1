@@ -40,7 +40,8 @@ param(
     [string] $SnapshotScript,
     # Budgets.
     [double] $MaxPrivateMB = 15,
-    # NativeAOT keeps hydrated data (IlcDehydrate=false): a bigger file for less private memory.
+    # NativeAOT keeps hydrated data (IlcDehydrate=false): a bigger file for less private memory. Since 1.2.0 the exe is
+    # the whole release (SQLite is Windows' winsqlite3.dll): 10.7 MB measured.
     [double] $MaxExeMB = 12,
     [double] $MaxStartupMs = 100,
     [double] $MaxIdleWakeupsPerMin = 30
@@ -78,8 +79,8 @@ try {
     $provisional = $busy.Count -gt 0
 
     # --- the seed database: no product code, no Python -----------------------------------------------------------------------
-    # The SQLite library the release ships (e_sqlite3.dll beside the exe; Windows' own winsqlite3.dll if the build has none),
-    # driven through a few inline C# P/Invokes. Same layout as StationStore makes for a new file (1 KB pages, WAL), so the
+    # The SQLite library the exe uses: Windows' own winsqlite3.dll since 1.2.0 (the release ships no SQLite library);
+    # a build before 1.2.0 has e_sqlite3.dll beside the exe, and that one is used. Driven through a few inline C# P/Invokes. Same layout as StationStore makes for a new file (1 KB pages, WAL), so the
     # exe's CREATE IF NOT EXISTS keeps it.
     $sqliteDll = Join-Path (Split-Path $Exe) 'e_sqlite3.dll'
     if (-not (Test-Path -LiteralPath $sqliteDll)) { $sqliteDll = Join-Path ([Environment]::SystemDirectory) 'winsqlite3.dll' }

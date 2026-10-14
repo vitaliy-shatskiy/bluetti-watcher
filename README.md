@@ -177,6 +177,12 @@ covers the gaps.
 `New-Item "$env:LOCALAPPDATA\bluetti-watcher\no-hibernate"`. It is checked on every poll; delete the file to turn
 hibernation back on.
 
+**Task Manager shows the service at under 1 MB of memory. Is that real?**
+Partly. After each poll the service hands its pages back to Windows (`trimWorkingSet`, on by default), so the "Memory"
+column (private working set) drops under 1 MB after each poll; an open page raises it again until the next poll. The memory it has committed (private bytes, about
+4 to 8 MB) does not change, and the pages fault back in at the next poll. `"trimWorkingSet": false` in config.json
+turns it off.
+
 **Other brands (EcoFlow, Jackery, ...)?**
 No. The reader speaks the BLUETTI protocol only.
 

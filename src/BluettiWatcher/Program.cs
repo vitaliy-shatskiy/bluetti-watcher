@@ -76,6 +76,7 @@ Log($"Bluetti Watcher started: http://127.0.0.1:{config.Port}/ · reader {(confi
 var serving = http.RunAsync(stop.Token);
 var scheduleReads = dtek.RunAsync(stop.Token);
 long lastCompact = time.GetTimestamp();
+var memory = new ProcessMemory(config, new Win32MemoryCalls(), Log);
 try
 {
     // The loop's own timing is monotonic: a wall-clock step never stalls polling. Readings keep their wall time.
@@ -98,6 +99,8 @@ try
             // Between polls the process keeps only what it holds: the garbage of the poll and of the page's requests goes back
             // to Windows (a workstation gen0 budget is sized from the CPU cache, tens of MB, and the exe takes no DOTNET_GC* variable).
             GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            // Then the native heaps' free memory, and the working set unless trimWorkingSet is false (Io/ProcessMemory.cs).
+            memory.AfterPoll();
         }
         // A page choice saved by POST /api/mode runs here, with the power-mode timeout, never the request's.
         try { await service.ApplyPendingAsync(stop.Token); }

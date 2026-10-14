@@ -37,6 +37,7 @@ internal sealed class StationStore : IDisposable
     {
         // A missing or empty file is new; anything else keeps the layout it has.
         bool isNew = !File.Exists(path) || new FileInfo(path).Length == 0;
+        SqliteSetup.Init();
         _db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString());
         _db.Open();   // waits on a busy file (the default 30 s busy timeout) rather than throwing
         using var ddl = _db.CreateCommand();
