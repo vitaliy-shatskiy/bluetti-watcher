@@ -161,6 +161,19 @@ public sealed class MemoryLeverTests : IDisposable
     }
 
     [Fact]
+    public void A_provider_that_fails_its_type_initializer_is_refused_not_thrown()
+    {
+        var log = new List<string>();
+        int? exit = SqliteSetup.StartGate(
+            () => throw new TypeInitializationException("BluettiWatcher.Storage.SqliteSetup", new DllNotFoundException("winsqlite3 missing")), () => "?", log.Add);
+        Assert.Equal(SqliteSetup.ExitTooOld, exit);
+        string line = Assert.Single(log);
+        Assert.StartsWith("DID NOT RUN - ", line, StringComparison.Ordinal);
+        Assert.Contains("could not be loaded", line, StringComparison.Ordinal);
+        Assert.Contains("winsqlite3 missing", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void This_Windows_SQLite_passes_the_start_check()
     {
         var log = new List<string>();

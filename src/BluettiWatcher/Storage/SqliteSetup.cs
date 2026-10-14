@@ -22,11 +22,10 @@ internal static class SqliteSetup
     }
 
     /// <summary>The start check on Windows' SQLite: null when it can run the store, else <see cref="ExitTooOld"/> after one log line.</summary>
-    public static int? StartGate(Action<string> log)
-    {
-        Init();
-        return StartGate(SQLitePCL.raw.sqlite3_libversion_number, () => SQLitePCL.raw.sqlite3_libversion().utf8_to_string(), log);
-    }
+    public static int? StartGate(Action<string> log) =>
+        // Init inside the version source: a missing winsqlite3.dll fails the provider's static constructor
+        // (TypeInitializationException), which the gate turns into its refusal line.
+        StartGate(() => { Init(); return SQLitePCL.raw.sqlite3_libversion_number(); }, () => SQLitePCL.raw.sqlite3_libversion().utf8_to_string(), log);
 
     /// <summary>The check behind <see cref="StartGate(Action{string})"/>, on any version source.</summary>
     internal static int? StartGate(Func<int> versionNumber, Func<string> version, Action<string> log)
@@ -41,9 +40,10 @@ internal static class SqliteSetup
             problem = number >= MinVersionNumber ? null
                 : $"SQLite {version()} in Windows (winsqlite3.dll) is older than {MinVersion}, which the database needs: update Windows";
         }
-        catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        catch (Exception e) when (e is TypeInitializationException or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
         {
-            problem = $"Windows' SQLite (winsqlite3.dll) could not be loaded ({e.GetType().Name}: {e.Message}); SQLite {MinVersion} or later is needed";
+            var cause = e is TypeInitializationException { InnerException: { } inner } ? inner : e;
+            problem = $"Windows' SQLite (winsqlite3.dll) could not be loaded ({cause.GetType().Name}: {cause.Message}); SQLite {MinVersion} or later is needed";
         }
         if (problem is null) return null;
         log($"DID NOT RUN - {problem}");
