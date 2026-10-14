@@ -53,7 +53,7 @@ var wake = new WakeKeeper(config, new ScheduledWakeTask(config, runner, Log), st
 using var cloudHttp = new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(10) };
 using var cloud = new BluettiCloudReader(config, cloudHttp, time, Log);
 // Bluetooth: the built-in WinRT reader, IoT V1 and V2 models, read only (Io/Ble).
-IStationReader bluetooth = new NativeBleReader(config, new WinRtBleConnector(), Log);
+var bluetooth = new NativeBleReader(config, new WinRtBleConnector(), Log);
 using var service = new StationService(config, new FallbackReader(bluetooth, cloud, () => config.CloudOn, r => StationDecision.Check(r, new StationState(), time.GetUtcNow(), config), Log), new PowerModeAdapter(config, runner, Log, new BluettiWatcher.PowerMode.InProcessPowerMode()),
     config.DryRun ? new DryRunHibernator(Log) : new ShutdownHibernator(runner, Log),
     new FlagFileReader(config.FlagFile, Log, config.PowerModeMutex), store, time, Log, wake, new StateActions(config, runner, store, time, Log));
@@ -63,7 +63,7 @@ var started = time.GetLocalNow();
 // The outage schedule: its own task and cadence, never on the poll path; off (no source, no request) unless dtekWatcher.enabled.
 // The guard is the module's whole boundary: no call into it ever throws into this loop or into /api/now.
 using var dtek = DtekWatcherGuard.Create(config, store, time, Log);
-var api = new StationApi(config, service, store, time, started, dtek, Log);
+var api = new StationApi(config, service, store, time, started, dtek, Log, () => bluetooth.StationEncrypted, () => bluetooth.BluetoothStalled);
 using var http = new MiniHttpServer(IPAddress.Loopback, config.Port, api.HandleAsync, Log);
 try { http.Start(); }
 catch (SocketException e) { Log($"DID NOT RUN - 127.0.0.1:{config.Port} is taken ({e.SocketErrorCode})"); return 2; }

@@ -96,7 +96,7 @@ Both were taken during a simulated cut (synthetic readings).
   AC180P, AP300, EL10, EL30V2, EL100V2, EP600, EP760, EP800, EP2000, Handsfree 1, PR30V2, PR100V2; untested. The EP600,
   EP760, EP800 and EP2000 report the battery level only over Bluetooth, which cannot tell mains from battery: they are not
   read over Bluetooth, and the cloud fallback answers (one log line says so). A station that encrypts its Bluetooth link
-  (it opens with a key exchange) is not read over Bluetooth, and not connected to again until the service restarts; with the cloud fallback on ([Optional modules](#optional-modules)) the cloud
+  (it opens with a key exchange) is not read over Bluetooth, and not connected to again until the service restarts (`/api/health` shows `bluetoothEncrypted: true`); with the cloud fallback on ([Optional modules](#optional-modules)) the cloud
   answers instead: battery, AC input and AC output.
 
 A report helps: [station support](https://github.com/vitaliy-shatskiy/bluetti-watcher/issues/new?template=station_support.yml).

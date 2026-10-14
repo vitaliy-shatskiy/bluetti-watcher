@@ -14,7 +14,8 @@ namespace BluettiWatcher.Http;
 /// POST /api/mode { "mode": "auto" | "eco" | "max" } behind <see cref="RequestGuard"/>.
 /// from / to: ISO 8601 or Unix milliseconds; step: seconds (default 60).
 /// </summary>
-internal sealed class StationApi(StationConfig config, StationService service, StationStore store, TimeProvider time, DateTimeOffset startedAt, IDtekWatcher? dtek = null, Action<string>? log = null)
+internal sealed class StationApi(StationConfig config, StationService service, StationStore store, TimeProvider time, DateTimeOffset startedAt, IDtekWatcher? dtek = null, Action<string>? log = null,
+    Func<bool>? bluetoothEncrypted = null, Func<bool>? bluetoothStalled = null)
 {
     /// <summary>The page, read once; encoded once per coding on first use; a reload with its ETag is a 304.</summary>
     private static readonly Lazy<StaticAsset> Page = new(() =>
@@ -478,6 +479,10 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             if (service.LastPollAt is { } p) w.WriteString("lastPollAt", Iso(p)); else w.WriteNull("lastPollAt");
             if (service.LastAcceptedAt is { } a) w.WriteString("lastAcceptedAt", Iso(a)); else w.WriteNull("lastAcceptedAt");
             if (service.LastAccepted?.Source is { } src) w.WriteString("lastSource", src); else w.WriteNull("lastSource");
+            // Information, not a problem: an encrypted station is read through the cloud fallback (ok stays as it is).
+            w.WriteBoolean("bluetoothEncrypted", bluetoothEncrypted?.Invoke() ?? false);
+            // Also information: a Bluetooth read abandoned at its hard bound is still alive (until it ends or is given up).
+            w.WriteBoolean("bluetoothStalled", bluetoothStalled?.Invoke() ?? false);
             w.WriteNumber("misses", s.Misses);
             w.WriteBoolean("silent", s.Silent);
             w.WriteNumber("rawRows", raw);

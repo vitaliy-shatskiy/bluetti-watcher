@@ -6,6 +6,39 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-14
+
+### Download
+
+| File | What it is |
+|---|---|
+| `bluetti-watcher-1.1.1-win-x64.zip` | The service, the power-mode scripts, the installer and the docs |
+| `bluetti-watcher-1.1.1-win-x64.zip.sha256` | Its SHA-256; check with `(Get-FileHash bluetti-watcher-1.1.1-win-x64.zip).Hash` |
+
+Upgrade: extract the zip, then `pwsh -NoProfile -File install.ps1` (a dry run) and the same with `-Apply`; your
+config, database and history stay. Requirements and details: [README](https://github.com/vitaliy-shatskiy/bluetti-watcher#quick-start).
+
+### Added
+
+- `/api/health` `bluetoothEncrypted`: true once the station opened the encrypted Bluetooth handshake (it is read
+  through the cloud fallback until the service restarts). Information only: `ok` stays as it is.
+- `/api/health` `bluetoothStalled`: true while a Bluetooth read abandoned at its time limit is still running.
+  Information only: `ok` stays as it is.
+
+### Fixed
+
+- Bluetooth, one read at a time: a read abandoned at `readerTimeoutSec` plus 2 s (a Bluetooth call that ignored its
+  timeout) could still hold its connection when the next poll opened another. While it is alive, a poll starts no
+  Bluetooth read (a miss; the line is not repeated while nothing else is logged in between; the cloud fallback
+  answers), and the abandoned read releases its connection when it ends. One still running after max(4 x that limit,
+  2 minutes) is given up with a log line and the next poll reads again; its late end changes nothing for newer reads.
+- Bluetooth, late answers: a reconnect may reuse the radio link, so the answer to a request that timed out could
+  still arrive on the next connection, also in the next poll; for one-register reads (the per-field fallback, and the
+  battery % of V2 models) every answer has the same byte count, so another register's value (for example AC input or
+  DC output W) could be taken as the battery percent. An answer an earlier unanswered request could have sent is now
+  set aside and the same registers are asked again, each with its own 5 s wait (still the one read request,
+  function 0x03).
+
 ## [1.1.0] - 2026-10-14
 
 ### Download
@@ -129,6 +162,7 @@ with `-Apply`. Requirements and details: [README](https://github.com/vitaliy-sha
 
 Source at this tag: [v1.0.0](https://github.com/vitaliy-shatskiy/bluetti-watcher/tree/v1.0.0)
 
-[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/releases/tag/v1.0.0
