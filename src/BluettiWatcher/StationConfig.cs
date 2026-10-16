@@ -24,6 +24,11 @@ internal sealed class StationConfig
     public double RateMinDrop { get; set; } = 3;
     /// <summary>The least span, minutes, the measured rate needs; with less the efficiency formula stands.</summary>
     public int RateMinSpanMin { get; set; } = 20;
+    /// <summary>
+    /// The battery time from a loss model fitted to this station's own discharges (idle draw and proportional loss, shrunk
+    /// toward <see cref="Efficiency"/>), with a P10-P90 range; false = the measured rate and the efficiency formula alone.
+    /// </summary>
+    public bool FittedRuntime { get; set; } = true;
 
     public int PollSec { get; set; } = 60;
     public int FastPollSec { get; set; } = 60;

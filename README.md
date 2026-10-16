@@ -11,7 +11,7 @@ battery runs out.**
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="The Bluetti Watcher dashboard during a power cut: battery 64 %, 6 h left at the current load" width="760">
+  <img src="docs/screenshot.png" alt="The Bluetti Watcher dashboard during a power cut: battery 77 %, time left with its range, the DTEK schedule" width="760">
 </p>
 
 In Ukraine scheduled and emergency outages are routine, and a desktop on a power station dies quietly when the battery
@@ -74,19 +74,24 @@ pwsh -NoProfile -File "$env:LOCALAPPDATA\bluetti-watcher\power-mode\power-mode.p
 - Built-in Bluetooth reader, nothing else to install: all 29 supported models, IoT V1 (AC200L/M/PL, AC300, AC500, EB3A, EP500/P) and V2 (AC2A/P, AC50B, AC60/P, AC70/P, AC180/T/P, AP300, EL10, EL30V2, EL100V2, EP600, EP760, EP800, EP2000, Handsfree 1, PR30V2, PR100V2); a station that encrypts its Bluetooth link is read through the cloud fallback.
 - Eco, emergency, stop, hibernate warning and hibernation by mains state and battery level, all thresholds configurable.
 - Guards against bad readings: implausible jumps rejected, a longer confirmation after the station recalibrates.
-- Dashboard in English and Ukrainian: battery, time left at the current load, power cuts, history, events.
+- Dashboard in English and Ukrainian: battery ring coloured by your levels, time left, power cuts, battery stats for 30 days,
+  charts from 1 hour to 30 days. Fits a phone, a Full HD and a 2K screen.
+- Battery time learned from your own station: a loss model (idle draw plus a share of the load) fitted to past cuts, the
+  eco-mode saving counted early in a cut, and a likely range once 5 cuts are recorded (`fittedRuntime`, on by default).
 - Manual control on the page: Auto, Eco, Max.
 - Your own command when a mode begins (`actions`), and a flag file other programs can read.
-- Optional wake timer and DTEK planned-outage schedule (Kyiv region).
+- Optional wake timer and DTEK planned-outage schedule (Kyiv region): an hour grid for today and tomorrow, checked against the station's own mains reading.
 - One NativeAOT exe, a per-user scheduled task, no window and no tray.
 
 ## Screenshots
 
 | English | Українська |
 |---|---|
-| <img src="docs/screenshot.png" alt="Dashboard in English" width="400"> | <img src="docs/screenshot-uk.png" alt="Dashboard in Ukrainian" width="400"> |
+| <img src="docs/screenshot-full.png" alt="Dashboard in English" width="400"> | <img src="docs/screenshot-uk-full.png" alt="Dashboard in Ukrainian" width="400"> |
 
-Both were taken during a simulated cut (synthetic readings).
+<p align="center"><img src="docs/screenshot-mobile.png" alt="Dashboard on a phone" width="260"></p>
+
+All were taken during a simulated cut (synthetic readings).
 
 ## Supported hardware
 

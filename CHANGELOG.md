@@ -6,6 +6,35 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-16
+
+### Download
+
+| File | What it is |
+|---|---|
+| `bluetti-watcher-1.3.0-win-x64.zip` | The service, the power-mode scripts, the installer and the docs |
+| `bluetti-watcher-1.3.0-win-x64.zip.sha256` | Its SHA-256. Check with `(Get-FileHash bluetti-watcher-1.3.0-win-x64.zip).Hash` |
+
+Upgrade: extract the zip, then `pwsh -NoProfile -File install.ps1` (a dry run) and the same with `-Apply`. Your
+config, database and history stay. Requirements and details: [README](https://github.com/vitaliy-shatskiy/bluetti-watcher#quick-start).
+
+### Added
+
+- `fittedRuntime` (default `true`): the battery time comes from a loss model (idle draw plus a proportional loss)
+  fitted to the station's own discharges, shrunk toward the configured `efficiency` while data are few, with a
+  P10-P90 range: `/api/now` adds `hoursLeftLow`, `hoursLeftHigh` and the `runtimeSource` value `model`. Chosen by a
+  leave-one-cut-out backtest that ships with the tests; `false` keeps the measured rate and the efficiency formula.
+  Early in a cut the model counts the load saving eco mode is about to bring, learned from the station's past eco
+  switches (none logged = no change).
+- Dashboard: chart ranges 7 and 30 days, a battery card for the last 30 days, and the DTEK schedule as an hour grid
+  for today and tomorrow. The DTEK banner says when power came back before the plan or went out outside it.
+
+### Changed
+
+- Dashboard redesign: the battery ring is coloured by the configured levels with a tooltip per zone, charts draw at
+  their real width, the layout fits a phone, Full HD and 2K, and texts are shorter. Still one HTML file, no external
+  libraries.
+
 ## [1.2.0] - 2026-10-14
 
 ### Download
@@ -193,7 +222,8 @@ with `-Apply`. Requirements and details: [README](https://github.com/vitaliy-sha
 
 Source at this tag: [v1.0.0](https://github.com/vitaliy-shatskiy/bluetti-watcher/tree/v1.0.0)
 
-[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.0.0...v1.1.0

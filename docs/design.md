@@ -252,8 +252,42 @@ battery levels and hibernate act on SOC thresholds alone and never read the esti
   capacity); the first is taken whole, each later one moves the learned value a quarter of the way, at most once per
   `rateWindowMin`; bounded 0.4-0.95 and never over `efficiency` + 0.05; kept in the database (meta
   `runtimeEfficiency`). A store failure while answering `/api/now` is logged once per kind and the answer goes on.
-- `/api/now` gives `runtimeSource` (`rate`, `learned` or `config`; null with no estimate), `ratePerHour` and
-  `learnedEfficiency`; the page names the method under the time left.
+- Fitted model (`fittedRuntime`, on by default), used before the measured rate once it rests on at least 2 hours of
+  clean data (as much as the prior weighs) and while there is no DC input (it was fitted without any; the measured
+  drop includes what the panels give): battery
+  drain = P0 + (1 + k) x output, in SOC points an hour = idle + per-Wh x output, fitted by least squares over the
+  clean stretches of every stored cut (from one SOC step to a later one, at least `rateMinDrop` points over
+  `rateMinSpanMin` minutes, no gap over `maxGapSec`, no DC input, no SOC rise, no step over `socJumpFloor`). The prior
+  (no idle draw, `efficiency` for every load) enters as two hours of discharge at half and one and a half times the
+  mean load, in pieces as long as the mean clean stretch (a stretch weighs its length squared in least squares, so
+  this makes the prior weigh exactly two hours of the station's own discharge); a new station starts at its configured
+  efficiency and its own data take over as they grow. A negative
+  idle draw refits with none; k outside 0-1 at `capacityWh` is rejected for the prior. SOC drops fix only capacity /
+  (1 + k), so P0 and k are read at the configured capacity. Hours = (SOC - target) / drain at the current load.
+- Its range: the P10-P90 of the drain error (real minus forecast, points an hour) over leave-one-cut-out forecasts
+  at 120 minutes ahead (else 60, else 30), published only with at least 30 of them from at least 5 cuts (a minute's
+  error is close to the next one; the cut is the independent unit); `hoursLeftLow` = SOC / (drain + P90),
+  `hoursLeftHigh` = SOC / (drain + P10), open when that drain may reach 0. Refitted from the newest 20 000 stored rows
+  (about 14 days of one-minute readings; older history is not read) at most every 15 minutes while `/api/now` is
+  asked, never on the poll; kept in meta `runtimeModel`. The refit reads the rows as stored (no bucketing) and the
+  `eco-on` events.
+- Eco mode: the model also learns what eco does to the load from the cuts whose `eco-on` event it finds. Per eco cut,
+  the delay from the cut's first reading and the mean load in the 15 minutes after eco over the mean load before. The
+  ratio is their geometric mean shrunk toward 1, the share is the eco cuts over the cuts long enough to have seen eco,
+  both with two cuts of prior weight, so one or two eco cuts move them only part of the way. In a new cut where eco has
+  not come on yet and the latest delay seen has not passed, the load is taken as current x (1 + share x (ratio - 1))
+  from the median delay on: the time left already counts the saving eco is about to bring. Once the cut's `eco-on` is
+  logged, or with no eco history at all, nothing changes: the loss model at the current load. The latest delay is
+  capped at `rateWindowMin` (the service sees the cut's start only that far back). The profile is kept after the
+  model in meta `runtimeModel`. A damaged one is dropped alone.
+- Chosen by a backtest (`tests/BluettiWatcher.Tests/Backtest`, run on request with `BW_BACKTEST_DB` and
+  `BW_BACKTEST_OUT`): every cut replayed, the SOC forecast 30, 60 and 120 minutes ahead scored on held-out cuts.
+  An exponentially weighted load and an hour-of-day profile were scored too and did not earn their place over the
+  current load. The eco profile below did, and ships.
+- `/api/now` gives `runtimeSource` (`model`, `rate`, `learned` or `config`; null with no estimate), `ratePerHour`
+  (the measured rate whenever the window yields one, with `rate` or `model`), `hoursLeftLow` / `hoursLeftHigh` (with
+  `model`) and `learnedEfficiency`. The page shows the range as a clock interval and a cone on the chart, and names the
+  method in the time-left tooltip.
 
 ## 8. Wake during a cut
 
@@ -320,6 +354,12 @@ changes a decision. Use it to stop a heavy program when eco starts, or to notify
 
 ## 10. Page and times
 
+- One HTML file with no external libraries. The battery ring takes its colour from the configured levels, with the
+  emergency and stop zones marked and a tooltip per zone. Charts span 1 hour to 30 days (7 and 30 days at 5 and 15
+  minute steps). A battery card sums the last 30 days: cuts, longest and average cut, energy from the battery, deepest
+  discharge, load on battery. The layout fits a phone (tooltips on tap), Full HD and 2K (scaled up from 2200 px).
+- The DTEK banner checks the plan against the last reading (at most 10 minutes old): power back before the planned end
+  shows green, an outage the schedule does not have shows amber.
 - The page speaks English and Ukrainian. The default is the browser's language (`uk*` -> Ukrainian, else English); the
   switch in the header remembers the choice in the browser.
 - Prose the page shows also comes with a stable code it translates by (`notes`, `ecoNote`, `modeErrorNote`,

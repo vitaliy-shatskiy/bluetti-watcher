@@ -53,6 +53,7 @@ Every key with its default, except `mac`, `actions` and the DTEK address, which 
   "rateWindowMin": 60,
   "rateMinDrop": 3,
   "rateMinSpanMin": 20,
+  "fittedRuntime": true,
 
   "powerMode": {
     "flagPath": "C:\\ProgramData\\BluettiWatcher\\power-mode.json",
@@ -152,6 +153,7 @@ config.json still loads, and `service.log` names them once at start.
 | `rateWindowMin` | int | 60 | Minutes of readings off mains the measured discharge rate looks back over. |
 | `rateMinDrop` | number | 3 | Least SOC drop, points, the measured rate needs. |
 | `rateMinSpanMin` | int | 20 | Least span, minutes, the measured rate needs. |
+| `fittedRuntime` | bool | true | Battery time from a loss model fitted to this station's own discharges, with a P10-P90 range; `false` = the measured rate and the efficiency formula alone. |
 
 ## Power mode and actions
 
