@@ -20,6 +20,9 @@ config, database and history stay. Requirements and details: [README](https://gi
 
 ### Fixed
 
+- Bluetooth: after a restart of the PC, Windows did not find a station it had not paired with until something scanned
+  for it, so every poll fell back to the cloud. When the station is not found at its address, the watcher now scans for
+  it for up to 8 s and opens it again. A station still not found names whether the scan saw it.
 - Cloud fallback: a slow cloud answer no longer leaves a grey gap on the chart. Each cloud request may take 15 s
   (was 10 s), and a device list request that got no answer at all (timed out, connection failed) is sent once more
   in the same poll. An answer is never sent again, nor is a token refresh. The log names a second-try answer, and

@@ -81,6 +81,48 @@ public class ModbusFrameTests
         Assert.DoesNotContain("DescriptorValue.Indicate", src, StringComparison.Ordinal);
     }
 
+    /// <summary>Windows answers null for an unpaired station it has not seen since boot: a scan, then one more open.</summary>
+    [Theory]
+    [InlineData(new[] { true }, 0)]
+    [InlineData(new[] { false, true }, 1)]
+    public async Task A_station_windows_does_not_know_is_scanned_for_and_opened_again(bool[] answers, int scans)
+    {
+        var left = new Queue<bool>(answers);
+        var caps = new List<TimeSpan>();
+        var (found, notFound) = await WinRtBleConnector.FindAsync(
+            _ => Task.FromResult(left.Dequeue() ? "dev" : null),
+            (cap, _) => { caps.Add(cap); return Task.FromResult(true); }, CancellationToken.None);
+        Assert.Equal("dev", found);
+        Assert.Null(notFound);
+        Assert.Empty(left);
+        Assert.Equal(scans, caps.Count);
+        Assert.All(caps, c => Assert.Equal(TimeSpan.FromSeconds(8), c));
+    }
+
+    [Theory]
+    [InlineData(false, "the station was not found at its address (not seen in an 8 s scan)")]
+    [InlineData(true, "the station was not found at its address (an 8 s scan saw it, Windows still did not open it)")]
+    public async Task A_station_still_not_opened_after_the_scan_names_it(bool seen, string why)
+    {
+        int opens = 0;
+        var (found, notFound) = await WinRtBleConnector.FindAsync<string>(
+            _ => { opens++; return Task.FromResult<string?>(null); }, (_, _) => Task.FromResult(seen), CancellationToken.None);
+        Assert.Null(found);
+        Assert.Equal(why, notFound);
+        Assert.Equal(2, opens);
+    }
+
+    [Fact]
+    public async Task A_cancelled_scan_opens_no_more()
+    {
+        int opens = 0;
+        using var cts = new CancellationTokenSource();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => WinRtBleConnector.FindAsync<string>(
+            _ => { opens++; return Task.FromResult<string?>(null); },
+            async (_, ct) => { await cts.CancelAsync(); await Task.Delay(TimeSpan.FromSeconds(30), ct); return true; }, cts.Token));
+        Assert.Equal(1, opens);
+    }
+
     private static string Repo([System.Runtime.CompilerServices.CallerFilePath] string here = "") => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(here)!, "..", ".."));
 
     internal static byte[] Answer(params ushort[] words)
