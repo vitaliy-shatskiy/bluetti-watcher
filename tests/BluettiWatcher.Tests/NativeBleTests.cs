@@ -81,6 +81,21 @@ public class ModbusFrameTests
         Assert.DoesNotContain("DescriptorValue.Indicate", src, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Windows raises Disconnected during GATT setup while the link works: the disconnect watch starts only after the
+    /// notification subscription, and the status is checked right then, so a real disconnect during setup still ends the link.
+    /// </summary>
+    [Fact]
+    public void The_winrt_link_watches_disconnects_only_after_the_subscription()
+    {
+        string src = File.ReadAllText(Path.Combine(Repo(), "src", "BluettiWatcher", "Io", "Ble", "WinRtBleLink.cs"));
+        Assert.Equal(1, System.Text.RegularExpressions.Regex.Count(src, @"ConnectionStatusChanged \+="));
+        var watch = System.Text.RegularExpressions.Regex.Match(src, @"ConnectionStatusChanged \+= OnConnectionStatusChanged;\s*_watching = true;\s*EndIfDisconnected\(\);");
+        Assert.True(watch.Success, "the subscription is not followed by the status check");
+        int cccd = src.IndexOf(".WriteClientCharacteristicConfigurationDescriptorAsync(", StringComparison.Ordinal);
+        Assert.InRange(cccd, 0, watch.Index);
+    }
+
     /// <summary>Windows answers null for an unpaired station it has not seen since boot: a scan, then one more open.</summary>
     [Theory]
     [InlineData(new[] { true }, 0)]
@@ -682,7 +697,7 @@ public class NativeBleReaderTests
         Assert.True(first.Disposed);
         Assert.Equal(36, first.Written[^1].Start);
         Assert.Equal(36, second.Written[0].Start);
-        Assert.Empty(log);
+        Assert.Contains("registers 36+1 asked again over a new connection (first: no complete answer to registers 36+1", Assert.Single(log), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -722,8 +737,10 @@ public class NativeBleReaderTests
         await using var second = new ScriptedLink(Mtu20);
         var links = new Queue<IBleLink>([ended, second]);
         var conn = new ScriptedConnector(() => new BleOpen(links.Dequeue(), null));
-        var r = await Reader(conn, []).ReadAsync(CancellationToken.None);
+        var log = new List<string>();
+        var r = await Reader(conn, log).ReadAsync(CancellationToken.None);
         Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50), r);
+        Assert.Contains("native BLE: registers 36+8 asked again over a new connection (first: the link dropped", Assert.Single(log), StringComparison.Ordinal);
         Assert.Equal(2, conn.Opens);
         Assert.True(ended.Disposed);
         Assert.Equal([36], ended.Written.Select(w => w.Start));
@@ -749,11 +766,25 @@ public class NativeBleReaderTests
         await using var second = new ScriptedLink(Mtu20);
         var links = new Queue<IBleLink>([first, second]);
         var conn = new ScriptedConnector(() => new BleOpen(links.Dequeue(), null));
-        var r = await Reader(conn, []).ReadAsync(CancellationToken.None);
+        var log = new List<string>();
+        var r = await Reader(conn, log).ReadAsync(CancellationToken.None);
         Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50), r);
+        Assert.Equal("native BLE: registers 36+8 asked again over a new connection (first: no complete answer to registers 36+8 within 0.3 s (0 of 21 bytes))", Assert.Single(log));
         Assert.Equal(2, conn.Opens);
         Assert.Single(first.Written);
         Assert.Equal(2, second.Written.Count);
+    }
+
+    /// <summary>A station that loses every first connection is said once, not each poll, and is no miss ("reading again").</summary>
+    [Fact]
+    public async Task A_request_asked_again_every_poll_is_logged_once()
+    {
+        int opens = 0;
+        var conn = new ScriptedConnector(() => new BleOpen(opens++ % 2 == 0 ? new ScriptedLink(r => r.Start == 36 ? [] : Mtu20(r)) : new ScriptedLink(Mtu20), null));
+        var log = new List<string>();
+        var reader = Reader(conn, log);
+        for (int i = 0; i < 3; i++) Assert.Equal(85, (await reader.ReadAsync(CancellationToken.None))?.Soc);
+        Assert.Contains("asked again over a new connection", Assert.Single(log), StringComparison.Ordinal);
     }
 
     [Fact]

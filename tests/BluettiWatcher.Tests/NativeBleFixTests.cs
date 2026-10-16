@@ -125,7 +125,7 @@ public class NativeBleLinkLossTests
         Assert.Equal([36, 70], second.Written.Select(w => (w[2] << 8) | w[3]));   // the frames' start registers
         Assert.NotNull(r);
         Assert.Equal(85, r.Soc);
-        Assert.Empty(log);
+        Assert.Contains("registers 36+8 asked again over a new connection (first: the request for registers 36+8 could not be written", Assert.Single(log), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -141,7 +141,7 @@ public class NativeBleLinkLossTests
         Assert.True(first.Disposed);
         Assert.NotNull(r);
         Assert.Equal(85, r.Soc);   // asked again over the new connection
-        Assert.Empty(log);
+        Assert.Contains("registers 36+8 asked again over a new connection (first: the link dropped", Assert.Single(log), StringComparison.Ordinal);
     }
 
     [Fact]
