@@ -98,13 +98,13 @@ internal sealed class WinRtBleLink(BluetoothLEDevice device) : IBleLink
     private readonly List<GattDeviceService> _services = [];
     private GattCharacteristic? _notify;
     private GattCharacteristic? _write;
+    private bool _watching;
 
     public ChannelReader<byte[]> Notifications => _notes.Reader;
 
     /// <summary>Null when the link is ready; otherwise why not.</summary>
     internal async Task<string?> InitAsync(int attempts, CancellationToken ct)
     {
-        device.ConnectionStatusChanged += OnConnectionStatusChanged;
         GattDeviceServicesResult? services = null;
         for (int i = 1; i <= attempts; i++)
         {
@@ -123,7 +123,13 @@ internal sealed class WinRtBleLink(BluetoothLEDevice device) : IBleLink
         if (_notify is null || _write is null) return "the station has no ff01/ff02 characteristic";
         _notify.ValueChanged += OnValueChanged;
         var sub = await _notify.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify).AsTask(ct);
-        return sub == GattCommunicationStatus.Success ? null : $"notification subscription: {sub}";
+        if (sub != GattCommunicationStatus.Success) return $"notification subscription: {sub}";
+        // Windows raises Disconnected during the GATT setup above while the link goes on working: watched only from here on.
+        // A link really gone by now ends as a later disconnect does, so none is lost.
+        device.ConnectionStatusChanged += OnConnectionStatusChanged;
+        _watching = true;
+        EndIfDisconnected();
+        return null;
     }
 
     private static async Task<GattCharacteristic?> Find(GattDeviceService service, Guid uuid, CancellationToken ct)
@@ -150,9 +156,11 @@ internal sealed class WinRtBleLink(BluetoothLEDevice device) : IBleLink
         _notes.Writer.TryWrite(bytes);
     }
 
-    private void OnConnectionStatusChanged(BluetoothLEDevice sender, object args)
+    private void OnConnectionStatusChanged(BluetoothLEDevice sender, object args) => EndIfDisconnected();
+
+    private void EndIfDisconnected()
     {
-        if (sender.ConnectionStatus == BluetoothConnectionStatus.Disconnected) _notes.Writer.TryComplete(new IOException("the station disconnected"));
+        if (device.ConnectionStatus == BluetoothConnectionStatus.Disconnected) _notes.Writer.TryComplete(new IOException("the station disconnected"));
     }
 
     /// <summary>
@@ -161,7 +169,7 @@ internal sealed class WinRtBleLink(BluetoothLEDevice device) : IBleLink
     /// </summary>
     public ValueTask DisposeAsync()
     {
-        device.ConnectionStatusChanged -= OnConnectionStatusChanged;
+        if (_watching) device.ConnectionStatusChanged -= OnConnectionStatusChanged;
         if (_notify is not null) _notify.ValueChanged -= OnValueChanged;
         _notes.Writer.TryComplete();
         foreach (var s in _services) s.Dispose();

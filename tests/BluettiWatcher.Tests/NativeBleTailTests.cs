@@ -211,7 +211,7 @@ public class NativeBleLateAnswerTests
         Assert.NotNull(r);
         Assert.Equal(85, r.Soc);   // never 12, register 39's value
         Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, null, 2301, 50), r);
-        Assert.Equal(2, conn.Opens);
+        Assert.Equal(3, conn.Opens);   // 39 is asked again over a second connection and times out again
         Assert.True(links[0].Disposed);
     }
 
@@ -220,13 +220,13 @@ public class NativeBleLateAnswerTests
     public async Task A_late_answer_in_before_the_next_write_is_set_aside_and_the_next_register_reads()
     {
         var radio = Channel.CreateUnbounded<byte[]>();
+        var links = new List<SharedRadioLink>();
         void Script(ReadRequest r, ChannelWriter<byte[]> w)
         {
             if (r.Start == 36 && r.Quantity > 1) { w.TryWrite(ModbusFrameTests.ExceptionAnswer(0x02)); return; }
-            if (r.Start == 39) return;
+            if (r.Start == 39 && links.Count == 1) return;   // only the first connection leaves 39 unanswered
             w.TryWrite(Answer(r.Start, r.Quantity));
         }
-        var links = new List<SharedRadioLink>();
         var conn = new TaskConnector(n =>
         {
             if (n == 2) radio.Writer.TryWrite(Answer(39, 1));   // 39's answer lands while the new connection opens
@@ -235,8 +235,9 @@ public class NativeBleLateAnswerTests
             return Task.FromResult(new BleOpen(l, null));
         });
         var r = await Reader(conn, []).ReadAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, null, 2301, 50), r);
-        // Settled before 43 was asked: 43's answer was taken at once, not set aside and asked again.
+        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50), r);   // 39 asked again over the new connection
+        // Settled before 39 was asked again and 43 asked: neither answer was set aside and asked again.
+        Assert.Equal(2, links.SelectMany(l => l.Written).Count(w => w.Start == 39));
         Assert.Single(links.SelectMany(l => l.Written), w => w.Start == 43);
     }
 
@@ -258,7 +259,8 @@ public class NativeBleLateAnswerTests
         var conn = new TaskConnector(_ => { var l = new SharedRadioLink(radio, Script); links.Add(l); return Task.FromResult(new BleOpen(l, null)); });
         var r = await Reader(conn, []).ReadAsync(TestContext.Current.CancellationToken);
         Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, null, 2301, 50), r);
-        Assert.Equal(2, links.SelectMany(l => l.Written).Count(w => w.Start == 43));
+        // 39 is asked twice (once more over a new connection), so 43's first two answers may be 39's late ones: set aside.
+        Assert.Equal(3, links.SelectMany(l => l.Written).Count(w => w.Start == 43));
     }
 
     /// <summary>A late batch answer has another byte count than the next request's: it is refused and that connection ends.</summary>
@@ -278,10 +280,11 @@ public class NativeBleLateAnswerTests
         var log = new List<string>();
         var r = await Reader(conn, log).ReadAsync(TestContext.Current.CancellationToken);
         Assert.Null(r);   // 36+8 timed out, 70+5 refused: no field at all, the 36+8 values never decoded as 70+5
-        Assert.Equal(2, conn.Opens);
+        Assert.Equal(3, conn.Opens);   // 36+8 asked again over a second connection; 70+5's re-ask exceeds MaxReconnects
         Assert.All(links, l => Assert.True(l.Disposed));
         Assert.Equal([(36, 8)], links[0].Written.Select(w => (w.Start, w.Quantity)));
-        Assert.Equal([(70, 5)], links[1].Written.Select(w => (w.Start, w.Quantity)));
+        Assert.Equal([(36, 8)], links[1].Written.Select(w => (w.Start, w.Quantity)));
+        Assert.Equal([(70, 5)], links[2].Written.Select(w => (w.Start, w.Quantity)));
         Assert.Contains("byte count 16, expected 10", string.Join("\n", log), StringComparison.Ordinal);
     }
 

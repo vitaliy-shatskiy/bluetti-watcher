@@ -188,8 +188,16 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         List<ReadRequest> unanswered;
         lock (_flightLock) unanswered = _unanswered;
 
-        // One request over the current connection, opening one first when there is none; null = no further request this poll.
+        // A request whose answer was lost (its connection dropped, timed out or garbled) is asked once more over a new connection,
+        // so a spurious disconnect never costs its fields; the first answer stands when no new connection opens.
         async Task<ResponseAssembler?> NextAsync(int start, int quantity)
+        {
+            var answer = await AskAsync(start, quantity);
+            return answer?.State == AssemblyState.Invalid ? await AskAsync(start, quantity) ?? answer : answer;
+        }
+
+        // One request over the current connection, opening one first when there is none; null = no further request this poll.
+        async Task<ResponseAssembler?> AskAsync(int start, int quantity)
         {
             if (stopped) return null;
             if (link is null)
