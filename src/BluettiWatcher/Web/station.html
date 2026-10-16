@@ -127,14 +127,14 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
   .ring svg{width:220px;height:220px}.ring .wh{font-size:11px;line-height:15px}.ring{padding:12px}
   td,th{padding:6px 4px;font-size:11px}.bar{flex-wrap:wrap}}
 </style></head><body><main>
-<div class="card head"><div class="brand"><svg viewBox="0 0 34 34" aria-hidden="true"><rect x="1" y="1" width="32" height="32" rx="9" fill="#26282c"/><rect x="8" y="11" width="16" height="12" rx="2.5" fill="none" stroke="#5fad65" stroke-width="2"/><rect x="24.5" y="14.5" width="2.5" height="5" rx="1" fill="#5fad65"/><path d="M17 13.5l-3.5 4.5h3l-1 3.5 3.5-4.5h-3z" fill="#5fad65"/></svg><div><h1 id="title"></h1><div class="sub" id="readAt"></div></div></div><div class="chips"><span class="chip" id="gridChip"><i></i><span></span></span><span class="chip" id="ecoChip" hidden><i></i><span></span></span><span class="chip warn" id="staleChip" hidden><i></i><span></span></span><span class="chip acc" id="maxChip" hidden><i></i><span></span></span><span class="chip" id="noteChip" hidden><i></i><span></span></span></div><span class="sp"></span><div class="modebox"><div class="seg" id="modeSeg" role="group" data-i18n-aria="powerMode"><button data-m="auto" data-i18n="modeAuto" data-i18n-title="modeAutoTip"></button><button data-m="eco" data-i18n="modeEco" data-i18n-title="modeEcoTip"></button><button data-m="max" data-i18n="modeMax" data-i18n-title="modeMaxTip"></button></div><div class="hint" id="modeHint"></div></div><div class="seg" id="langSeg" role="group" data-i18n-aria="language"><button data-lang="en" data-i18n="langEn"></button><button data-lang="uk" data-i18n="langUk"></button></div></div>
+<div class="card head"><div class="brand"><svg viewBox="0 0 34 34" aria-hidden="true"><rect x="1" y="1" width="32" height="32" rx="9" fill="#26282c"/><rect x="8" y="11" width="16" height="12" rx="2.5" fill="none" stroke="#5fad65" stroke-width="2"/><rect x="24.5" y="14.5" width="2.5" height="5" rx="1" fill="#5fad65"/><path d="M17 13.5l-3.5 4.5h3l-1 3.5 3.5-4.5h-3z" fill="#5fad65"/></svg><div><h1 id="title"></h1><div class="sub" id="readAt"></div></div></div><div class="chips"><span class="chip" id="gridChip"><i></i><span></span></span><span class="chip" id="ecoChip" hidden><i></i><span></span></span><span class="chip warn" id="staleChip" hidden><i></i><span></span></span><span class="chip acc" id="maxChip" hidden><i></i><span></span></span><span class="chip" id="noteChip" hidden><i></i><span></span></span></div><span class="sp"></span><div class="modebox"><div class="seg" id="modeSeg" role="group" data-i18n-aria="powerMode"><button data-m="auto" data-i18n="modeAuto" data-i18n-title="modeAutoTip"></button><button data-m="eco" data-i18n="modeEco" data-i18n-title="modeEcoTip"></button><button data-m="max" data-i18n="modeMax" data-i18n-title="modeMaxTip"></button></div></div><div class="seg" id="langSeg" role="group" data-i18n-aria="language"><button data-lang="en" data-i18n="langEn"></button><button data-lang="uk" data-i18n="langUk"></button></div></div>
 
 <div class="top">
   <div class="card ring"><svg id="ring" viewBox="0 0 240 240" aria-hidden="true"><circle cx="120" cy="120" r="100" fill="none" stroke="#26282c" stroke-width="16"/><g transform="rotate(-90 120 120)" fill="none" stroke-width="16"><circle id="zoneR" cx="120" cy="120" r="100" stroke="#db5c5c" stroke-opacity=".22"/><circle id="zoneA" cx="120" cy="120" r="100" stroke="#e0a53a" stroke-opacity=".22"/><circle class="arc" id="arc" cx="120" cy="120" r="100" stroke="#5fad65" stroke-linecap="round" style="stroke-dasharray:0 629"/></g><g id="ticks"></g></svg>
     <div class="mid"><div class="pct" id="pct"></div><div class="wh" id="wh"></div><div class="wh" id="trend"></div></div></div>
   <div class="tiles">
     <div class="card"><div class="k" data-i18n="loadNow"></div><div class="v" id="load"></div><svg id="spark" viewBox="0 0 200 34" style="width:100%;height:34px;display:block"></svg><div class="s" id="loadSub"></div></div>
-    <div class="card"><div class="k" data-i18n="timeLeft"></div><div class="v" id="left"></div><div class="s" id="leftSub"></div><div class="s" id="leftSub2"></div></div>
+    <div class="card"><div class="k" data-i18n="timeLeft"></div><div class="v" id="left"></div><div class="s" id="leftSub"></div></div>
     <div class="card"><div class="k" id="cutK" data-i18n="thisCut"></div><div class="v" id="cut"></div><div class="s" id="cutSub"></div><div class="s" id="cutSub2"></div></div>
     <div class="card"><div class="k" data-i18n="reaches"></div><div id="reach"></div></div>
     <div class="card"><div class="k" data-i18n="output"></div><div class="v" id="volt"></div><div class="s" id="voltSub"></div></div>
@@ -152,20 +152,19 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
   <div class="legend"><span><b style="background:var(--ok)"></b><span data-i18n="legendBattery"></span></span><span><b style="background:var(--load)"></b><span data-i18n="legendLoad"></span></span><span><b style="background:var(--warn);opacity:.5;height:10px"></b><span data-i18n="legendGridOff"></span></span><span><b style="background:repeating-linear-gradient(135deg,#9a9da4 0 2px,rgba(139,142,149,.15) 2px 5px);height:10px"></b><span data-i18n="legendNoData"></span></span><span id="count"></span></div>
 </div>
 
-<div class="card" id="battCard"><h2 id="battTitle"></h2><div class="kpis" id="battKpis"></div><div class="note" id="battNote"></div></div>
+<div class="card" id="battCard"><h2 id="battTitle"></h2><div class="kpis" id="battKpis"></div></div>
 
 <div class="two">
-  <div class="card"><h2 data-i18n="energyPerHour"></h2><svg id="hours" viewBox="0 0 560 150" style="width:100%;height:auto;display:block"></svg><div class="note" id="hoursNote"></div></div>
-  <div class="card"><h2 data-i18n="cyclesTitle"></h2><div id="cycles"></div><div class="note" data-i18n="cyclesNote"></div></div>
+  <div class="card"><h2 data-i18n="energyPerHour" data-i18n-title="hoursTip"></h2><svg id="hours" viewBox="0 0 560 150" style="width:100%;height:auto;display:block"></svg></div>
+  <div class="card"><h2 data-i18n="cyclesTitle" data-i18n-title="cyclesTip"></h2><div id="cycles"></div></div>
 </div>
 
 <div class="two">
-  <div class="card"><h2 data-i18n="loadRangeTitle"></h2><div id="loadStats"></div><div class="note" data-i18n="loadNote"></div></div>
+  <div class="card"><h2 data-i18n="loadRangeTitle" data-i18n-title="loadTip"></h2><div id="loadStats"></div></div>
   <div class="card"><h2 data-i18n="powerCuts"></h2><table><thead><tr><th data-i18n="colStart"></th><th data-i18n="colEnd"></th><th data-i18n="colLength"></th><th data-i18n="colBattery"></th><th data-i18n="colUsed"></th></tr></thead><tbody id="cuts"></tbody></table></div>
 </div>
 
-<div class="card"><details><summary data-i18n="lastReadings"></summary><table><thead><tr><th data-i18n="colTime"></th><th data-i18n="colBattery"></th><th data-i18n="colLoad"></th><th data-i18n="colInput"></th><th data-i18n="colGrid"></th><th data-i18n="colVolt"></th><th data-i18n="colHz"></th></tr></thead><tbody id="rows"></tbody></table></details>
-<div class="note" data-i18n="readOnlyNote"></div></div>
+<div class="card"><details><summary data-i18n="lastReadings"></summary><table><thead><tr><th data-i18n="colTime"></th><th data-i18n="colBattery"></th><th data-i18n="colLoad"></th><th data-i18n="colInput"></th><th data-i18n="colGrid"></th><th data-i18n="colVolt"></th><th data-i18n="colHz"></th></tr></thead><tbody id="rows"></tbody></table></details></div>
 </main><div id="tip"></div>
 <script>
 // Every visible text of the page, per language. A key used anywhere below must exist in both (a test checks).
@@ -177,11 +176,11 @@ en: {
   language: "Language",
   powerMode: "Power mode",
   modeAuto: "Auto",
-  modeAutoTip: "Eco on a power cut; every mode lifted when mains is back",
+  modeAutoTip: "Eco during a power cut",
   modeEco: "Eco",
-  modeEcoTip: "Eco now, until the next mains change or Auto",
+  modeEcoTip: "Eco now",
   modeMax: "Max",
-  modeMaxTip: "Balanced + Best performance, until the next mains change or Auto; the battery levels still apply",
+  modeMaxTip: "Full performance until mains changes",
   loadNow: "Load now",
   timeLeft: "Time left",
   thisCut: "This power cut",
@@ -195,8 +194,6 @@ en: {
   hoursN: "{n} h",
   daysN: "{n} d",
   battTitle: "Battery, last {n} d",
-  battLoading: "reading the history…",
-  battSince: "since {d}",
   kCuts: "Power cuts",
   kOnBattery: "{d} on battery",
   kLongest: "Longest cut",
@@ -214,9 +211,7 @@ en: {
   noDataTip: "no data {a}–{b} ({d})",
   energyPerHour: "Energy per hour",
   cyclesTitle: "What cycles on top of the base",
-  cyclesNote: "A cycle = the load staying 35 W or more above the base for 2 to 45 minutes.",
   loadRangeTitle: "Load, selected range",
-  loadNote: "The station measures everything plugged into it as one number. Base = the quietest 15 % of the range; on top of base = how far the peak rises above it.",
   powerCuts: "Power cuts",
   colStart: "Start",
   colEnd: "End",
@@ -230,7 +225,6 @@ en: {
   colGrid: "Grid",
   colVolt: "Volt",
   colHz: "Hz",
-  readOnlyNote: "Read only: this page and its reader never send a command to the station.",
   uW: "W",
   uWh: "Wh",
   uH: "h",
@@ -253,24 +247,21 @@ en: {
   input: "input {w}",
   emptyAbout: "empty about {at}",
   tomorrow: "tomorrow",
-  fromMeasured: "from the measured drop",
-  byCapacity: "by capacity ({cap} × {eff} %), no measured drop yet",
-  byCapacityLearned: "by capacity ({cap} × {eff} % learned), no measured drop yet",
+  fromMeasured: "By the measured drop",
+  byCapacity: "By capacity, no measured drop yet",
   recordedSince: "recorded since {at} · {from}% → {to}%",
-  usedSockets: "{e} used through the sockets",
+  usedSockets: "{e} used",
   noneRecorded: "none recorded",
   noneRecordedYet: "none recorded yet",
   passed: "passed",
   aboutAt: "about {at}",
   todayOnBattery: "on battery, cuts: {n}",
-  todayEnergy: "{e} through the sockets today",
+  todayEnergy: "{e} used",
   nowForecast: "now · forecast",
   tipGrid: "grid {s}",
   on: "on",
   off: "off",
   readingsCount: "{n} readings",
-  hoursNoteFull: "Full hours average {avg}; a full charge lasts about {n} h at that rate. The current hour is paler.",
-  hoursNoteFirst: "The first full hour is not over yet; the current hour is paler.",
   cycBase: "Base load",
   cycCount: "Cycles in range",
   noneYet: "none yet",
@@ -279,6 +270,7 @@ en: {
   cycShare: "Share of time",
   cycNow: "Right now",
   aboveBase: "above the base for {d}",
+  aboveBaseNow: "above the base",
   atBase: "at the base",
   statBase: "Base (quietest 15%)",
   statTypical: "Typical (median)",
@@ -334,11 +326,14 @@ en: {
   fromX: "from {x}",
   noData: "no data",
   kyivTime: "Kyiv time",
-  ringOk: "{a}–100 %: normal; on a power cut the PC switches to eco",
-  ringEmergency: "{a}–{b} %: emergency — programs that read the power-mode flag wind down",
-  ringStop: "{a}–{b} %: stop — the flag says critical, save your work",
-  ringWarn: "{a}–{b} %: hibernate warning",
-  ringHibernate: "0–{b} %: the PC hibernates at {b} % once a fresh reading agrees",
+  cyclesTip: "Cycle: 35 W or more above base for 2–45 min",
+  loadTip: "Base: the quietest 15 % of the period",
+  hoursTip: "The current hour is paler",
+  ringOk: "{a}–100 %: normal",
+  ringEmergency: "{a}–{b} %: emergency",
+  ringStop: "{a}–{b} %: stop, save your work",
+  ringWarn: "{a}–{b} %: hibernation soon",
+  ringHibernate: "0–{b} %: hibernation",
   ago: "{d} ago",
   dtekNoCuts: "No outages in the schedule",
   dtekBannerOff: "Scheduled outage now",
@@ -412,11 +407,11 @@ uk: {
   language: "Мова",
   powerMode: "Режим живлення",
   modeAuto: "Авто",
-  modeAutoTip: "Еко-режим під час відключення; усі режими знімаються, коли світло повернулося",
+  modeAutoTip: "Еко-режим під час відключення",
   modeEco: "Еко",
-  modeEcoTip: "Еко-режим зараз, до наступної зміни мережі або «Авто»",
+  modeEcoTip: "Еко-режим зараз",
   modeMax: "Макс",
-  modeMaxTip: "Збалансований план + найкраща продуктивність, до наступної зміни мережі або «Авто»; рівні батареї діють завжди",
+  modeMaxTip: "Повна продуктивність до зміни мережі",
   loadNow: "Навантаження зараз",
   timeLeft: "Залишилось",
   thisCut: "Поточне відключення",
@@ -430,8 +425,6 @@ uk: {
   hoursN: "{n} год",
   daysN: "{n} дн",
   battTitle: "Батарея за {n} дн.",
-  battLoading: "читаю історію…",
-  battSince: "з {d}",
   kCuts: "Відключення",
   kOnBattery: "{d} від батареї",
   kLongest: "Найдовше відключення",
@@ -449,9 +442,7 @@ uk: {
   noDataTip: "немає даних {a}–{b} ({d})",
   energyPerHour: "Енергія по годинах",
   cyclesTitle: "Що вмикається понад базу",
-  cyclesNote: "Цикл — навантаження на 35 Вт і більше понад базу протягом 2–45 хвилин.",
   loadRangeTitle: "Навантаження за період",
-  loadNote: "Станція вимірює усе підключене одним числом. База — найтихіші 15 % періоду; понад базу — наскільки пік вищий за неї.",
   powerCuts: "Відключення",
   colStart: "Початок",
   colEnd: "Кінець",
@@ -465,7 +456,6 @@ uk: {
   colGrid: "Мережа",
   colVolt: "Напруга",
   colHz: "Гц",
-  readOnlyNote: "Лише читання: ця сторінка та її зчитувач ніколи не надсилають станції команд.",
   uW: "Вт",
   uWh: "Вт·год",
   uH: "год",
@@ -488,24 +478,21 @@ uk: {
   input: "вхід {w}",
   emptyAbout: "розрядиться близько {at}",
   tomorrow: "завтра",
-  fromMeasured: "за виміряним розрядом",
-  byCapacity: "за ємністю ({cap} × {eff} %), розряд ще не виміряно",
-  byCapacityLearned: "за ємністю ({cap} × {eff} %, виміряно раніше), розряд ще не виміряно",
+  fromMeasured: "За виміряним розрядом",
+  byCapacity: "За ємністю, розряд ще не виміряно",
   recordedSince: "з {at} · {from}% → {to}%",
-  usedSockets: "{e} через розетки",
+  usedSockets: "витрачено {e}",
   noneRecorded: "не було",
   noneRecordedYet: "ще не було",
   passed: "пройдено",
   aboutAt: "близько {at}",
   todayOnBattery: "від батареї, відключень: {n}",
-  todayEnergy: "{e} через розетки сьогодні",
+  todayEnergy: "витрачено {e}",
   nowForecast: "зараз · прогноз",
   tipGrid: "мережа: {s}",
   on: "є",
   off: "немає",
   readingsCount: "показань: {n}",
-  hoursNoteFull: "Повні години в середньому {avg}; за такого темпу повного заряду вистачить приблизно на {n} год. Поточна година блідіша.",
-  hoursNoteFirst: "Перша повна година ще не минула; поточна година блідіша.",
   cycBase: "Базове навантаження",
   cycCount: "Циклів за період",
   noneYet: "ще немає",
@@ -514,6 +501,7 @@ uk: {
   cycShare: "Частка часу",
   cycNow: "Зараз",
   aboveBase: "понад базу вже {d}",
+  aboveBaseNow: "понад базу",
   atBase: "на базі",
   statBase: "База (тихі 15 %)",
   statTypical: "Медіана",
@@ -569,11 +557,14 @@ uk: {
   fromX: "з {x}",
   noData: "немає даних",
   kyivTime: "за київським часом",
-  ringOk: "{a}–100 %: звичайна робота; під час відключення ПК переходить в еко-режим",
-  ringEmergency: "{a}–{b} %: аварійний режим — програми, що читають прапорець режиму живлення, згортають роботу",
-  ringStop: "{a}–{b} %: стоп — прапорець каже «критично», збережіть роботу",
-  ringWarn: "{a}–{b} %: попередження про гібернацію",
-  ringHibernate: "0–{b} %: ПК переходить у гібернацію на {b} %, коли свіже показання це підтверджує",
+  cyclesTip: "Цикл: 35 Вт і більше понад базу 2–45 хв",
+  loadTip: "База: найтихіші 15 % періоду",
+  hoursTip: "Поточна година блідіша",
+  ringOk: "{a}–100 %: норма",
+  ringEmergency: "{a}–{b} %: аварійний режим",
+  ringStop: "{a}–{b} %: стоп, збережіть роботу",
+  ringWarn: "{a}–{b} %: скоро гібернація",
+  ringHibernate: "0–{b} %: гібернація",
   ago: "{d} тому",
   dtekNoCuts: "Відключень у графіку немає",
   dtekBannerOff: "Світла немає за графіком",
@@ -735,7 +726,6 @@ const live = cuts.length && cuts[cuts.length - 1].end === null && NOW - cuts[cut
 // Battery time from the service: the measured drop (%/h) when there is enough of it, else capacity x efficiency (learned or configured).
 const measured = D.runtimeSource === 'rate' ? D.ratePerHour : null;
 const leftH = !now.mains && D.hoursLeft != null ? D.hoursLeft : null;
-const effUsed = D.runtimeSource === 'learned' && D.learnedEfficiency ? D.learnedEfficiency : D.efficiency;
 // the charge's zone by the configured levels: red at or under the stop level, amber at or under the emergency level
 const socColor = (v) => (v <= D.thresholds.stopAt ? 'var(--bad)' : v <= D.thresholds.emergencyAt ? 'var(--warn)' : 'var(--ok)');
 const cls = (v) => (v <= D.thresholds.stopAt ? 'bad' : v <= D.thresholds.emergencyAt ? 'warn' : 'ok');
@@ -789,10 +779,10 @@ const sp = rows.filter((r) => NOW - r.t <= 60 * 60000);
 if (sp.length > 1) { const mx = Math.max(...sp.map((r) => r.load), 1), mn = Math.min(...sp.map((r) => r.load)); const t0 = sp[0].t, t1 = sp[sp.length - 1].t;
   $('spark').innerHTML = `<polyline fill="none" stroke="#548af7" stroke-width="1.5" points="${sp.map((r) => `${(200 * (r.t - t0) / Math.max(1, t1 - t0)).toFixed(1)},${(31 - 28 * (r.load - mn) / Math.max(1, mx - mn)).toFixed(1)}`).join(' ')}"/>`;
   $('loadSub').textContent = t('lastHourLoad', { mn, mx: uW(mx), avg: uW(Math.round(sp.reduce((s, r) => s + r.load, 0) / sp.length)) }); }
-if (leftH === null) { $('left').textContent = now.mains ? t('charging') : '–'; $('leftSub').textContent = now.mains ? t('input', { w: uW(now.inp) }) : ''; $('leftSub2').textContent = ''; }
+if (leftH === null) { $('left').textContent = now.mains ? t('charging') : '–'; $('leftSub').textContent = now.mains ? t('input', { w: uW(now.inp) }) : ''; $('left').title = ''; }
 else { $('left').innerHTML = `${Math.floor(leftH)}<small>${t('uH')}</small> ${pad(Math.round((leftH % 1) * 60))}<small>${t('uMin')}</small>`;
   $('leftSub').textContent = t('emptyAbout', { at: hm(NOW + leftH * 3600000) }) + (new Date(NOW + leftH * 3600000).getDate() !== new Date(NOW).getDate() ? ' ' + t('tomorrow') : '');
-  $('leftSub2').textContent = measured ? t('fromMeasured', { r: fmt(measured) }) : t(D.runtimeSource === 'learned' ? 'byCapacityLearned' : 'byCapacity', { cap: uWh(D.capacityWh), eff: Math.round(effUsed * 100) }); }
+  $('left').title = measured ? t('fromMeasured') : t('byCapacity'); }
 if (live) { $('cutK').textContent = t('thisCut'); $('cut').textContent = dur(NOW - live.start); $('cutSub').textContent = t('recordedSince', { at: hm(live.start), from: live.socFrom, to: live.socTo }); $('cutSub2').textContent = t('usedSockets', { e: uWh(Math.round(live.wh)) }); }
 else { $('cutK').textContent = t('lastCut'); const c = cuts[cuts.length - 1];
   if (c) { $('cut').textContent = dur((c.end || c.last) - c.start); $('cutSub').textContent = `${dmy(c.start)} ${hm(c.start)}–${hm(c.end || c.last)}`; $('cutSub2').textContent = `${c.socFrom}% → ${c.socTo}% · ${uWh(Math.round(c.wh))}`; }
@@ -868,10 +858,7 @@ function draw(hours) {
     keys.forEach((k, i) => { const e = buckets.get(k) || 0, bh = (hh - hb - ht) * e / mxE, bx = hl + i * bw + 2;
       h += `<rect x="${bx.toFixed(1)}" y="${(hh - hb - bh).toFixed(1)}" width="${Math.max(2, bw - 4).toFixed(1)}" height="${bh.toFixed(1)}" rx="2" class="hbar" fill="#548af7" fill-opacity="${k === k1 ? .55 : 1}"><title>${pad(new Date(k * 3600000).getHours())}:00 · ${uWh(Math.round(e))}</title></rect>`;
       if (n <= 8 || i % Math.ceil(n / 8) === 0) h += `<text x="${(bx + bw / 2 - 2).toFixed(1)}" y="${hh - 6}" fill="#8b8e95" font-size="12" text-anchor="middle">${pad(new Date(k * 3600000).getHours())}</text>`; });
-    $('hours').setAttribute('viewBox', `0 0 ${hw} ${hh}`); $('hours').innerHTML = h; const firstK = rows.length ? Math.floor(rows[0].t / 3600000) : k1; // the hour the record began in is partial too
-    const full = keys.slice(0, -1).filter((k) => k !== firstK).map((k) => buckets.get(k) || 0).filter((e) => e > 0);
-    const avgE = full.length ? full.reduce((a, b) => a + b, 0) / full.length : 0;
-    $('hoursNote').textContent = full.length ? t('hoursNoteFull', { avg: uWh(Math.round(avgE)), n: fmt(D.capacityWh * (D.learnedEfficiency || D.efficiency) / avgE) }) : t('hoursNoteFirst'); }
+    $('hours').setAttribute('viewBox', `0 0 ${hw} ${hh}`); $('hours').innerHTML = h; }
   // Cycles above the base load
   { const sorted = list.map((r) => r.load).sort((a, b) => a - b), base = sorted.length ? sorted[Math.floor(0.15 * sorted.length)] : 0, thr = base + 35; const found = []; let cur = null;
     list.forEach((r, i) => { const broke = i > 0 && r.t - list[i - 1].t > GAP; if (r.load >= thr && !broke) { if (!cur) cur = { a: r.t, b: r.t, sum: 0, n: 0 }; cur.b = r.t; cur.sum += r.load - base; cur.n++; } else if (cur) { found.push(cur); cur = null; } });
@@ -879,7 +866,7 @@ function draw(hours) {
     const row = (k, v) => `<div class="rowbar" style="grid-template-columns:150px 1fr"><span title="${k}">${k}</span><span class="n" style="text-align:left">${v}</span></div>`;
     const avgLen = done.length ? done.reduce((s2, c) => s2 + (c.b - c.a), 0) / done.length : 0, avgW = done.length ? done.reduce((s2, c) => s2 + c.sum / c.n, 0) / done.length : 0;
     $('cycles').innerHTML = row(t('cycBase'), uW(base)) + row(t('cycCount'), done.length ? String(done.length) : t('noneYet')) + row(t('cycAvgLen'), done.length ? dur(avgLen) : '–') + row(t('cycAvgExtra'), done.length ? uW(Math.round(avgW)) : '–')
-      + row(t('cycShare'), done.length && list.length > 1 ? `${Math.round(100 * done.reduce((s2, c) => s2 + (c.b - c.a), 0) / (list[list.length - 1].t - list[0].t))} %` : '–') + row(t('cycNow'), openNow ? `<span class="warn">${t('aboveBase', { d: dur(NOW - openNow.a) })}</span>` : t('atBase')); }
+      + row(t('cycShare'), done.length && list.length > 1 ? `${Math.round(100 * done.reduce((s2, c) => s2 + (c.b - c.a), 0) / (list[list.length - 1].t - list[0].t))} %` : '–') + row(t('cycNow'), openNow ? `<span class="warn">${NOW - openNow.a < 60000 ? t('aboveBaseNow') : t('aboveBase', { d: dur(NOW - openNow.a) })}</span>` : t('atBase')); }
   // Load statistics of the range
   const ls = list.map((r) => r.load).sort((a, b) => a - b), q = (p) => (ls.length ? ls[Math.min(ls.length - 1, Math.floor(p * ls.length))] : 0);
   const stats = [[t('statBase'), q(0.15)], [t('statTypical'), q(0.5)], [t('statAvg'), ls.length ? Math.round(ls.reduce((a, b) => a + b, 0) / ls.length) : 0], [t('statPeak'), ls.length ? ls[ls.length - 1] : 0]];
@@ -897,7 +884,7 @@ $('cuts').innerHTML = cuts.slice(-8).reverse().map((c) => `<tr><td>${dmy(c.start
 $('rows').innerHTML = rows.slice(-30).reverse().map((r) => `<tr><td>${dmy(r.t)} ${hm(r.t)}</td><td>${r.soc}%</td><td>${uW(r.load)}</td><td>${uW(r.inp)}</td><td>${r.mains ? t('on') : t('off')}</td><td>${r.volt} ${t('uV')}</td><td>${fmt(r.hz, 2)}</td></tr>`).join('');
 // Battery over the stored history (up to 30 days of 15-minute averages): cuts, time and energy on battery, the deepest discharge.
 { const lc = longRows(720);
-  if (!lc || !lc.rows.length) { $('battTitle').textContent = t('battTitle', { n: 30 }); $('battKpis').innerHTML = ''; $('battNote').textContent = t('battLoading'); }
+  if (!lc || !lc.rows.length) { $('battTitle').textContent = t('battTitle', { n: 30 }); $('battKpis').innerHTML = ''; }
   else { const lr = lc.rows, cs = cutsOf(lr, lc.gap), days = Math.max(1, Math.round((NOW - lr[0].t) / 86400000));
     const lenOf = (c) => (c.end || c.last) - c.start, tot = cs.reduce((a, c) => a + lenOf(c), 0), e = cs.reduce((a, c) => a + c.wh, 0);
     const longest = cs.reduce((m, c) => (!m || lenOf(c) > lenOf(m) ? c : m), null), deepest = cs.reduce((m, c) => (!m || c.socTo < m.socTo ? c : m), null);
@@ -908,11 +895,9 @@ $('rows').innerHTML = rows.slice(-30).reverse().map((r) => `<tr><td>${dmy(r.t)} 
       + kpi(t('kAvgCut'), cs.length ? dur(tot / cs.length) : '–', '')
       + kpi(t('kGiven'), `${fmt(e / 1000, 1)}<small>${t('uKWh')}</small>`, t('kCycles', { n: fmt(e / D.capacityWh, 1) }))
       + kpi(t('kDeepest'), deepest ? `${deepest.socTo}%` : '–', deepest ? `${deepest.socFrom}% → ${deepest.socTo}% · ${dmy(deepest.start)}` : '')
-      + kpi(t('kAvgLoad'), tot ? `${Math.round(e / (tot / 3600000))}<small>${t('uW')}</small>` : '–', '');
-    $('battNote').textContent = t('battSince', { d: dmy(lr[0].t) }); } }
+      + kpi(t('kAvgLoad'), tot ? `${Math.round(e / (tot / 3600000))}<small>${t('uW')}</small>` : '–', ''); } }
 // Service state: the manual mode, Max's battery hours at the current load, rejected readings and a silent station.
 document.querySelectorAll('#modeSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.m === D.manual)));
-$('modeHint').textContent = { auto: t('modeAutoTip'), eco: t('modeEcoTip'), max: t('modeMaxTip') }[D.manual] || '';
 const mx = $('maxChip'); mx.hidden = !(D.manual === 'max' && !now.mains && D.hoursLeft) || (D.notes ? D.notes.some((n) => n.code === 'max-held') : (D.note || '').includes('Max held back'));
 if (!mx.hidden) mx.lastChild.textContent = t('maxChip', { h: `${fmt(D.hoursLeft)} ${t('uH')}` });
 // a mode refusal shows once: the button's own answer, else the service's saved one (modeError, never repeated in note)
