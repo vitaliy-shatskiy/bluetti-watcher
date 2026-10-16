@@ -295,8 +295,10 @@ internal sealed class StationStore : IDisposable
     }
 
     /// <summary>
-    /// The newest <paramref name="limit"/> accepted rows in [from, to), raw and 5-minute aggregates as stored, oldest first:
-    /// what a battery-model refit reads. No bucketing and no mode text, so it costs a fraction of <see cref="History"/>.
+    /// The newest <paramref name="limit"/> accepted rows in [from, to), raw and 5-minute aggregates, oldest first, one per
+    /// second (two in the same second, a poll and a reading right after it, are averaged as <see cref="History"/> at step
+    /// 1 averages them): what a battery-model refit reads. The averaging runs here, not in SQL, and there is no mode
+    /// text, so it costs a fraction of <see cref="History"/>. Volt, hz and mode are not read.
     /// </summary>
     public List<HistoryRow> Readings(long from, long to, int limit)
     {
@@ -304,23 +306,51 @@ internal sealed class StationStore : IDisposable
         {
             using var cmd = _db.CreateCommand();
             cmd.CommandText = """
-                SELECT at, soc, in_ac, in_dc, out_ac, out_dc, mains FROM (
-                  SELECT at, soc, in_ac, in_dc, out_ac, out_dc, (in_ac > 0) * 1.0 AS mains FROM reading WHERE status=0 AND at >= $f AND at < $t
+                SELECT at, soc, in_ac, in_dc, out_ac, out_dc, mains, n FROM (
+                  SELECT at, soc, in_ac, in_dc, out_ac, out_dc, (in_ac > 0) * 1.0 AS mains, 1 AS n FROM reading WHERE status=0 AND at >= $f AND at < $t
                   UNION ALL
-                  SELECT at, soc, in_ac, in_dc, out_ac, out_dc, mains FROM agg5 WHERE n > 0 AND at >= $f AND at < $t)
-                ORDER BY at DESC LIMIT $lim
+                  SELECT at, soc, in_ac, in_dc, out_ac, out_dc, mains, n FROM agg5 WHERE n > 0 AND at >= $f AND at < $t)
+                ORDER BY at DESC, n LIMIT $lim
                 """;
             cmd.Parameters.AddWithValue("$f", from);
             cmd.Parameters.AddWithValue("$t", to);
-            cmd.Parameters.AddWithValue("$lim", limit);
+            cmd.Parameters.AddWithValue("$lim", limit + ExtraSameSecondRows);
             var rows = new List<HistoryRow>(Math.Min(limit, 4096));
             using var r = cmd.ExecuteReader();
+            // One second's rows: the sums and counts of each value (weighted by the readings a row stands for), as History.
+            var sum = new double[5];
+            var cnt = new double[5];
+            double mains = 0, n = 0;
+            long at = long.MinValue;
+            void Flush()
+            {
+                if (n > 0 && rows.Count < limit)
+                {
+                    double? Avg(int k) => cnt[k] > 0 ? sum[k] / cnt[k] : null;
+                    rows.Add(new HistoryRow(at, Avg(0), Avg(1), Avg(2), Avg(3), Avg(4), null, null, mains / n, null));
+                }
+                Array.Clear(sum);
+                Array.Clear(cnt);
+                (mains, n) = (0, 0);
+            }
             while (r.Read())
-                rows.Add(new HistoryRow(r.GetInt64(0), D(r, 1), D(r, 2), D(r, 3), D(r, 4), D(r, 5), null, null, D(r, 6) ?? 0, null));
+            {
+                long t = r.GetInt64(0);
+                if (t != at) { Flush(); at = t; }
+                double w = r.GetInt64(7);
+                for (int k = 0; k < 5; k++)
+                    if (!r.IsDBNull(k + 1)) { sum[k] += w * r.GetDouble(k + 1); cnt[k] += w; }
+                mains += w * (D(r, 6) ?? 0);
+                n += w;
+            }
+            Flush();
             rows.Reverse();
             return rows;
         }
     }
+
+    /// <summary>Rows <see cref="Readings"/> reads past its limit so that seconds holding two rows still fill it (one per hibernate).</summary>
+    internal const int ExtraSameSecondRows = 1000;
 
     /// <summary>The times of the service's events of one kind in [from, to), oldest first (no limit: a kind is rare).</summary>
     public List<long> EventTimes(string kind, long from, long to)

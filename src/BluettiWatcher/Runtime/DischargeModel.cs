@@ -37,14 +37,17 @@ internal readonly record struct EcoProfile(double Ratio, double Share, long Dela
 {
     public static readonly EcoProfile None = new(1, 0, 0, 0);
 
-    /// <summary>The highest ratio taken as eco's: a mode that more than doubles the load is not a saving mode.</summary>
-    public const double MaxRatio = 2;
+    /// <summary>The ratio's bounds as eco's: a mode that more than doubles the load, or cuts it by over 90 %, is not eco.</summary>
+    public const double MinRatio = 0.1, MaxRatio = 2;
 
     /// <summary>The expected load factor once eco is due: the ratio, weighed by the chance that eco comes.</summary>
     public double Factor => 1 + Share * (Ratio - 1);
 
-    /// <summary>Within its bounds: a positive ratio up to <see cref="MaxRatio"/>, a share within 0-1, delays in order.</summary>
-    public bool Sound => double.IsFinite(Ratio) && Ratio > 0 && Ratio <= MaxRatio && double.IsFinite(Share) && Share >= 0 && Share <= 1
+    /// <summary>
+    /// Within the bounds <see cref="DischargeModel.Learn"/> can produce: a ratio within <see cref="MinRatio"/>-<see cref="MaxRatio"/>,
+    /// a share from 0 to under 1 (the prior's cuts keep it under), delays in order. The factor then stays above 0.
+    /// </summary>
+    public bool Sound => double.IsFinite(Ratio) && Ratio >= MinRatio && Ratio <= MaxRatio && double.IsFinite(Share) && Share >= 0 && Share < 1
         && DelaySec >= 0 && MaxDelaySec >= DelaySec;
 }
 
@@ -70,12 +73,13 @@ internal sealed record FittedRuntime(LossFit Fit, double? ErrLo, double? ErrHi, 
 
     /// <summary>
     /// A stored model, or null when it is missing, damaged (no fit time included), or outside the physical bounds for this
-    /// config. A damaged or unsound eco profile is dropped alone: the model stands without it.
+    /// config. The first six fields are the model; anything after them that is not a sound eco profile of four fields is
+    /// dropped alone and the model stands without it.
     /// </summary>
     public static FittedRuntime? Parse(string? raw, StationConfig c)
     {
         var p = (raw ?? "").Split(';');
-        if (p.Length is not (6 or 10)) return null;
+        if (p.Length < 6) return null;
         static double? D(string s) => double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) && double.IsFinite(v) ? v : null;
         if (D(p[0]) is not { } idle || D(p[1]) is not { } perWh || D(p[2]) is not { } hours
             || !long.TryParse(p[5], NumberStyles.Integer, CultureInfo.InvariantCulture, out long at) || at <= 0) return null;
@@ -124,24 +128,34 @@ internal static class DischargeModel
     private static double Load(HistoryRow r) => Math.Max(0, (r.OutAc ?? 0) + (r.OutDc ?? 0));
 
     /// <summary>
-    /// The cuts in time-ordered rows: runs of readings off mains with a SOC. A reading on mains ends a run; a row without a
-    /// SOC is skipped; a silence over <see cref="SplitGapSec"/>, a SOC rise across a silence over <c>maxGapSec</c> or the
-    /// clock stepping back starts a new run.
+    /// The cuts in time-ordered rows: runs of readings off mains with a SOC, as the service counts a cut. Mains ends a run
+    /// only once its readings span <c>mainsBackSec</c> (the service keeps the cut, and eco, through a shorter return), so
+    /// a flicker's readings lie inside a cut and every reader of a cut skips rows on mains. A row without a SOC is skipped.
+    /// A silence over <see cref="SplitGapSec"/>, the clock stepping back, or a SOC rise across a silence over
+    /// <c>maxGapSec</c> starts a new run: the rise proves mains came back long enough to charge, so the service lifted eco
+    /// and the next cut brings its own.
     /// </summary>
     public static List<Cut> Cuts(IReadOnlyList<HistoryRow> rows, StationConfig c)
     {
         var cuts = new List<Cut>();
         int start = -1, last = -1;
+        long mainsFrom = -1;   // the first reading of the mains run since the cut's last reading off mains
         for (int i = 0; i < rows.Count; i++)
         {
             var r = rows[i];
             if (r.Mains >= 0.5)
             {
-                if (start >= 0) cuts.Add(new(start, last));
-                start = -1;
+                if (start < 0) continue;
+                if (mainsFrom < 0) mainsFrom = r.At;
+                if (r.At - mainsFrom >= c.MainsBackSec)
+                {
+                    cuts.Add(new(start, last));
+                    start = -1;
+                }
                 continue;
             }
             if (!Off(r)) continue;
+            mainsFrom = -1;
             if (start >= 0)
             {
                 var p = rows[last];

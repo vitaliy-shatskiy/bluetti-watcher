@@ -118,20 +118,20 @@ public sealed class DischargeModelTests
     }
 
     [Fact]
-    public void Cuts_split_at_mains_a_long_silence_a_charge_in_a_silence_and_a_clock_step_back()
+    public void Cuts_split_at_a_long_silence_a_charge_in_a_silence_and_a_clock_step_back_but_not_at_a_flicker()
     {
         long t = Now;
         List<HistoryRow> rows =
         [
             Row(t, 90), Row(t + 60, null), Row(t + 120, 89),          // a row without SOC is skipped, not a split
-            Row(t + 180, 95, mains: true),                             // mains
+            Row(t + 180, 95, mains: true),                             // one reading on mains: a flicker, the cut goes on
             Row(t + 240, 94), Row(t + 300, 93),
             Row(t + 300 + DischargeModel.SplitGapSec + 1, 80),         // a silence over 3 h
             Row(t + 300 + DischargeModel.SplitGapSec + 61, 79),
             Row(t + 300 + DischargeModel.SplitGapSec + 61 + C.MaxGapSec + 1, 85),   // risen across a gap: charged unseen
             Row(t + 300 + DischargeModel.SplitGapSec + 30, 84),        // the clock stepped back
         ];
-        Assert.Equal([new Cut(0, 2), new Cut(4, 5), new Cut(6, 7), new Cut(8, 8), new Cut(9, 9)], DischargeModel.Cuts(rows, C));
+        Assert.Equal([new Cut(0, 5), new Cut(6, 7), new Cut(8, 8), new Cut(9, 9)], DischargeModel.Cuts(rows, C));
     }
 
     [Fact]
@@ -315,4 +315,33 @@ public sealed class DischargeModelTests
         var m = new FittedRuntime(new LossFit(1.5, 0.06, 12.5), null, null, Now, p);
         Assert.Equal(m, FittedRuntime.Parse(m.Format(), C));
         Assert.Equal(m with { Eco = null }, FittedRuntime.Parse((m with { Eco = p with { Ratio = 3 } }).Format(), C));
+    }
+
+    [Fact]
+    public void A_mains_flicker_shorter_than_mainsBackSec_keeps_the_cut_and_the_eco_it_saw()
+    {
+        // mains for 10 minutes, then off with eco at 4 minutes and one reading on mains at 30 (a flicker)
+        var rows = Enumerable.Range(-10, 10).Select(m => Row(Now + m * 60L, 90, mains: true)).ToList();
+        rows.AddRange(Enumerable.Range(0, 41).Select(m => Row(Now + m * 60L, 90 - m / 6, mains: m == 30)));
+        Assert.Equal([new Cut(10, 50)], DischargeModel.Cuts(rows, C));
+        Assert.Equal(Now, DischargeModel.CutStartAt(rows, C));   // the eco-on at 4 minutes is found from here
+        Assert.Equal(Now + 240, DischargeModel.EcoIn(rows, DischargeModel.Cuts(rows, C)[0], [Now + 240]));
+        // mains for mainsBackSec (readings 30 to 33 minutes) ends the cut, as the service ends it
+        var back = rows.Select(r => r.At >= Now + 30 * 60 && r.At <= Now + 33 * 60 ? r with { Mains = 1, InAc = 350 } : r).ToList();
+        Assert.Equal([new Cut(10, 39), new Cut(44, 50)], DischargeModel.Cuts(back, C));
+    }
+
+    [Fact]
+    public void An_absurd_eco_profile_is_never_used_and_a_bad_tail_leaves_the_model_standing()
+    {
+        var m = new FittedRuntime(new LossFit(1.5, 0.06, 12.5), -0.5, 1.25, Now);
+        // share 1 with a ratio near 0 would make the eco load 0 and the time infinite
+        Assert.Null(FittedRuntime.Parse((m with { Eco = new EcoProfile(0.001, 1, 240, 600) }).Format(), C)!.Eco);
+        Assert.Null(FittedRuntime.Parse((m with { Eco = new EcoProfile(0.7, 1, 240, 600) }).Format(), C)!.Eco);   // share 1: Learn never gives it
+        Assert.Equal(m, FittedRuntime.Parse(m.Format() + ";1;2", C));        // a malformed tail: the model without it
+        Assert.Equal(m, FittedRuntime.Parse(m.Format() + ";x;0.5;1;2", C));
+        // built directly: a factor of 0 never yields a null time beside a range
+        var zero = new FittedRuntime(new LossFit(0, 0.05, 10), -1, 2, Now, new EcoProfile(0, 1, 600, 1200));
+        var e = RuntimeEstimator.Estimate(Bat(70), [], Now, C, null, zero, new CutState(Now - 60, false));
+        Assert.NotNull(e.HoursLeft);
     }}

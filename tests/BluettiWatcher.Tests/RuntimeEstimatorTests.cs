@@ -235,7 +235,7 @@ public sealed class RuntimeEstimatorTests : IDisposable
     }
 
 #pragma warning disable CA2000 // the store and the service belong to the returned rig, which disposes them
-    private Rig Open(string name = "a", StationConfig? cfg = null)
+    private Rig Open(string name = "a", StationConfig? cfg = null, FlagView? flag = null)
     {
         string dir = Path.Combine(_dir, name);
         Directory.CreateDirectory(dir);
@@ -245,7 +245,7 @@ public sealed class RuntimeEstimatorTests : IDisposable
         var clock = new ManualClock(T0);
         var reader = new QueueReader();
         var actions = new FakeActions();
-        var s = new StationService(cfg, reader, actions, new FakeHibernator(true), new FixedFlag(Station), store, clock, _ => { });
+        var s = new StationService(cfg, reader, actions, new FakeHibernator(true), new FixedFlag(flag ?? Station), store, clock, _ => { });
         return new Rig(store, s, new StationApi(cfg, s, store, clock, T0), reader, clock, actions);
     }
 #pragma warning restore CA2000
@@ -357,9 +357,9 @@ public sealed class RuntimeEstimatorTests : IDisposable
     public async Task A_new_cut_takes_the_learned_eco_load_into_account_until_eco_comes_on()
     {
         // a past cut of three and a half hours: 300 W, eco on at 4 minutes, 200 W after; mains; a new cut 2 minutes old at 300 W
-        async Task<double> HoursLeft(string name, bool ecoEvent)
+        async Task<double> HoursLeft(string name, bool ecoEvent, FlagView flag)
         {
-            using var rig = Open(name);
+            using var rig = Open(name, flag: flag);
             double soc = 100;
             var t = T0.AddMinutes(-260);
             for (int m = 0; m < 210; m++, t = t.AddMinutes(1))
@@ -377,8 +377,60 @@ public sealed class RuntimeEstimatorTests : IDisposable
             Assert.Equal("model", doc.RootElement.GetProperty("runtimeSource").GetString());
             return doc.RootElement.GetProperty("hoursLeft").GetDouble();
         }
-        double plain = await HoursLeft("plain", ecoEvent: false), eco = await HoursLeft("eco", ecoEvent: true);
+        double plain = await HoursLeft("plain", ecoEvent: false, Flag()), eco = await HoursLeft("eco", ecoEvent: true, Flag());
         Assert.True(eco > plain, $"eco {eco} h vs plain {plain} h");
+        // the flag already eco (or emergency, or a hold, or Max): no eco is coming, the load already shows what it is
+        Assert.Equal(plain, await HoursLeft("eco-on", ecoEvent: true, Station));
+    }
+
+    [Fact]
+    public void Eco_may_come_only_with_the_flag_normal_no_hold_and_not_max()
+    {
+        var s = new StationState();
+        Assert.True(StationDecision.EcoMayCome(s, Flag()));
+        Assert.False(StationDecision.EcoMayCome(s, Station));                  // eco already on
+        Assert.False(StationDecision.EcoMayCome(s, Flag("emergency")));
+        Assert.False(StationDecision.EcoMayCome(s, FlagView.Unreadable));
+        Assert.False(StationDecision.EcoMayCome(new StationState { Held = true }, Flag()));
+        Assert.False(StationDecision.EcoMayCome(new StationState { Manual = ManualMode.Max }, Flag()));
+    }
+
+    private StationStore Store(string name)
+    {
+        string dir = Path.Combine(_dir, name);
+        Directory.CreateDirectory(dir);
+        return new StationStore(Path.Combine(dir, "station.db"));
+    }
+
+    private static (long, double?, double?, double?, double?, double?, double) Key(HistoryRow r) => (r.At, r.Soc, r.InAc, r.InDc, r.OutAc, r.OutDc, r.Mains);
+
+    [Fact]
+    public void Readings_match_the_history_at_step_1_for_status_aggregates_missing_soc_order_and_limit()
+    {
+        using var store = Store("readings");
+        // 40 days ago: folded into 5-minute aggregates; then raw rows of every kind
+        for (int m = 0; m < 20; m++) store.AddReading(T0.AddDays(-40).AddMinutes(m), new Reading(80 - m * 0.1, m % 2 * 300.0, 200, "x"), ReadingStatus.Accepted, "");
+        store.Compact(T0, 30);
+        for (int m = 0; m < 30; m++)
+        {
+            var at = T0.AddMinutes(m - 30);
+            var status = m % 7 == 3 ? ReadingStatus.Missed : m % 11 == 5 ? ReadingStatus.Rejected : ReadingStatus.Accepted;
+            store.AddReading(at, status == ReadingStatus.Missed ? null : new Reading(m % 5 == 0 ? null : 70 - m * 0.2, m % 3 == 0 ? 350 : 0, 180 + m, "x", InDc: m % 4), status, status == ReadingStatus.Rejected ? "bad" : "");
+        }
+        long from = T0.AddDays(-50).ToUnixTimeSeconds(), to = T0.ToUnixTimeSeconds() + 1;
+        Assert.True(store.Counts().Agg > 0);
+        Assert.Equal(store.History(from, to, 1).Select(Key), store.Readings(from, to, 20000).Select(Key));
+        Assert.Equal(store.History(from, to, 1, 5).Select(Key), store.Readings(from, to, 5).Select(Key));
+    }
+
+    [Fact]
+    public void Two_readings_in_one_second_are_one_row()
+    {
+        using var store = Store("same-second");
+        store.AddReading(T0, new Reading(70, 0, 200, "x"), ReadingStatus.Accepted, "");
+        store.AddReading(T0, new Reading(70, 0, 220, "x"), ReadingStatus.Accepted, "");   // a reading right after the poll
+        var rows = store.Readings(T0.ToUnixTimeSeconds() - 60, T0.ToUnixTimeSeconds() + 1, 100);
+        Assert.Equal((T0.ToUnixTimeSeconds(), (double?)210), (Assert.Single(rows).At, rows[0].OutAc));
     }
 
     [Fact]

@@ -35,9 +35,10 @@ public sealed class DischargeBacktest
         using (var cmd = db.CreateCommand())
         {
             cmd.CommandText = """
-                SELECT at, soc, in_ac, in_dc, out_ac, out_dc, (in_ac > 0) * 1.0 FROM reading WHERE status=0
-                UNION ALL SELECT at, soc, in_ac, in_dc, out_ac, out_dc, COALESCE(mains, 0) FROM agg5 WHERE n > 0
-                ORDER BY 1
+                SELECT at, AVG(soc), AVG(in_ac), AVG(in_dc), AVG(out_ac), AVG(out_dc), AVG(mains) FROM (
+                  SELECT at, soc, in_ac, in_dc, out_ac, out_dc, COALESCE(in_ac > 0, 0) * 1.0 AS mains FROM reading WHERE status=0
+                  UNION ALL SELECT at, soc, in_ac, in_dc, out_ac, out_dc, COALESCE(mains, 0) FROM agg5 WHERE n > 0)
+                GROUP BY at ORDER BY at
                 """;
             using var r = cmd.ExecuteReader();
             static double? D(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetDouble(i);

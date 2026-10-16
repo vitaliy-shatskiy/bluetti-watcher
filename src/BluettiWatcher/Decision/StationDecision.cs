@@ -268,11 +268,17 @@ internal static partial class StationDecision
     private static bool StartsOver(StationState s, DateTimeOffset now, StationConfig c) =>
         s.LastAt is not { } lastAt || (now - lastAt).TotalSeconds > c.MaxGapSec || now < lastAt;
 
+    /// <summary>
+    /// Eco can still be switched on in this cut: the flag says normal (not eco or emergency already, not unreadable), no
+    /// manual hold, Max not chosen. The cut's actions and the battery time read the same rule.
+    /// </summary>
+    public static bool EcoMayCome(StationState s, FlagView flag) => flag.Mode == "normal" && !s.Held && s.Manual != ManualMode.Max;
+
     private static void CutActions(StationState s, FlagView flag, DateTimeOffset now, StationConfig c, List<StationAction> actions)
     {
         // The user's own off (power-mode.ps1 off by hand) during this cut holds until mains returns.
         if (flag.Mode == "normal" && flag.By == "manual" && flag.SinceAt is { } since && since >= s.CutSince) s.Held = true;
-        bool eco = flag.Mode == "normal" && !s.Held && s.Manual != ManualMode.Max;
+        bool eco = EcoMayCome(s, flag);
         var events = new List<StationAction>();
 
         // The ladder: one new level per poll, the first one not yet reached, only when agreed - readings and time only.

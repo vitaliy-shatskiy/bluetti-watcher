@@ -100,10 +100,10 @@ internal static class RuntimeEstimator
             measured = m.Clean && double.IsFinite(eff) && eff > 0 ? Math.Round(Bound(eff, c), 3) : null;
         }
         if (model is { Fit: var fit } && fit.CleanHours >= DischargeModel.PriorHours && !(current.InDc > 0)
-            && DischargeModel.Physical(fit, c) && fit.Drain(load) > 0)
+            && DischargeModel.Physical(fit, c) && fit.Drain(load) > 0
+            && DischargeModel.HoursFor(fit, model.Eco ?? EcoProfile.None, load, nowSec, cut, soc) is var hours && double.IsFinite(hours))
         {
             var eco = model.Eco ?? EcoProfile.None;
-            double hours = DischargeModel.HoursFor(fit, eco, load, nowSec, cut, soc);
             double drain = hours > 0 && double.IsFinite(hours) ? soc / hours : fit.Drain(load);   // the mean drain to empty
             double? low = null, high = null;
             if (model.ErrLo is { } lo && model.ErrHi is { } hi)

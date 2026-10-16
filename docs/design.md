@@ -282,8 +282,8 @@ battery levels and hibernate act on SOC thresholds alone and never read the esti
   model in meta `runtimeModel`. A damaged one is dropped alone.
 - Chosen by a backtest (`tests/BluettiWatcher.Tests/Backtest`, run on request with `BW_BACKTEST_DB` and
   `BW_BACKTEST_OUT`): every cut replayed, the SOC forecast 30, 60 and 120 minutes ahead scored on held-out cuts.
-  An exponentially weighted load, an hour-of-day profile and an eco-mode load ratio were scored too and did not earn
-  their place over the current load.
+  An exponentially weighted load and an hour-of-day profile were scored too and did not earn their place over the
+  current load. The eco profile below did, and ships.
 - `/api/now` gives `runtimeSource` (`model`, `rate`, `learned` or `config`; null with no estimate), `ratePerHour`
   (the measured rate whenever the window yields one, with `rate` or `model`), `hoursLeftLow` / `hoursLeftHigh` (with
   `model`) and `learnedEfficiency`; the page names the method under the time left.

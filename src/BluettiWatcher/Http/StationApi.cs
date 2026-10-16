@@ -273,9 +273,11 @@ internal sealed class StationApi(StationConfig config, StationService service, S
         try { if (config.RateWindowMin > 0) rows = store.History(nowSec - config.RateWindowMin * 60L, nowSec + 1, 1); }
         catch (Exception e) when (e is System.Data.Common.DbException or InvalidOperationException) { Once("history read", e); }
         double? learned = Learned();
-        // Where the cut stands, read only for a model that knows eco (none in the history = no read, the loss model alone).
+        // Where the cut stands, read only for a model that knows eco (none in the history = no read, the loss model alone)
+        // and while eco can still come (the flag normal, no hold, not Max: eco already on means the load already shows it).
         CutState? cut = null;
-        if (model?.Eco is { Share: > 0 } && DischargeModel.CutStartAt(rows, config) is { } start)
+        if (model?.Eco is { Share: > 0 } && StationDecision.EcoMayCome(service.State, service.LastFlag?.View ?? FlagView.Unreadable)
+            && DischargeModel.CutStartAt(rows, config) is { } start)
         {
             try { cut = new(start, store.EventTimes("eco-on", start - DischargeModel.EcoLeadSec, nowSec + 1).Count > 0); }
             catch (Exception e) when (e is System.Data.Common.DbException or InvalidOperationException) { Once("event read", e); }
