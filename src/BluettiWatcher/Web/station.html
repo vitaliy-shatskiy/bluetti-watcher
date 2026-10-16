@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bluetti Watcher</title><link rel="icon" id="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2212%22 fill=%22%23191a1c%22/%3E%3Ccircle cx=%2232%22 cy=%2232%22 r=%2224%22 fill=%22none%22 stroke=%22%235fad65%22 stroke-width=%227%22/%3E%3C/svg%3E">
 <style>
-:root{--frame:#111214;--bg:#1a1b1e;--raised:#26282c;--line:#2c2e33;--edge:rgba(255,255,255,.06);--text:#e4e6ea;--dim:#8b8e95;--ok:#5fad65;--warn:#e0a53a;--bad:#db5c5c;--accent:#548af7;--load:#548af7;--cut:rgba(224,165,58,.10)}
+:root{--frame:#111214;--bg:#1a1b1e;--raised:#26282c;--line:#2c2e33;--edge:rgba(255,255,255,.06);--text:#e4e6ea;--dim:#8b8e95;--ok:#5fad65;--warn:#e0a53a;--bad:#db5c5c;--accent:#548af7;--load:#548af7;--cut:rgba(224,165,58,.10);--onc:rgba(95,173,101,.08);--offc:rgba(224,165,58,.42)}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 body{margin:0;background:var(--frame);color:var(--text);font:13px/18px "Segoe UI",system-ui,sans-serif;padding:20px}
@@ -61,16 +61,25 @@ tbody tr:hover td{background:rgba(255,255,255,.025)}
 details summary{cursor:pointer;color:var(--dim);font-size:12px}
 #tip{position:fixed;pointer-events:none;background:var(--raised);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12px;line-height:16px;display:none;z-index:5;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.35)}
 .note{color:var(--dim);font-size:12px;margin-top:10px}
-.pill{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 14px;border-radius:15px;font-size:13px;font-weight:600;margin:2px 0 14px}
-.pill.ok{background:rgba(95,173,101,.13);color:#9bd59f}.pill.bad{background:rgba(224,165,58,.15);color:#efc36f}
-.strip{display:grid;grid-template-columns:130px repeat(24,1fr);gap:3px;align-items:center;margin-bottom:4px}
-.strip>span:first-child{color:var(--dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.strip i{height:24px;border-radius:5px;background:rgba(95,173,101,.16)}
-.strip i.nd{background:repeating-linear-gradient(135deg,rgba(139,142,149,.18) 0 2px,transparent 2px 6px)}
-.strip i.now{outline:2px solid var(--text);outline-offset:-2px}
-.strip.axis span{color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums}
-.slegend{display:flex;gap:16px;color:var(--dim);font-size:12px;flex-wrap:wrap;margin:8px 0 14px}
-.slegend b{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:6px}
+.dban{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:12px 16px;border-radius:12px;margin:12px 0 16px;font-size:13px}
+.dban b{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:600}
+.dban svg{width:18px;height:18px}
+.dban.off{background:rgba(224,165,58,.10);border:1px solid rgba(224,165,58,.35);color:#f3c879}
+.dban.ok{background:rgba(95,173,101,.09);border:1px solid rgba(95,173,101,.3);color:#9bd59f}
+.dban span{color:var(--text)}
+.dtop{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.dq{color:var(--dim);font-size:12px}
+.dgrid{display:grid;grid-template-columns:repeat(12,1fr);gap:6px}
+.dgrid .c{height:58px;border-radius:9px;border:1px solid var(--edge);background:var(--onc);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font-size:12px;font-variant-numeric:tabular-nums;color:#b9c6ba;transition:transform .15s,border-color .15s}
+.dgrid .c svg{width:14px;height:14px;color:#6fbf75}
+.dgrid .c:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.18)}
+.dgrid .c.off{background:var(--offc);border-color:rgba(224,165,58,.55);color:#ffe2a8}
+.dgrid .c.off svg{color:#ffd27a}
+.dgrid .c.nd{background:repeating-linear-gradient(135deg,rgba(139,142,149,.12) 0 2px,transparent 2px 7px);color:var(--dim)}
+.dgrid .c.now{outline:2px solid var(--text);outline-offset:2px}
+.dgrid .c.now.off{animation:glow 2s ease-in-out infinite}
+#dtekMore{margin-top:14px}#dtekMore[open] summary{margin-bottom:8px}.slegend{display:flex;gap:8px 18px;color:var(--dim);font-size:12px;flex-wrap:wrap;margin:14px 0 4px}
+.slegend b{display:inline-block;width:18px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:6px}
 .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
 .kpi{background:var(--frame);border:1px solid var(--edge);border-radius:10px;padding:12px 14px;min-width:0}
 .kpi .v{font-size:24px;line-height:30px}
@@ -98,19 +107,19 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 .intro .area,.intro .fc{animation:fade .9s ease .5s both}
 .intro rect.hbar{transform-box:fill-box;transform-origin:bottom;animation:grow .7s cubic-bezier(.2,.7,.2,1) both}
 .rowbar .fill{transition:width .8s cubic-bezier(.2,.7,.2,1)}
-.strip i{transition:transform .15s}
-.strip i:hover{transform:scaleY(1.15)}
-.strip i.now.off{animation:glow 2s ease-in-out infinite}
+
+
+
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 /* wide monitors (2K): a wider page, the same layout */
 @media(min-width:1800px){main{max-width:1560px}body{padding:28px}.top{grid-template-columns:360px 1fr}.ring svg{width:280px;height:280px}.ring .pct{font-size:64px;line-height:68px}.v{font-size:34px;line-height:42px}}
 @media(min-width:2200px){html{zoom:1.15}}
-@media(max-width:900px){.head{grid-template-columns:1fr auto;grid-template-areas:"brand lang" "chips chips" "mode mode"}.top{grid-template-columns:1fr}.tiles{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.modebox{justify-items:start}.modebox .hint{text-align:left}.strip{grid-template-columns:90px repeat(24,1fr);gap:2px}}
+@media(max-width:900px){.head{grid-template-columns:1fr auto;grid-template-areas:"brand lang" "chips chips" "mode mode"}.top{grid-template-columns:1fr}.tiles{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.modebox{justify-items:start}.modebox .hint{text-align:left}.dgrid{grid-template-columns:repeat(6,1fr)}}
 /* phones */
 @media(max-width:600px){body{padding:10px}main{gap:8px}.card{padding:14px;border-radius:12px}.tiles{gap:8px}.v{font-size:24px;line-height:30px}.v small{font-size:12px;margin:0 4px 0 2px}
   .ring svg{width:200px;height:200px}.ring .pct{font-size:46px;line-height:50px}
   #modeSeg{width:100%}#modeSeg button{flex:1;text-align:center;padding:0 8px}.modebox{justify-items:stretch}
-  .strip{grid-template-columns:repeat(24,1fr);gap:2px}.strip>span:first-child{grid-column:1/-1;margin-top:6px}.strip.axis>span:first-child{display:none}.strip i{height:18px;border-radius:3px}
+  .dgrid{gap:4px}.dgrid .c{height:48px;font-size:11px;gap:3px}.dban b{font-size:14px}
   #dtekBody .rowbar{grid-template-columns:1fr!important;gap:0;margin-bottom:6px}
   .ring svg{width:220px;height:220px}.ring .wh{font-size:11px;line-height:15px}.ring{padding:12px}
   td,th{padding:6px 4px;font-size:11px}.bar{flex-wrap:wrap}}
@@ -131,7 +140,7 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 </div>
 
 <div class="card" id="dtekCard" hidden><div class="bar"><h2 style="margin:0" data-i18n="dtekTitle"></h2><span style="flex:1"></span><span class="chip" id="dtekChip"><i></i><span></span></span></div>
-  <div id="dtekPill" style="margin-top:10px"></div><div id="dtekGrid"></div><div id="dtekBody" style="margin-top:6px"></div><div class="note" id="dtekNote"></div></div>
+  <div id="dtekPill" style="margin-top:10px"></div><div id="dtekGrid"></div><details id="dtekMore"><summary data-i18n="dtekDetails"></summary><div id="dtekBody"></div></details><div class="note" id="dtekNote"></div></div>
 
 <div class="card">
   <div class="bar"><h2 style="margin:0" data-i18n="batteryAndLoad"></h2><span style="flex:1"></span>
@@ -324,7 +333,12 @@ en: {
   kyivTime: "Kyiv time",
   ago: "{d} ago",
   dtekNoCuts: "No outages in the schedule",
-  dtekOffUntil: "No power by the schedule until {at}",
+  dtekBannerOff: "No power by the schedule",
+  dtekFromTo: "{a}–{b}",
+  dtekNextCut: "next outage {a}–{b}",
+  dtekFirstHalf: "no power the first 30 min",
+  dtekSecondHalf: "no power the second 30 min",
+  dtekDetails: "Details",
   dtekOnUntil: "Power on until {at}",
   dtekPowerOn: "power on",
   dtekTodayDay: "Today {d}",
@@ -549,7 +563,12 @@ uk: {
   kyivTime: "за київським часом",
   ago: "{d} тому",
   dtekNoCuts: "Відключень у графіку немає",
-  dtekOffUntil: "Світла немає за графіком до {at}",
+  dtekBannerOff: "Світла немає за графіком",
+  dtekFromTo: "{a}–{b}",
+  dtekNextCut: "наступне відключення {a}–{b}",
+  dtekFirstHalf: "світла не буде перші 30 хв",
+  dtekSecondHalf: "світла не буде другі 30 хв",
+  dtekDetails: "Подробиці",
   dtekOnUntil: "Світло є до {at}",
   dtekPowerOn: "світло є",
   dtekTodayDay: "Сьогодні {d}",
@@ -956,36 +975,39 @@ function renderDtek(w, th) {
     const from = (day) => { const parts = (q.intervals || []).filter((i) => kyivDmy(i.start) === day).map((i) => `${kyivHm(i.start)}-${kyivHm(i.end)}: ${qd(i.queues.join('+'))}`); return set && parts.length ? ` <span class="dim">(${esc(parts.join(', '))})</span>` : ''; };
     s += row(label(w.today), esc(q.today || t('noData')) + from(w.today) + kyivTag) + row(label(w.tomorrow), esc(q.tomorrow || t('noData')) + from(w.tomorrow) + kyivTag);
   }
-  // The headline: light until the next planned outage, or none until its end when it has begun.
+  // The banner: no power by the schedule until the outage ends, or power on until the next one; whether the battery lasts.
   const nowMs = Date.now(), dayOf = (iso) => (dmy(iso) === dmy(new Date(nowMs).toISOString()) ? '' : ' ' + dmy(iso).slice(0, 5));
-  const pill = !w.nextStart ? (w.state !== 'none' && w.windows.length ? `<span class="pill ok">${t('dtekNoCuts')}</span>` : '')
-    : Date.parse(w.nextStart) <= nowMs ? `<span class="pill bad">${t('dtekOffUntil', { at: hm(w.nextEnd) + dayOf(w.nextEnd) })}</span>`
-    : `<span class="pill ok">${t('dtekOnUntil', { at: hm(w.nextStart) + dayOf(w.nextStart) })}</span>`;
-  $('dtekPill').innerHTML = pill;
-  // Each day as 24 hour cells in Kyiv time: the outage share of an hour fills that part of its cell; the current hour is outlined.
+  const icoOn = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 1.5 4 9h3.5L6.5 14.5 12 7H8.5z" fill="currentColor"/></svg>';
+  const icoOff = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 1.5 4 9h3.5L6.5 14.5 12 7H8.5z" fill="currentColor" opacity=".55"/><path d="M2.5 2.5l11 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  const lastsHtml = w.batteryLasts ? ` · ${t('batteryLasts')}: <span class="${{ yes: 'ok', no: 'bad' }[w.batteryLasts] || 'dim'}">${esc(val(w.batteryLasts))}</span>` : '';
+  const offNow = w.nextStart && Date.parse(w.nextStart) <= nowMs;
+  $('dtekPill').innerHTML = !w.nextStart ? (w.state !== 'none' && w.windows.length ? `<div class="dban ok"><b>${icoOn}${t('dtekNoCuts')}</b></div>` : '')
+    : offNow ? `<div class="dban off"><b>${icoOff}${t('dtekBannerOff')}</b><span>${t('dtekFromTo', { a: hm(w.nextStart) + dayOf(w.nextStart), b: hm(w.nextEnd) + dayOf(w.nextEnd) })}${lastsHtml}</span></div>`
+    : `<div class="dban ok"><b>${icoOn}${t('dtekOnUntil', { at: hm(w.nextStart) + dayOf(w.nextStart) })}</b><span>${t('dtekNextCut', { a: hm(w.nextStart) + dayOf(w.nextStart), b: hm(w.nextEnd) })}</span></div>`;
+  // The schedule of the picked day (today / tomorrow tabs) as 24 hour cells in Kyiv time: an outage hour is amber, a half-hour outage fills its half.
   const ymd = (day) => day.split('.').reverse().join(''), kyivNow = new Date(nowMs).toISOString();
   const minOf = (iso, day) => { const d = ymd(kyivDmy(iso)), k = ymd(day); if (d < k) return 0; if (d > k) return 1440; const [h, m] = kyivHm(iso).split(':').map(Number); return h * 60 + m; };
   const nowMin = minOf(kyivNow, kyivDmy(kyivNow)), nowDay = kyivDmy(kyivNow);
-  const strip = (label, q, day, text) => {
+  const shown = w.queue ? w.windows.filter((q) => q.queue === w.queue).concat(w.windows.length && !w.windows.some((q) => q.queue === w.queue) ? [w.windows[0]] : []) : w.windows;
+  const tomorrowPicked = dtekDay === 'tomorrow', day = tomorrowPicked ? w.tomorrow : w.today;
+  const tab = (key, label, has) => `<button data-day="${key}" aria-pressed="${dtekDay === key}">${esc(label)}${has ? '' : ` · ${t('noData')}`}</button>`;
+  let grid = shown.length ? `<div class="dtop"><span class="dq">${t('queue')} ${esc(shown.map((q) => qd(q.queue)).join(', '))}</span><div class="seg" id="dtekTabs">${tab('today', t('dtekTodayDay', { d: w.today.slice(0, 5) }), shown.some((q) => q.today))}${tab('tomorrow', t('dtekTomorrowDay', { d: w.tomorrow.slice(0, 5) }), shown.some((q) => q.tomorrow))}</div></div>` : '';
+  for (const q of shown) {
+    const text = tomorrowPicked ? q.tomorrow : q.today;
     const spans = (q.intervals || []).map((i) => [minOf(i.start, day), minOf(i.end, day)]).filter(([a, b]) => b > a);
     let cells = '';
     for (let h = 0; h < 24; h++) {
       const a0 = h * 60, b0 = a0 + 60, cover = spans.map(([a, b]) => [Math.max(a, a0), Math.min(b, b0)]).filter(([a, b]) => b > a).sort((p, q2) => p[0] - q2[0]);
-      const cur = day === nowDay && nowMin >= a0 && nowMin < b0 ? (cover.length ? ' now off' : ' now') : '';
-      const off = cover.length ? `background:linear-gradient(90deg,${cover.map(([a, b]) => `transparent ${(a - a0) / 0.6}%,var(--warn) ${(a - a0) / 0.6}% ${(b - a0) / 0.6}%,transparent ${(b - a0) / 0.6}%`).join(',')}),rgba(95,173,101,.16)` : '';
-      cells += `<i class="${text ? '' : 'nd'}${cur}" style="${text ? off : ''}" title="${pad(h)}:00–${pad((h + 1) % 24)}:00 · ${text ? (cover.length ? t('outage') : t('dtekPowerOn')) : t('noData')}"></i>`;
+      const full = cover.length === 1 && cover[0][0] === a0 && cover[0][1] === b0;
+      const fill = cover.length && !full ? `background:linear-gradient(90deg,${cover.map(([a, b]) => `transparent ${(a - a0) / 0.6}%,var(--offc) ${(a - a0) / 0.6}% ${(b - a0) / 0.6}%,transparent ${(b - a0) / 0.6}%`).join(',')}),var(--onc)` : '';
+      const cls = ['c', text ? '' : 'nd', cover.length ? 'off' : '', day === nowDay && nowMin >= a0 && nowMin < b0 ? 'now' : ''].filter(Boolean).join(' ');
+      cells += `<div class="${cls}" style="${text ? fill : ''}" title="${pad(h)}:00–${pad((h + 1) % 24)}:00 · ${text ? (cover.length ? t('outage') : t('dtekPowerOn')) : t('noData')}"><span>${pad(h)}–${pad(h + 1)}</span>${text ? (cover.length ? icoOff : icoOn) : ''}</div>`;
     }
-    return `<div class="strip"><span title="${esc(label)}">${esc(label)}</span>${cells}</div>`;
-  };
-  const shown = w.queue ? w.windows.filter((q) => q.queue === w.queue).concat(w.windows.length && !w.windows.some((q) => q.queue === w.queue) ? [w.windows[0]] : []) : w.windows;
-  let grid = '';
-  for (const q of shown) {
-    const pre = shown.length > 1 ? `${qd(q.queue)} · ` : '';
-    grid += strip(pre + t('dtekTodayDay', { d: w.today.slice(0, 5) }), q, w.today, q.today) + strip(pre + t('dtekTomorrowDay', { d: w.tomorrow.slice(0, 5) }), q, w.tomorrow, q.tomorrow);
+    grid += (shown.length > 1 ? `<div class="dq" style="margin:10px 0 6px">${t('queue')} ${esc(qd(q.queue))}</div>` : '') + `<div class="dgrid">${cells}</div>`;
   }
-  if (grid) grid += `<div class="strip axis"><span></span>${Array.from({ length: 24 }, (_, h) => `<span>${h % 3 ? '' : pad(h)}</span>`).join('')}</div>`
-    + `<div class="slegend"><span><b style="background:rgba(95,173,101,.35)"></b>${t('dtekPowerOn')}</span><span><b style="background:var(--warn)"></b>${t('outage')}</span><span><b style="outline:2px solid var(--text);outline-offset:-2px"></b>${t('dtekNowHour')}</span><span><b style="background:repeating-linear-gradient(135deg,rgba(139,142,149,.4) 0 2px,transparent 2px 5px)"></b>${t('noData')}</span>${kyivTag}</div>`;
+  if (shown.length) grid += `<div class="slegend"><span><b style="background:var(--onc);border:1px solid var(--edge)"></b>${t('dtekPowerOn')}</span><span><b style="background:var(--offc)"></b>${t('outage')}</span><span><b style="background:linear-gradient(90deg,var(--offc) 50%,var(--onc) 50%)"></b>${t('dtekFirstHalf')}</span><span><b style="background:linear-gradient(90deg,var(--onc) 50%,var(--offc) 50%)"></b>${t('dtekSecondHalf')}</span><span><b style="outline:2px solid var(--text);outline-offset:-2px"></b>${t('dtekNowHour')}</span><span><b style="background:repeating-linear-gradient(135deg,rgba(139,142,149,.4) 0 2px,transparent 2px 5px)"></b>${t('noData')}</span>${kyivTag}</div>`;
   $('dtekGrid').innerHTML = grid;
+  $('dtekGrid').onclick = (e) => { const b = e.target.closest('[data-day]'); if (b) { dtekDay = b.dataset.day; show(); } };
   $('dtekBody').innerHTML = s;
   $('dtekNote').textContent = notesText(w.notes, w.note);
 }
@@ -1041,6 +1063,7 @@ document.querySelectorAll('#langSeg button').forEach((b) => { b.onclick = () => 
 // The last mode button's failure stays on the note chip across refreshes until the next press.
 var modeError = '';
 var ecoTimer = null; // the eco countdown's one-second tick, stopped while the page is hidden
+var dtekDay = 'today'; // the DTEK tab picked: today or tomorrow
 var introChart = true; // the chart draws its lines in on the first paint and on a range switch, not on the minute repaint
 var iconSoc = null; // the charge the tab icon was last drawn for
 document.querySelectorAll('#modeSeg button').forEach((b) => { b.onclick = async () => {
