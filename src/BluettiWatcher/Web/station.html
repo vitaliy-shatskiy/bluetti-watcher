@@ -1088,6 +1088,14 @@ document.querySelectorAll('#modeSeg button').forEach((b) => { b.onclick = async 
     load(true);
   }
 }; });
+// Phones have no hover: a tap on anything with a tooltip (or on the ring) shows it in the tip box, a tap elsewhere hides it.
+if (window.matchMedia && matchMedia('(hover: none)').matches) document.addEventListener('click', (e) => {
+  const tip = $('tip'), ring = e.target.closest('#ring'), el = e.target.closest('[title]');
+  if (ring && ring.onmousemove) { ring.onmousemove(e); return; }
+  if (!el || !el.title) { tip.style.display = 'none'; return; }
+  tip.textContent = el.title; tip.style.display = 'block';
+  tip.style.left = Math.max(8, Math.min(window.innerWidth - tip.offsetWidth - 8, e.clientX - tip.offsetWidth / 2)) + 'px'; tip.style.top = (e.clientY + 16) + 'px';
+});
 // a new width redraws the charts at it (a quarter second after the last resize event)
 let resizeTimer = null;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(show, 250); });
