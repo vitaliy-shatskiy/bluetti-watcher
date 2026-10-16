@@ -1,3 +1,4 @@
+using BluettiWatcher.Decision;
 using BluettiWatcher.Runtime;
 using BluettiWatcher.Storage;
 using static BluettiWatcher.Tests.Fx;
@@ -225,4 +226,93 @@ public sealed class DischargeModelTests
         Assert.Equal("config", RuntimeEstimator.Estimate(Bat(70), [], Now, C, null, model with { Fit = new LossFit(-2, 0.05, 10) }).Source);
         Assert.Null(RuntimeEstimator.Estimate(Bat(70), [], Now, C, null, model with { ErrLo = null, ErrHi = null }).HoursLeftLow);
     }
-}
+
+    // ---- eco mode
+
+    /// <summary>
+    /// Cuts of <paramref name="hours"/> h from 100 %, one reading a minute, 300 W until eco comes on 4 minutes in (in the
+    /// cuts flagged true), 200 W after it; the cuts without eco stay at 300 W. Idle 20 W, k 0.2; 30 minutes of mains between.
+    /// </summary>
+    private static (List<HistoryRow> Rows, List<long> Eco) EcoStation(bool[] eco, int hours = 4)
+    {
+        var rows = new List<HistoryRow>();
+        var times = new List<long>();
+        long at = Now;
+        foreach (bool on in eco)
+        {
+            double soc = 100;
+            if (on) times.Add(at + 240);
+            for (int m = 0; m < hours * 60; m++, at += 60)
+            {
+                double load = on && m >= 4 ? 200 : 300;
+                rows.Add(Row(at, Math.Ceiling(soc - 1e-9), load));
+                soc -= (20 + 1.2 * load) / C.CapacityWh * 100 / 60;
+            }
+            for (int m = 0; m < 30; m++, at += 60) rows.Add(Row(at, 100, 200, mains: true));
+        }
+        return (rows, times);
+    }
+
+    [Fact]
+    public void Eco_only_history_learns_the_load_ratio_shrunk_toward_1_and_the_delay()
+    {
+        var (rows, eco) = EcoStation([true, true, true, true, true, true]);
+        var p = DischargeModel.Eco(rows, DischargeModel.Cuts(rows, C), eco, 3600);
+        // six cuts at 200 / 300 W after / before, two cuts of prior weight at 1: (2/3)^(6/8); share 6 / (6 + 2)
+        Assert.Equal(Math.Pow(2.0 / 3, 6.0 / 8), p.Ratio, 9);
+        Assert.Equal((0.75, 240L, 240L), (p.Share, p.DelaySec, p.MaxDelaySec));
+        var m = DischargeModel.Learn(rows, C, Now, eco);
+        Assert.Equal(p, m.Eco);
+        // a new cut a minute old at 300 W: eco is due at 4 minutes, so the time is longer than at 300 W throughout
+        var now = Reading300();
+        var due = RuntimeEstimator.Estimate(now, [], Now, C, null, m, new CutState(Now - 60, EcoSeen: false));
+        var seen = RuntimeEstimator.Estimate(now, [], Now, C, null, m, new CutState(Now - 60, EcoSeen: true));
+        var plain = RuntimeEstimator.Estimate(now, [], Now, C, null, m with { Eco = null });
+        Assert.True(due.HoursLeft > seen.HoursLeft, $"{due.HoursLeft} vs {seen.HoursLeft}");
+        Assert.Equal(plain, seen);   // eco on already: the load is what it is
+    }
+
+    private static Reading Reading300() => new(70, 0, 300, "INVERTER_OUTPUT");
+
+    [Fact]
+    public void No_eco_history_is_exactly_the_loss_model()
+    {
+        var (rows, _) = EcoStation([false, false, false, false, false, false]);
+        var plain = DischargeModel.Learn(rows, C, Now);
+        Assert.Null(plain.Eco);
+        Assert.Equal(plain, DischargeModel.Learn(rows, C, Now, [Now - 86400, Now + 999_999]));   // eco-on times outside every cut
+        var withCut = RuntimeEstimator.Estimate(Reading300(), [], Now, C, null, plain, new CutState(Now - 60, false));
+        Assert.Equal(RuntimeEstimator.Estimate(Reading300(), [], Now, C, null, plain), withCut);
+    }
+
+    [Fact]
+    public void A_switch_to_eco_mid_cut_takes_the_load_down_only_from_when_eco_is_due_until_it_comes_on()
+    {
+        var fit = new LossFit(2, 0.05, 10);   // 200 W: 12 points an hour; 100 W: 7
+        var eco = new EcoProfile(0.5, 1, 600, 1200);
+        var fresh = new CutState(Now, EcoSeen: false);
+        // 5 minutes in, eco due at 10: 5 minutes at 12, 55 at 7
+        Assert.Equal(12.0 * 5 / 60 + 7.0 * 55 / 60, DischargeModel.Drop(fit, eco, 200, Now + 300, fresh, 1), 9);
+        Assert.Equal(12.0, DischargeModel.Drop(fit, eco, 200, Now + 300, fresh with { EcoSeen = true }, 1), 9);
+        Assert.Equal(12.0, DischargeModel.Drop(fit, eco, 200, Now + 1201, fresh, 1), 9);   // past the latest delay: not coming
+        Assert.Equal(12.0, DischargeModel.Drop(fit, eco, 200, Now + 300, null, 1), 9);     // the cut's start not known
+        Assert.Equal(5.0 / 60 + 69.0 / 7, DischargeModel.HoursFor(fit, eco, 200, Now + 300, fresh, 70), 9);
+        Assert.Equal(70.0 / 12, DischargeModel.HoursFor(fit, eco, 200, Now + 300, fresh with { EcoSeen = true }, 70), 9);
+        // the current cut's start: known only when the rows reach back past it
+        List<HistoryRow> rows = [Row(Now, 90, mains: true), Row(Now + 60, 90), Row(Now + 120, 89)];
+        Assert.Equal(Now + 60, DischargeModel.CutStartAt(rows, C));
+        Assert.Null(DischargeModel.CutStartAt(rows[1..], C));
+    }
+
+    [Fact]
+    public void Sparse_eco_cuts_move_the_profile_only_part_of_the_way()
+    {
+        var (rows, eco) = EcoStation([false, false, true, false, false, false]);
+        var p = DischargeModel.Eco(rows, DischargeModel.Cuts(rows, C), eco, 3600);
+        Assert.Equal(Math.Pow(2.0 / 3, 1.0 / 3), p.Ratio, 9);   // one cut against two of prior weight
+        Assert.Equal(1.0 / 8, p.Share, 9);                      // one eco cut of six, plus two of prior weight
+        // the stored profile round-trips; one out of bounds is dropped and the model stands without it
+        var m = new FittedRuntime(new LossFit(1.5, 0.06, 12.5), null, null, Now, p);
+        Assert.Equal(m, FittedRuntime.Parse(m.Format(), C));
+        Assert.Equal(m with { Eco = null }, FittedRuntime.Parse((m with { Eco = p with { Ratio = 3 } }).Format(), C));
+    }}

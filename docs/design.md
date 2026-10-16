@@ -269,7 +269,17 @@ battery levels and hibernate act on SOC thresholds alone and never read the esti
   error is close to the next one; the cut is the independent unit); `hoursLeftLow` = SOC / (drain + P90),
   `hoursLeftHigh` = SOC / (drain + P10), open when that drain may reach 0. Refitted from the newest 20 000 stored rows
   (about 14 days of one-minute readings; older history is not read) at most every 15 minutes while `/api/now` is
-  asked, never on the poll; kept in meta `runtimeModel`.
+  asked, never on the poll; kept in meta `runtimeModel`. The refit reads the rows as stored (no bucketing) and the
+  `eco-on` events.
+- Eco mode: the model also learns what eco does to the load from the cuts whose `eco-on` event it finds. Per eco cut,
+  the delay from the cut's first reading and the mean load in the 15 minutes after eco over the mean load before. The
+  ratio is their geometric mean shrunk toward 1, the share is the eco cuts over the cuts long enough to have seen eco,
+  both with two cuts of prior weight, so one or two eco cuts move them only part of the way. In a new cut where eco has
+  not come on yet and the latest delay seen has not passed, the load is taken as current x (1 + share x (ratio - 1))
+  from the median delay on: the time left already counts the saving eco is about to bring. Once the cut's `eco-on` is
+  logged, or with no eco history at all, nothing changes: the loss model at the current load. The latest delay is
+  capped at `rateWindowMin` (the service sees the cut's start only that far back). The profile is kept after the
+  model in meta `runtimeModel`. A damaged one is dropped alone.
 - Chosen by a backtest (`tests/BluettiWatcher.Tests/Backtest`, run on request with `BW_BACKTEST_DB` and
   `BW_BACKTEST_OUT`): every cut replayed, the SOC forecast 30, 60 and 120 minutes ahead scored on held-out cuts.
   An exponentially weighted load, an hour-of-day profile and an eco-mode load ratio were scored too and did not earn

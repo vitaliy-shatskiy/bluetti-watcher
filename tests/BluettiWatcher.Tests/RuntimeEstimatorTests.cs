@@ -354,6 +354,34 @@ public sealed class RuntimeEstimatorTests : IDisposable
     }
 
     [Fact]
+    public async Task A_new_cut_takes_the_learned_eco_load_into_account_until_eco_comes_on()
+    {
+        // a past cut of three and a half hours: 300 W, eco on at 4 minutes, 200 W after; mains; a new cut 2 minutes old at 300 W
+        async Task<double> HoursLeft(string name, bool ecoEvent)
+        {
+            using var rig = Open(name);
+            double soc = 100;
+            var t = T0.AddMinutes(-260);
+            for (int m = 0; m < 210; m++, t = t.AddMinutes(1))
+            {
+                double load = m >= 4 ? 200 : 300;
+                rig.Store.AddReading(t, new Reading(Math.Ceiling(soc - 1e-9), 0, load, "INVERTER_OUTPUT"), ReadingStatus.Accepted, "");
+                soc -= load / (2304 * 0.85) * 100 / 60;
+            }
+            if (ecoEvent) rig.Store.AddEvent(T0.AddMinutes(-256), "eco-on", "test");
+            for (; t < T0.AddMinutes(-2); t = t.AddMinutes(1)) rig.Store.AddReading(t, Grid(70), ReadingStatus.Accepted, "");
+            for (; t < T0; t = t.AddMinutes(1)) rig.Store.AddReading(t, new Reading(70, 0, 300, "INVERTER_OUTPUT"), ReadingStatus.Accepted, "");
+            rig.Reader.Next.Enqueue(new Reading(70, 0, 300, "INVERTER_OUTPUT"));
+            await rig.Service.PollAsync(CancellationToken.None);
+            using var doc = await GetNow(rig.Api);
+            Assert.Equal("model", doc.RootElement.GetProperty("runtimeSource").GetString());
+            return doc.RootElement.GetProperty("hoursLeft").GetDouble();
+        }
+        double plain = await HoursLeft("plain", ecoEvent: false), eco = await HoursLeft("eco", ecoEvent: true);
+        Assert.True(eco > plain, $"eco {eco} h vs plain {plain} h");
+    }
+
+    [Fact]
     public async Task Without_clean_history_or_with_the_model_off_the_old_sources_stand()
     {
         using (var rig = Open())

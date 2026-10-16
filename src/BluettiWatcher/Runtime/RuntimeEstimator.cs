@@ -83,8 +83,11 @@ internal static class RuntimeEstimator
     /// data (as much as the prior weighs) and is within the physical bounds it gives the time instead (its drain at the
     /// current load); the measured rate and efficiency are still reported beside it. With DC input the model stands aside:
     /// it was fitted without any and cannot tell what the panels give, while the measured drop includes it.
+    /// <paramref name="cut"/>: where the current cut stands; with the model's eco profile, the load is taken down by the eco
+    /// factor from when eco is due until it comes on (null = not known, the current load throughout).
     /// </summary>
-    public static RuntimeEstimate Estimate(Reading? current, IReadOnlyList<HistoryRow> rows, long nowSec, StationConfig c, double? learned, FittedRuntime? model = null)
+    public static RuntimeEstimate Estimate(Reading? current, IReadOnlyList<HistoryRow> rows, long nowSec, StationConfig c, double? learned,
+        FittedRuntime? model = null, CutState? cut = null)
     {
         if (current is not { Soc: { } soc } || !double.IsFinite(soc) || current.InAc > 0) return RuntimeEstimate.None;
         double load = (current.OutAc ?? 0) + (current.OutDc ?? 0);
@@ -97,8 +100,11 @@ internal static class RuntimeEstimator
             measured = m.Clean && double.IsFinite(eff) && eff > 0 ? Math.Round(Bound(eff, c), 3) : null;
         }
         if (model is { Fit: var fit } && fit.CleanHours >= DischargeModel.PriorHours && !(current.InDc > 0)
-            && DischargeModel.Physical(fit, c) && fit.Drain(load) is var drain && drain > 0)
+            && DischargeModel.Physical(fit, c) && fit.Drain(load) > 0)
         {
+            var eco = model.Eco ?? EcoProfile.None;
+            double hours = DischargeModel.HoursFor(fit, eco, load, nowSec, cut, soc);
+            double drain = hours > 0 && double.IsFinite(hours) ? soc / hours : fit.Drain(load);   // the mean drain to empty
             double? low = null, high = null;
             if (model.ErrLo is { } lo && model.ErrHi is { } hi)
             {
@@ -107,7 +113,8 @@ internal static class RuntimeEstimator
                 low = Cap(soc / fast);
                 high = slow > 0 ? Cap(soc / slow) : null;
             }
-            return new(Cap(soc / drain), Cap(Math.Max(0, soc - c.HibernateAt) / drain), "model", rate is { } r ? Math.Round(r.Rate, 1) : null, measured, low, high);
+            return new(Cap(hours), Cap(DischargeModel.HoursFor(fit, eco, load, nowSec, cut, Math.Max(0, soc - c.HibernateAt))), "model",
+                rate is { } r ? Math.Round(r.Rate, 1) : null, measured, low, high);
         }
         if (rate is { } w)
         {

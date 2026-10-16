@@ -12,6 +12,8 @@ The release notes on GitHub are this file's section for the tag.
   fitted to the station's own discharges, shrunk toward the configured `efficiency` while data are few, with a
   P10-P90 range: `/api/now` adds `hoursLeftLow`, `hoursLeftHigh` and the `runtimeSource` value `model`. Chosen by a
   leave-one-cut-out backtest that ships with the tests; `false` keeps the measured rate and the efficiency formula.
+  Early in a cut the model counts the load saving eco mode is about to bring, learned from the station's past eco
+  switches (none logged = no change).
 
 ## [1.2.0] - 2026-10-14
 

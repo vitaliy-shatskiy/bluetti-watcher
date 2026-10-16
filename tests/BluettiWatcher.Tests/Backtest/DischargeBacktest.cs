@@ -21,7 +21,7 @@ public sealed class DischargeBacktest
         Assert.SkipWhen(string.IsNullOrEmpty(db) || string.IsNullOrEmpty(output), "BW_BACKTEST_DB and BW_BACKTEST_OUT name the database and the report");
         Assert.True(File.Exists(db), $"no database at {db}");
         var (rows, eco) = Load(db!);
-        var report = new Backtester(rows, eco, new StationConfig()).Run();
+        var report = new Backtester(rows, eco, new StationConfig(), db).Run();
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output!))!);
         File.WriteAllText(output!, report);
     }
@@ -67,18 +67,23 @@ internal sealed class Backtester
     private readonly double[] _baseline;    // the current estimator's drain at each row, the learned efficiency replayed online
     private readonly double[] _baselineEwma;
     private readonly StringBuilder _notes = new();
+    private readonly string? _dbPath;
+    private readonly long?[] _ecoAtCut;
+    private readonly Dictionary<int, EcoProfile> _ecoProfiles = [];
 
     /// <summary>The half-life grid for the load forecast, minutes; 0 = the latest reading.</summary>
     private static readonly int[] HalfLives = [0, 5, 10, 15, 20, 30, 45, 60, 90, 120];
 
     private static readonly double[] TimeToLevels = [60, 50, 40, 30, 20];
 
-    public Backtester(List<HistoryRow> rows, List<long> eco, StationConfig c)
+    public Backtester(List<HistoryRow> rows, List<long> eco, StationConfig c, string? dbPath = null)
     {
+        _dbPath = dbPath;
         _rows = [.. rows];
         _eco = eco;
         _c = c;
         _cuts = DischargeModel.Cuts(_rows, c);
+        _ecoAtCut = [.. _cuts.Select(k => DischargeModel.EcoIn(_rows, k, eco))];
         _cutOf = new int[_rows.Length];
         Array.Fill(_cutOf, -1);
         for (int k = 0; k < _cuts.Count; k++)
@@ -241,6 +246,14 @@ internal sealed class Backtester
                 }),
             new("C", "loss model P0 + (1+k) x P, fitted, at the current load",
                 held => (i, _, _) => fits[held].Drain(Load(_rows[i]))),
+            new("C eco", "C, the load times the eco profile's factor from when eco is due until it comes on (the shipped model)",
+                held =>
+                {
+                    var f = fits[held];
+                    var eco = DischargeModel.Eco(_rows, _cuts, _eco, c.RateWindowMin * 60L, held);
+                    _ecoProfiles[held] = eco;
+                    return (i, cut, h) => EcoDrain(f, eco, i, cut, h);
+                }),
             new("B+C", "loss model at the EWMA load, half-life fitted",
                 held =>
                 {
@@ -380,6 +393,17 @@ internal sealed class Backtester
             sb.Append('\n');
         }
 
+        sb.Append("\n## C vs C eco (held-out cuts, SOC points)\n\n| Candidate | 60 early | 60 late | 60 all | 120 early | 120 late | 120 all |\n|---|---|---|---|---|---|---|\n");
+        foreach (string name in (string[])["C", "C eco"])
+        {
+            var s = ScoreOf(residuals[name]);
+            sb.Append(inv, $"| {name} | {F(s.Mae(60, true))} | {F(s.Mae(60, false))} | {F(s.Mae(60))} | {F(s.Mae(120, true))} | {F(s.Mae(120, false))} | {F(s.Mae(120))} |\n");
+        }
+        var sc = ScoreOf(residuals["C"]);
+        var se2 = ScoreOf(residuals["C eco"]);
+        bool ecoWins = se2.Mae(60) <= sc.Mae(60) && se2.Mae(120) < sc.Mae(120);
+        sb.Append(inv, $"\nRule (no worse at 60, better at 120): C eco {(ecoWins ? "adopted" : "not adopted")}.\n");
+
         sb.Append("\n## Decision rule: beats the baseline at both 60 and 120 min (all stages, held-out)\n\n");
         foreach (var cand in candidates.Skip(1))
         {
@@ -390,16 +414,18 @@ internal sealed class Backtester
 
         // The service's own path: DischargeModel.Learn on the history without one cut, its range against that cut.
         sb.Append("\n## The shipped model (DischargeModel.Learn, as the service runs it)\n\n");
-        var shipped = DischargeModel.Learn(_rows, c, _rows[^1].At);
+        var shipped = DischargeModel.Learn(_rows, c, _rows[^1].At, _eco);
+        var se = shipped.Eco ?? EcoProfile.None;
+        sb.Append(inv, $"- Eco profile on all history: ratio {F(se.Ratio, "0.000")}, share {F(se.Share, "0.000")}, delay {se.DelaySec / 60.0:0.0} min, latest {se.MaxDelaySec / 60.0:0.0} min (eco-on in {_cuts.Count(k => DischargeModel.EcoIn(_rows, k, _eco) is not null)} of {_cuts.Count} cuts). Per fold ratio {F(_ecoProfiles.Values.Min(e => e.Ratio), "0.000")}-{F(_ecoProfiles.Values.Max(e => e.Ratio), "0.000")}, share {F(_ecoProfiles.Values.Min(e => e.Share), "0.000")}-{F(_ecoProfiles.Values.Max(e => e.Share), "0.000")}.\n");
         sb.Append(inv, $"- On all history: P0 = {F(shipped.Fit.IdleW(c), "0")} W, k = {F(shipped.Fit.K(c), "0.000")}, clean {F(shipped.Fit.CleanHours, "0.0")} h, drain error P10-P90 = [{F(shipped.ErrLo ?? double.NaN)}, {F(shipped.ErrHi ?? double.NaN)}] points/h.\n");
         int hits = 0, scored = 0;
         for (int k = 0; k < _cuts.Count; k++)
         {
             var cut = _cuts[k];
             var rest = _rows.Where((_, i) => i < cut.Start || i > cut.End).ToList();
-            var m = DischargeModel.Learn(rest, c, _rows[^1].At);
+            var m = DischargeModel.Learn(rest, c, _rows[^1].At, _eco);
             if (m.ErrLo is not { } lo || m.ErrHi is not { } hi) continue;
-            DischargeModel.Replay(_rows, [cut], (i, _, _) => m.Fit.Drain(Load(_rows[i])), r =>
+            DischargeModel.Replay(_rows, [cut], (i, cc, h) => EcoDrain(m.Fit, m.Eco ?? EcoProfile.None, i, cc, h), r =>
             {
                 if (r.Horizon != 120) return;
                 double err = r.Error * 60 / r.Horizon;   // real drain minus forecast, as Learn keeps it
@@ -409,9 +435,81 @@ internal sealed class Backtester
         }
         sb.Append(inv, $"- Range coverage on held-out cuts, drain error over the next 120 min (target 80 %): {F(scored > 0 ? 100.0 * hits / scored : double.NaN, "0")} % of {scored}.\n");
 
+        if (_dbPath is not null) sb.Append(RefitCost(c));
+
         sb.Append("\n## Notes\n\n");
         sb.Append(_notes);
         return sb.ToString();
+    }
+
+    /// <summary>The C eco drain over the horizon at row <paramref name="i"/>: eco seen only up to that row.</summary>
+    private double EcoDrain(LossFit f, EcoProfile eco, int i, Cut cut, int h)
+    {
+        long? e = _ecoAtCut[_cutOf[i]];
+        var state = new CutState(_rows[cut.Start].At, e <= _rows[i].At);
+        return DischargeModel.Drop(f, eco, Load(_rows[i]), _rows[i].At, state, h / 60.0) / (h / 60.0);
+    }
+
+    /// <summary>
+    /// The refit as the service runs it (the history read at <see cref="Http.StationApi.RefitRows"/>, the eco-on times,
+    /// <see cref="DischargeModel.Learn"/>) on a copy of the database: one warm-up, then the median of seven runs. A copy
+    /// with fewer readings than the cap is padded with its own readings shifted back in time, so the read is at the cap.
+    /// </summary>
+    private string RefitCost(StationConfig c)
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "bw-backtest-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string copy = Path.Combine(dir, "station.db");
+            File.Copy(_dbPath!, copy);
+            using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = copy, Pooling = false }.ToString()))
+            {
+                db.Open();
+                using var cmd = db.CreateCommand();
+                cmd.CommandText = "SELECT COUNT(*), MIN(at), MAX(at) FROM reading WHERE status=0";
+                long n, lo, hi;
+                using (var r = cmd.ExecuteReader()) { r.Read(); (n, lo, hi) = (r.GetInt64(0), r.GetInt64(1), r.GetInt64(2)); }
+                long shift = hi - lo + 60;
+                for (int copies = 1; n < Http.StationApi.RefitRows; copies++)
+                {
+                    cmd.CommandText = "INSERT INTO reading(at,status,soc,in_ac,in_dc,out_ac,out_dc,volt,hz,mode,reason) SELECT at - $s,status,soc,in_ac,in_dc,out_ac,out_dc,volt,hz,mode,reason FROM reading WHERE at >= $lo";
+                    cmd.Parameters.Clear();
+                    cmd.Parameters.AddWithValue("$s", shift * copies);
+                    cmd.Parameters.AddWithValue("$lo", lo);
+                    cmd.ExecuteNonQuery();
+                    cmd.CommandText = "SELECT COUNT(*) FROM reading WHERE status=0";
+                    n = (long)cmd.ExecuteScalar()!;
+                }
+            }
+            using var store = new StationStore(copy);
+            long now = _rows[^1].At;
+            int read = 0;
+            var total = new List<double>();
+            var learn = new List<double>();
+            for (int run = 0; run < 8; run++)
+            {
+                long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                var rows = store.Readings(now - c.RawRetentionDays * 86400L, now + 1, Http.StationApi.RefitRows);
+                var eco = store.EventTimes("eco-on", now - c.RawRetentionDays * 86400L, now + 1);
+                read = rows.Count;
+                long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
+                DischargeModel.Learn(rows, c, now, eco);
+                long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
+                if (run == 0) continue;
+                total.Add(System.Diagnostics.Stopwatch.GetElapsedTime(t0, t2).TotalMilliseconds);
+                learn.Add(System.Diagnostics.Stopwatch.GetElapsedTime(t1, t2).TotalMilliseconds);
+            }
+            total.Sort();
+            learn.Sort();
+            return string.Create(CultureInfo.InvariantCulture,
+                $"\n## Refit cost\n\n- Median of 7 runs after a warm-up, {read} rows read (cap {Http.StationApi.RefitRows}, the copy padded to reach it): refit {Quantile(total, 0.5):0.0} ms, of it Learn {Quantile(learn, 0.5):0.0} ms (min {total[0]:0.0}, max {total[^1]:0.0}).\n");
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, recursive: true);
+        }
     }
 
     /// <summary>

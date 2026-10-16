@@ -247,8 +247,9 @@ internal sealed class StationApi(StationConfig config, StationService service, S
                 _modelTriedAt = nowSec;
                 try
                 {
-                    var rows = store.History(nowSec - config.RawRetentionDays * 86400L, nowSec + 1, 1, RefitRows);
-                    var next = DischargeModel.Learn(rows, config, nowSec);
+                    long from = nowSec - config.RawRetentionDays * 86400L;
+                    var rows = store.Readings(from, nowSec + 1, RefitRows);
+                    var next = DischargeModel.Learn(rows, config, nowSec, store.EventTimes("eco-on", from, nowSec + 1));
                     store.SetMeta(ModelKey, next.Format());
                     _model = next;
                 }
@@ -272,7 +273,14 @@ internal sealed class StationApi(StationConfig config, StationService service, S
         try { if (config.RateWindowMin > 0) rows = store.History(nowSec - config.RateWindowMin * 60L, nowSec + 1, 1); }
         catch (Exception e) when (e is System.Data.Common.DbException or InvalidOperationException) { Once("history read", e); }
         double? learned = Learned();
-        var est = RuntimeEstimator.Estimate(current, rows, nowSec, config, learned, model);
+        // Where the cut stands, read only for a model that knows eco (none in the history = no read, the loss model alone).
+        CutState? cut = null;
+        if (model?.Eco is { Share: > 0 } && DischargeModel.CutStartAt(rows, config) is { } start)
+        {
+            try { cut = new(start, store.EventTimes("eco-on", start - DischargeModel.EcoLeadSec, nowSec + 1).Count > 0); }
+            catch (Exception e) when (e is System.Data.Common.DbException or InvalidOperationException) { Once("event read", e); }
+        }
+        var est = RuntimeEstimator.Estimate(current, rows, nowSec, config, learned, model, cut);
         if (est.MeasuredEfficiency is { } m)
         {
             lock (_learnGate)

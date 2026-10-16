@@ -294,6 +294,51 @@ internal sealed class StationStore : IDisposable
         }
     }
 
+    /// <summary>
+    /// The newest <paramref name="limit"/> accepted rows in [from, to), raw and 5-minute aggregates as stored, oldest first:
+    /// what a battery-model refit reads. No bucketing and no mode text, so it costs a fraction of <see cref="History"/>.
+    /// </summary>
+    public List<HistoryRow> Readings(long from, long to, int limit)
+    {
+        lock (_gate)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = """
+                SELECT at, soc, in_ac, in_dc, out_ac, out_dc, mains FROM (
+                  SELECT at, soc, in_ac, in_dc, out_ac, out_dc, (in_ac > 0) * 1.0 AS mains FROM reading WHERE status=0 AND at >= $f AND at < $t
+                  UNION ALL
+                  SELECT at, soc, in_ac, in_dc, out_ac, out_dc, mains FROM agg5 WHERE n > 0 AND at >= $f AND at < $t)
+                ORDER BY at DESC LIMIT $lim
+                """;
+            cmd.Parameters.AddWithValue("$f", from);
+            cmd.Parameters.AddWithValue("$t", to);
+            cmd.Parameters.AddWithValue("$lim", limit);
+            var rows = new List<HistoryRow>(Math.Min(limit, 4096));
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                rows.Add(new HistoryRow(r.GetInt64(0), D(r, 1), D(r, 2), D(r, 3), D(r, 4), D(r, 5), null, null, D(r, 6) ?? 0, null));
+            rows.Reverse();
+            return rows;
+        }
+    }
+
+    /// <summary>The times of the service's events of one kind in [from, to), oldest first (no limit: a kind is rare).</summary>
+    public List<long> EventTimes(string kind, long from, long to)
+    {
+        lock (_gate)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = "SELECT at FROM event WHERE kind=$k AND at >= $f AND at < $t ORDER BY at";
+            cmd.Parameters.AddWithValue("$k", kind);
+            cmd.Parameters.AddWithValue("$f", from);
+            cmd.Parameters.AddWithValue("$t", to);
+            var times = new List<long>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) times.Add(r.GetInt64(0));
+            return times;
+        }
+    }
+
     /// <summary>The connection's page cache setting (negative = KiB), for tests.</summary>
     internal long CacheSize()
     {

@@ -28,30 +28,66 @@ internal readonly record struct LossFit(double Idle, double PerWh, double CleanH
 }
 
 /// <summary>
-/// The battery model as fitted from the station's history: the loss model, and the P10-P90 of its drain error (SOC points
-/// an hour, real minus forecast) over held-out cuts at the longest horizon with enough of them; null bounds = too few.
-/// Kept in the meta table as "idle;perWh;cleanHours;errLo;errHi;fittedAt" (invariant culture, empty = none).
+/// What eco mode does to the load, learned from the cuts that saw it come on: <see cref="Ratio"/> = the load after eco
+/// over the load before it (shrunk toward 1), <see cref="Share"/> = the share of cuts that got eco (shrunk toward 0),
+/// <see cref="DelaySec"/> = the median time from a cut's first reading to eco on, <see cref="MaxDelaySec"/> = the latest
+/// seen (eco not on by then is not coming). <see cref="None"/>, no eco history, changes nothing.
 /// </summary>
-internal sealed record FittedRuntime(LossFit Fit, double? ErrLo, double? ErrHi, long FittedAt)
+internal readonly record struct EcoProfile(double Ratio, double Share, long DelaySec, long MaxDelaySec)
+{
+    public static readonly EcoProfile None = new(1, 0, 0, 0);
+
+    /// <summary>The highest ratio taken as eco's: a mode that more than doubles the load is not a saving mode.</summary>
+    public const double MaxRatio = 2;
+
+    /// <summary>The expected load factor once eco is due: the ratio, weighed by the chance that eco comes.</summary>
+    public double Factor => 1 + Share * (Ratio - 1);
+
+    /// <summary>Within its bounds: a positive ratio up to <see cref="MaxRatio"/>, a share within 0-1, delays in order.</summary>
+    public bool Sound => double.IsFinite(Ratio) && Ratio > 0 && Ratio <= MaxRatio && double.IsFinite(Share) && Share >= 0 && Share <= 1
+        && DelaySec >= 0 && MaxDelaySec >= DelaySec;
+}
+
+/// <summary>Where a forecast stands in its cut: the time of the cut's first reading, and whether eco has come on in it.</summary>
+internal readonly record struct CutState(long StartAt, bool EcoSeen);
+
+/// <summary>
+/// The battery model as fitted from the station's history: the loss model, the eco profile, and the P10-P90 of the
+/// drain error (SOC points an hour, real minus forecast) over held-out cuts at the longest horizon with enough of them;
+/// null bounds = too few. Kept in the meta table as "idle;perWh;cleanHours;errLo;errHi;fittedAt", then with an eco
+/// profile ";ratio;share;delaySec;maxDelaySec" (invariant culture, empty = none).
+/// </summary>
+internal sealed record FittedRuntime(LossFit Fit, double? ErrLo, double? ErrHi, long FittedAt, EcoProfile? Eco = null)
 {
     public string Format()
     {
         static string N(double? v) => v is { } x ? x.ToString("R", CultureInfo.InvariantCulture) : "";
-        return string.Join(';', N(Fit.Idle), N(Fit.PerWh), N(Fit.CleanHours), N(ErrLo), N(ErrHi), FittedAt.ToString(CultureInfo.InvariantCulture));
+        string s = string.Join(';', N(Fit.Idle), N(Fit.PerWh), N(Fit.CleanHours), N(ErrLo), N(ErrHi), FittedAt.ToString(CultureInfo.InvariantCulture));
+        return Eco is { } e
+            ? string.Join(';', s, N(e.Ratio), N(e.Share), e.DelaySec.ToString(CultureInfo.InvariantCulture), e.MaxDelaySec.ToString(CultureInfo.InvariantCulture))
+            : s;
     }
 
-    /// <summary>A stored model, or null when it is missing, damaged (no fit time included), or outside the physical bounds for this config.</summary>
+    /// <summary>
+    /// A stored model, or null when it is missing, damaged (no fit time included), or outside the physical bounds for this
+    /// config. A damaged or unsound eco profile is dropped alone: the model stands without it.
+    /// </summary>
     public static FittedRuntime? Parse(string? raw, StationConfig c)
     {
         var p = (raw ?? "").Split(';');
-        if (p.Length != 6) return null;
+        if (p.Length is not (6 or 10)) return null;
         static double? D(string s) => double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) && double.IsFinite(v) ? v : null;
         if (D(p[0]) is not { } idle || D(p[1]) is not { } perWh || D(p[2]) is not { } hours
             || !long.TryParse(p[5], NumberStyles.Integer, CultureInfo.InvariantCulture, out long at) || at <= 0) return null;
         var fit = new LossFit(idle, perWh, hours);
         double? lo = D(p[3]), hi = D(p[4]);
         if (lo is null != hi is null || lo > hi) (lo, hi) = (null, null);
-        return DischargeModel.Physical(fit, c) && hours >= 0 ? new(fit, lo, hi, at) : null;
+        EcoProfile? eco = null;
+        if (p.Length == 10 && D(p[6]) is { } ratio && D(p[7]) is { } share
+            && long.TryParse(p[8], NumberStyles.Integer, CultureInfo.InvariantCulture, out long delay)
+            && long.TryParse(p[9], NumberStyles.Integer, CultureInfo.InvariantCulture, out long maxDelay)
+            && new EcoProfile(ratio, share, delay, maxDelay) is { Sound: true } e) eco = e;
+        return DischargeModel.Physical(fit, c) && hours >= 0 ? new(fit, lo, hi, at, eco) : null;
     }
 }
 
@@ -222,6 +258,107 @@ internal static class DischargeModel
     public static bool Physical(LossFit f, StationConfig c) =>
         double.IsFinite(f.Idle) && f.Idle >= 0 && double.IsFinite(f.K(c)) && f.K(c) >= 0 && f.K(c) < 1;
 
+    /// <summary>The eco profile's prior weight, in cuts: one or two eco cuts move the ratio and the share only part of the way.</summary>
+    public const double EcoPriorCuts = 2;
+
+    /// <summary>The load after eco on is averaged over this long.</summary>
+    public const long EcoRatioWindowSec = 900;
+
+    /// <summary>An eco-on this long before a cut's first reading still belongs to the cut (the switch can beat the reading).</summary>
+    public const long EcoLeadSec = 60;
+
+    /// <summary>The first eco-on in the cut (sorted times), or null.</summary>
+    public static long? EcoIn(IReadOnlyList<HistoryRow> rows, Cut cut, IReadOnlyList<long> eco)
+    {
+        long from = rows[cut.Start].At - EcoLeadSec, to = rows[cut.End].At;
+        foreach (long e in eco)
+            if (e >= from && e <= to) return e;
+        return null;
+    }
+
+    /// <summary>
+    /// The eco profile of the cuts (all but <paramref name="skip"/>): per cut with an eco-on, the delay from its first
+    /// reading and the mean load in <see cref="EcoRatioWindowSec"/> after over the mean load before. The ratio is the
+    /// geometric mean shrunk toward 1 and the share is the eco cuts over the cuts long enough to have seen it, both with
+    /// <see cref="EcoPriorCuts"/> of prior weight. The latest delay is capped at <paramref name="maxDelayCapSec"/> (the
+    /// service sees a cut's start only that far back). No eco cut, or a profile out of bounds: <see cref="EcoProfile.None"/>.
+    /// </summary>
+    public static EcoProfile Eco(IReadOnlyList<HistoryRow> rows, IReadOnlyList<Cut> cuts, IReadOnlyList<long> eco, long maxDelayCapSec, int skip = -1)
+    {
+        var delays = new List<double>();
+        var plainLengths = new List<long>();
+        double logSum = 0;
+        int ratios = 0;
+        for (int k = 0; k < cuts.Count; k++)
+        {
+            if (k == skip) continue;
+            var cut = cuts[k];
+            long start = rows[cut.Start].At;
+            if (EcoIn(rows, cut, eco) is not { } e)
+            {
+                plainLengths.Add(rows[cut.End].At - start);
+                continue;
+            }
+            delays.Add(Math.Max(0, e - start));
+            double pre = 0, post = 0;
+            int nPre = 0, nPost = 0;
+            for (int i = cut.Start; i <= cut.End; i++)
+            {
+                if (!Off(rows[i])) continue;
+                if (rows[i].At < e) { pre += Load(rows[i]); nPre++; }
+                else if (rows[i].At > e && rows[i].At <= e + EcoRatioWindowSec) { post += Load(rows[i]); nPost++; }
+            }
+            if (nPre > 0 && nPost > 0 && pre > 0 && post > 0)
+            {
+                logSum += Math.Log(post / nPost / (pre / nPre));
+                ratios++;
+            }
+        }
+        if (delays.Count == 0) return EcoProfile.None;
+        delays.Sort();
+        long delay = (long)Quantile(delays, 0.5), maxDelay = Math.Min((long)delays[^1], maxDelayCapSec);
+        int eligible = delays.Count + plainLengths.Count(l => l >= delay);
+        var profile = new EcoProfile(Math.Exp(logSum / (ratios + EcoPriorCuts)), delays.Count / (eligible + EcoPriorCuts), delay, maxDelay);
+        return profile.Sound ? profile : EcoProfile.None;
+    }
+
+    /// <summary>
+    /// The first reading of the cut the trailing <paramref name="rows"/> end in, or null: the last row is not off mains, or
+    /// the cut reaches back to the first row read (it began before the rows: its start is not known).
+    /// </summary>
+    public static long? CutStartAt(IReadOnlyList<HistoryRow> rows, StationConfig c)
+    {
+        var cuts = Cuts(rows, c);
+        return cuts.Count > 0 && cuts[^1] is var last && last.End == rows.Count - 1 && last.Start > 0 ? rows[last.Start].At : null;
+    }
+
+    /// <summary>When eco is due in this cut, or null: not seen yet, a share above 0, and the cut not past the latest delay.</summary>
+    private static long? EcoDue(EcoProfile eco, long at, CutState? cut) =>
+        cut is { EcoSeen: false } s && eco.Share > 0 && at - s.StartAt <= eco.MaxDelaySec ? Math.Max(at, s.StartAt + eco.DelaySec) : null;
+
+    /// <summary>
+    /// The SOC points the battery drops over the next <paramref name="hours"/> from <paramref name="at"/>: the drain at the
+    /// load, and from the time eco is due the drain at the load times the eco factor.
+    /// </summary>
+    public static double Drop(LossFit fit, EcoProfile eco, double load, long at, CutState? cut, double hours)
+    {
+        double d1 = fit.Drain(load);
+        if (EcoDue(eco, at, cut) is not { } due) return d1 * hours;
+        double before = Math.Min(hours, (due - at) / 3600.0);
+        return d1 * before + fit.Drain(load * eco.Factor) * (hours - before);
+    }
+
+    /// <summary>The hours until the battery has dropped <paramref name="points"/>, by <see cref="Drop"/>'s two drains; infinity when it never does.</summary>
+    public static double HoursFor(LossFit fit, EcoProfile eco, double load, long at, CutState? cut, double points)
+    {
+        if (!(points > 0)) return 0;
+        double d1 = fit.Drain(load);
+        double before = EcoDue(eco, at, cut) is { } due ? (due - at) / 3600.0 : double.PositiveInfinity;
+        if (d1 * before >= points) return d1 > 0 ? points / d1 : double.PositiveInfinity;
+        double d2 = fit.Drain(load * eco.Factor);
+        return d2 > 0 ? before + (points - d1 * before) / d2 : double.PositiveInfinity;
+    }
+
     /// <summary>The fewest held-out residuals an interval is read from.</summary>
     public const int MinResiduals = 30;
 
@@ -232,10 +369,13 @@ internal static class DischargeModel
     /// The model from the history: the loss fit over every clean stretch, and the interval from leave-one-cut-out residuals
     /// (each cut forecast at its current load by the fit without it; real drain minus forecast, points an hour) at 120
     /// minutes, else 60, else 30, with at least <see cref="MinResiduals"/> of them from <see cref="MinCuts"/> cuts. One pass
-    /// over the rows plus one replay; run on a refit, never on each poll.
+    /// over the rows plus one replay; run on a refit, never on each poll. <paramref name="eco"/>: the eco-on times, sorted
+    /// (none = no eco profile, the loss model alone); the forecasts the range is read from use the eco profile too.
     /// </summary>
-    public static FittedRuntime Learn(IReadOnlyList<HistoryRow> rows, StationConfig c, long nowSec)
+    public static FittedRuntime Learn(IReadOnlyList<HistoryRow> rows, StationConfig c, long nowSec, IReadOnlyList<long>? eco = null)
     {
+        eco ??= [];
+        long ecoCap = c.RateWindowMin * 60L;
         var cuts = Cuts(rows, c);
         var per = new List<Stretch>[cuts.Count];
         var all = new List<Stretch>();
@@ -246,6 +386,8 @@ internal static class DischargeModel
             all.AddRange(per[k]);
         }
         var fit = Fit(all, c);
+        EcoProfile? ecoAll = Eco(rows, cuts, eco, ecoCap) is var p && p != EcoProfile.None ? p : null;   // no eco: stored as before
+        var ecoAt = cuts.Select(k => EcoIn(rows, k, eco)).ToArray();
         var errors = Horizons.ToDictionary(h => h, _ => new List<double>());
         var cutsSeen = Horizons.ToDictionary(h => h, _ => 0);
         for (int k = 0; k < cuts.Count; k++)
@@ -253,9 +395,13 @@ internal static class DischargeModel
             var others = new List<Stretch>(all.Count);
             for (int j = 0; j < cuts.Count; j++) if (j != k) others.AddRange(per[j]);
             var held = Fit(others, c);
+            var heldEco = Eco(rows, cuts, eco, ecoCap, skip: k);
+            var cut = cuts[k];
+            long? seen = ecoAt[k];
             var before = Horizons.ToDictionary(h => h, h => errors[h].Count);
             // the error is predicted minus real SOC: a positive one = the real drop was larger = the real drain faster
-            Replay(rows, [cuts[k]], (i, _, _) => held.Drain(Load(rows[i])), r => errors[r.Horizon].Add(r.Error * 60 / r.Horizon));
+            Replay(rows, [cut], (i, _, h) => Drop(held, heldEco, Load(rows[i]), rows[i].At, new CutState(rows[cut.Start].At, seen <= rows[i].At), h / 60.0) / (h / 60.0),
+                r => errors[r.Horizon].Add(r.Error * 60 / r.Horizon));
             foreach (int h in Horizons) if (errors[h].Count > before[h]) cutsSeen[h]++;
         }
         for (int h = Horizons.Length - 1; h >= 0; h--)
@@ -263,9 +409,9 @@ internal static class DischargeModel
             var e = errors[Horizons[h]];
             if (e.Count < MinResiduals || cutsSeen[Horizons[h]] < MinCuts) continue;
             e.Sort();
-            return new(fit, Quantile(e, 0.1), Quantile(e, 0.9), nowSec);
+            return new(fit, Quantile(e, 0.1), Quantile(e, 0.9), nowSec, ecoAll);
         }
-        return new(fit, null, null, nowSec);
+        return new(fit, null, null, nowSec, ecoAll);
     }
 
     /// <summary>The <paramref name="q"/> quantile of sorted values, linear between neighbours.</summary>
