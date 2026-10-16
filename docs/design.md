@@ -286,7 +286,8 @@ battery levels and hibernate act on SOC thresholds alone and never read the esti
   current load. The eco profile below did, and ships.
 - `/api/now` gives `runtimeSource` (`model`, `rate`, `learned` or `config`; null with no estimate), `ratePerHour`
   (the measured rate whenever the window yields one, with `rate` or `model`), `hoursLeftLow` / `hoursLeftHigh` (with
-  `model`) and `learnedEfficiency`; the page names the method under the time left.
+  `model`) and `learnedEfficiency`. The page shows the range as a clock interval and a cone on the chart, and names the
+  method in the time-left tooltip.
 
 ## 8. Wake during a cut
 
@@ -353,6 +354,12 @@ changes a decision. Use it to stop a heavy program when eco starts, or to notify
 
 ## 10. Page and times
 
+- One HTML file with no external libraries. The battery ring takes its colour from the configured levels, with the
+  emergency and stop zones marked and a tooltip per zone. Charts span 1 hour to 30 days (7 and 30 days at 5 and 15
+  minute steps). A battery card sums the last 30 days: cuts, longest and average cut, energy from the battery, deepest
+  discharge, load on battery. The layout fits a phone (tooltips on tap), Full HD and 2K (scaled up from 2200 px).
+- The DTEK banner checks the plan against the last reading (at most 10 minutes old): power back before the planned end
+  shows green, an outage the schedule does not have shows amber.
 - The page speaks English and Ukrainian. The default is the browser's language (`uk*` -> Ukrainian, else English); the
   switch in the header remembers the choice in the browser.
 - Prose the page shows also comes with a stable code it translates by (`notes`, `ecoNote`, `modeErrorNote`,

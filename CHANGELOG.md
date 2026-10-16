@@ -14,6 +14,14 @@ The release notes on GitHub are this file's section for the tag.
   leave-one-cut-out backtest that ships with the tests; `false` keeps the measured rate and the efficiency formula.
   Early in a cut the model counts the load saving eco mode is about to bring, learned from the station's past eco
   switches (none logged = no change).
+- Dashboard: chart ranges 7 and 30 days, a battery card for the last 30 days, and the DTEK schedule as an hour grid
+  for today and tomorrow. The DTEK banner says when power came back before the plan or went out outside it.
+
+### Changed
+
+- Dashboard redesign: the battery ring is coloured by the configured levels with a tooltip per zone, charts draw at
+  their real width, the layout fits a phone, Full HD and 2K, and texts are shorter. Still one HTML file, no external
+  libraries.
 
 ## [1.2.0] - 2026-10-14
 
