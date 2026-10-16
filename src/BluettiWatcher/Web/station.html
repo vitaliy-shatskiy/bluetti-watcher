@@ -34,7 +34,7 @@ h2{font-size:11px;line-height:16px;margin:0 0 12px;font-weight:600;color:var(--d
 .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}.dim{color:var(--dim)}
 .ring{display:grid;place-items:center;position:relative;background:radial-gradient(circle at 50% 45%,rgba(255,255,255,.035),transparent 65%),var(--bg)}
 .ring svg{width:240px;height:240px;display:block}
-.ring .mid{position:absolute;text-align:center}
+.ring .mid{position:absolute;text-align:center;pointer-events:none}
 .ring .pct{font-size:56px;line-height:60px;font-variant-numeric:tabular-nums;font-weight:600;letter-spacing:-.02em}
 .ring .wh{color:var(--dim);font-size:12px}
 .bar{display:flex;gap:8px;align-items:center}
@@ -60,7 +60,7 @@ tbody tr:hover td{background:rgba(255,255,255,.025)}
 .rowbar .fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#3d6fd6,var(--load))}
 .rowbar .n{text-align:right;font-variant-numeric:tabular-nums}
 details summary{cursor:pointer;color:var(--dim);font-size:12px}
-#tip{position:fixed;pointer-events:none;background:var(--raised);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12px;line-height:16px;display:none;z-index:5;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+#tip{position:fixed;pointer-events:none;background:var(--raised);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12px;line-height:16px;display:none;z-index:5;max-width:340px;box-shadow:0 6px 18px rgba(0,0,0,.35)}
 .note{color:var(--dim);font-size:12px;margin-top:10px}
 .dban{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:12px 16px;border-radius:12px;margin:12px 0 16px;font-size:13px}
 .dban b{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:600}
@@ -334,6 +334,11 @@ en: {
   fromX: "from {x}",
   noData: "no data",
   kyivTime: "Kyiv time",
+  ringOk: "{a}–100 %: normal; on a power cut the PC switches to eco",
+  ringEmergency: "{a}–{b} %: emergency — programs that read the power-mode flag wind down",
+  ringStop: "{a}–{b} %: stop — the flag says critical, save your work",
+  ringWarn: "{a}–{b} %: hibernate warning",
+  ringHibernate: "0–{b} %: the PC hibernates at {b} % once a fresh reading agrees",
   ago: "{d} ago",
   dtekNoCuts: "No outages in the schedule",
   dtekBannerOff: "Scheduled outage now",
@@ -564,6 +569,11 @@ uk: {
   fromX: "з {x}",
   noData: "немає даних",
   kyivTime: "за київським часом",
+  ringOk: "{a}–100 %: звичайна робота; під час відключення ПК переходить в еко-режим",
+  ringEmergency: "{a}–{b} %: аварійний режим — програми, що читають прапорець режиму живлення, згортають роботу",
+  ringStop: "{a}–{b} %: стоп — прапорець каже «критично», збережіть роботу",
+  ringWarn: "{a}–{b} %: попередження про гібернацію",
+  ringHibernate: "0–{b} %: ПК переходить у гібернацію на {b} %, коли свіже показання це підтверджує",
   ago: "{d} тому",
   dtekNoCuts: "Відключень у графіку немає",
   dtekBannerOff: "Світла немає за графіком",
@@ -760,6 +770,15 @@ zone($('zoneR'), 0, stopP); zone($('zoneA'), stopP, emP); zone($('arc'), 0, now.
 $('ticks').innerHTML = [emP, stopP].map((p) => { const a = (p / 100) * 2 * Math.PI - Math.PI / 2, pt = (r) => `x1="${(120 + 91 * Math.cos(a)).toFixed(1)}" y1="${(120 + 91 * Math.sin(a)).toFixed(1)}" x2="${(120 + 109 * Math.cos(a)).toFixed(1)}" y2="${(120 + 109 * Math.sin(a)).toFixed(1)}"`;
   return `<line ${pt()} stroke="#1a1b1e" stroke-width="2.5"><title>${p}%</title></line>`; }).join('');
 $('ring').classList.toggle('charging', !!now.mains && now.inp > 0);
+// Hovering the ring names the zone under the pointer and what the service does there (the configured levels).
+const ringSvg = $('ring');
+ringSvg.onmousemove = (e) => { const b = ringSvg.getBoundingClientRect(), px = (e.clientX - b.left) * 240 / b.width - 120, py = (e.clientY - b.top) * 240 / b.height - 120, tip = $('tip');
+  if (Math.hypot(px, py) < 84 || Math.hypot(px, py) > 116) { tip.style.display = 'none'; return; }
+  const p = ((Math.atan2(py, px) + Math.PI / 2 + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI) * 100, th = D.thresholds, wn = th.warnAt ?? th.hibernateAt;
+  tip.textContent = p > th.emergencyAt ? t('ringOk', { a: th.emergencyAt }) : p > th.stopAt ? t('ringEmergency', { a: th.stopAt, b: th.emergencyAt })
+    : p > wn ? t('ringStop', { a: wn, b: th.stopAt }) : p > th.hibernateAt ? t('ringWarn', { a: th.hibernateAt, b: wn }) : t('ringHibernate', { b: th.hibernateAt });
+  tip.style.display = 'block'; tip.style.left = Math.min(window.innerWidth - tip.offsetWidth - 8, e.clientX + 12) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; };
+ringSvg.onmouseleave = () => { $('tip').style.display = 'none'; };
 $('pct').textContent = `${now.soc}%`; $('pct').className = 'pct ' + cls(now.soc);
 $('wh').textContent = t('whAbout', { now: Math.round(D.capacityWh * now.soc / 100), cap: uWh(D.capacityWh) });
 $('trend').textContent = now.mains ? t('charging') : measured ? t('perHour', { r: fmt(measured) }) : t('discharging');
