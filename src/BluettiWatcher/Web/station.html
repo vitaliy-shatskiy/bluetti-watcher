@@ -246,8 +246,10 @@ en: {
   lastHourLoad: "last hour {mn}–{mx} · avg {avg}",
   input: "input {w}",
   emptyAbout: "empty about {at}",
+  emptyBetween: "empty {a}–{b}",
   tomorrow: "tomorrow",
   fromMeasured: "By the measured drop",
+  fromModel: "By this station's fitted discharge model",
   byCapacity: "By capacity, no measured drop yet",
   recordedSince: "recorded since {at} · {from}% → {to}%",
   usedSockets: "{e} used",
@@ -354,7 +356,7 @@ en: {
   n_wake_disarm_failed: "the wake timer could not be turned off ({0}): retrying",
   n_eco_held: "Eco held back: battery emergency",
   n_auto_held: "Auto: eco not lifted: battery emergency",
-  n_flag_unreadable: "{0}: the power-mode flag is unreadable — nothing lifted",
+  n_flag_unreadable: "{0}: the power-mode flag is unreadable, nothing lifted",
   n_mode_dropped_back: "{0} dropped: mains came back before it ran",
   n_mode_dropped_lost: "{0} dropped: mains was lost before it ran",
   n_mode_dropped: "{0} dropped: {1}",
@@ -477,8 +479,10 @@ uk: {
   lastHourLoad: "за годину {mn}–{mx} · у середньому {avg}",
   input: "вхід {w}",
   emptyAbout: "розрядиться близько {at}",
+  emptyBetween: "розрядиться {a}–{b}",
   tomorrow: "завтра",
   fromMeasured: "За виміряним розрядом",
+  fromModel: "За моделлю розряду цієї станції",
   byCapacity: "За ємністю, розряд ще не виміряно",
   recordedSince: "з {at} · {from}% → {to}%",
   usedSockets: "витрачено {e}",
@@ -585,7 +589,7 @@ uk: {
   n_wake_disarm_failed: "таймер пробудження не вимкнувся ({0}): пробую знову",
   n_eco_held: "Еко-режим не ввімкнено: батарея на аварійному рівні",
   n_auto_held: "Авто: еко-режим не знято, батарея на аварійному рівні",
-  n_flag_unreadable: "{0}: не вдається прочитати прапорець режиму живлення — нічого не знято",
+  n_flag_unreadable: "{0}: не вдається прочитати прапорець режиму живлення, нічого не знято",
   n_mode_dropped_back: "{0} скасовано: світло повернулося раніше, ніж режим спрацював",
   n_mode_dropped_lost: "{0} скасовано: світло зникло раніше, ніж режим спрацював",
   n_mode_dropped: "{0} скасовано: {1}",
@@ -781,8 +785,9 @@ if (sp.length > 1) { const mx = Math.max(...sp.map((r) => r.load), 1), mn = Math
   $('loadSub').textContent = t('lastHourLoad', { mn, mx: uW(mx), avg: uW(Math.round(sp.reduce((s, r) => s + r.load, 0) / sp.length)) }); }
 if (leftH === null) { $('left').textContent = now.mains ? t('charging') : '–'; $('leftSub').textContent = now.mains ? t('input', { w: uW(now.inp) }) : ''; $('left').title = ''; }
 else { $('left').innerHTML = `${Math.floor(leftH)}<small>${t('uH')}</small> ${pad(Math.round((leftH % 1) * 60))}<small>${t('uMin')}</small>`;
-  $('leftSub').textContent = t('emptyAbout', { at: hm(NOW + leftH * 3600000) }) + (new Date(NOW + leftH * 3600000).getDate() !== new Date(NOW).getDate() ? ' ' + t('tomorrow') : '');
-  $('left').title = measured ? t('fromMeasured') : t('byCapacity'); }
+  const lo = D.hoursLeftLow, hi = D.hoursLeftHigh, ranged = lo != null && hi != null && hi > lo, endAt = NOW + (ranged ? hi : leftH) * 3600000;
+  $('leftSub').textContent = (ranged ? t('emptyBetween', { a: hm(NOW + lo * 3600000), b: hm(NOW + hi * 3600000) }) : t('emptyAbout', { at: hm(NOW + leftH * 3600000) })) + (new Date(endAt).getDate() !== new Date(NOW).getDate() ? ' ' + t('tomorrow') : '');
+  $('left').title = D.runtimeSource === 'model' ? t('fromModel') : measured ? t('fromMeasured') : t('byCapacity'); }
 if (live) { $('cutK').textContent = t('thisCut'); $('cut').textContent = dur(NOW - live.start); $('cutSub').textContent = t('recordedSince', { at: hm(live.start), from: live.socFrom, to: live.socTo }); $('cutSub2').textContent = t('usedSockets', { e: uWh(Math.round(live.wh)) }); }
 else { $('cutK').textContent = t('lastCut'); const c = cuts[cuts.length - 1];
   if (c) { $('cut').textContent = dur((c.end || c.last) - c.start); $('cutSub').textContent = `${dmy(c.start)} ${hm(c.start)}–${hm(c.end || c.last)}`; $('cutSub2').textContent = `${c.socFrom}% → ${c.socTo}% · ${uWh(Math.round(c.wh))}`; }
@@ -836,6 +841,9 @@ function draw(hours) {
   if (list.length) { s += `<path class="loadl" pathLength="1" d="${seg((r) => yl(r.load))}" fill="none" stroke="#548af7" stroke-width="1.5" stroke-linejoin="round"/><path class="socl" pathLength="1" d="${seg((r) => ys(r.soc))}" fill="none" stroke="#5fad65" stroke-width="2.2" stroke-linejoin="round"/>`;
     const last = list[list.length - 1]; s += `<circle cx="${x(last.t).toFixed(1)}" cy="${ys(last.soc).toFixed(1)}" r="3.5" fill="#5fad65"/>`;
     if (ahead) { const tEnd = Math.min(t1, last.t + last.soc / perH * 3600000), socEnd = Math.max(0, last.soc - perH * (tEnd - last.t) / 3600000);
+      // the fitted model's P10-P90: the battery line between the fastest and the slowest drain, to the axis end or empty
+      if (D.hoursLeftLow > 0 && D.hoursLeftHigh > D.hoursLeftLow) { const at = (h) => { const tt = Math.min(t1, last.t + h * 3600000); return [x(tt), ys(Math.max(0, last.soc * (1 - (tt - last.t) / (h * 3600000))))]; }, [ax, ay] = at(D.hoursLeftLow), [bx, by] = at(D.hoursLeftHigh);
+        s += `<path class="fc" d="M${x(last.t).toFixed(1)},${ys(last.soc).toFixed(1)}L${ax.toFixed(1)},${ay.toFixed(1)}L${bx.toFixed(1)},${by.toFixed(1)}Z" fill="#5fad65" fill-opacity=".10"/>`; }
       s += `<line x1="${x(last.t).toFixed(1)}" y1="${ys(last.soc).toFixed(1)}" x2="${x(tEnd).toFixed(1)}" y2="${ys(socEnd).toFixed(1)}" stroke="#5fad65" stroke-width="1.5" stroke-dasharray="5 5" stroke-opacity=".7" class="fc"/>`
         + `<line x1="${x(NOW).toFixed(1)}" x2="${x(NOW).toFixed(1)}" y1="${T}" y2="${H - B}" stroke="#8b8e95" stroke-opacity=".35"/><text x="${(x(NOW) + (x(NOW) + 110 > W - R ? -6 : 6)).toFixed(1)}" y="${H - B - 8}" fill="#8b8e95" font-size="12" text-anchor="${x(NOW) + 110 > W - R ? 'end' : 'start'}">${t('nowForecast')}</text>`; } }
   s += `<line id="cross" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="#8b8e95" stroke-opacity=".6" visibility="hidden"/>`;
