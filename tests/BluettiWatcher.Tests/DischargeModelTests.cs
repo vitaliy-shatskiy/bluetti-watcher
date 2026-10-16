@@ -344,4 +344,19 @@ public sealed class DischargeModelTests
         var zero = new FittedRuntime(new LossFit(0, 0.05, 10), -1, 2, Now, new EcoProfile(0, 1, 600, 1200));
         var e = RuntimeEstimator.Estimate(Bat(70), [], Now, C, null, zero, new CutState(Now - 60, false));
         Assert.NotNull(e.HoursLeft);
+    }
+
+    [Theory]
+    [InlineData(true)]    // a flicker on mains at 20 minutes that charged the battery 3 points
+    [InlineData(false)]   // the same rise with no reading on mains
+    public void Replay_never_scores_a_forecast_across_mains_or_a_soc_rise_inside_the_cut(bool flicker)
+    {
+        var rows = Enumerable.Range(0, 61).Select(m => Row(Now + m * 60L, 100 - m / 6.0 + (m >= 20 ? 3 : 0), mains: flicker && m == 20)).ToList();
+        var cuts = DischargeModel.Cuts(rows, C);
+        Assert.Single(cuts);
+        var got = new List<Residual>();
+        DischargeModel.Replay(rows, cuts, (_, _, _) => 10, got.Add);
+        // 30 minutes ahead: only the forecasts made after the rise (21 to 30, or 20 to 30 with no flicker row) are scored
+        Assert.Equal(flicker ? 10 : 11, got.Count(r => r.Horizon == 30));
+        Assert.All(got, r => Assert.Equal(0, r.Error, 9));
     }}

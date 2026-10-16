@@ -441,7 +441,8 @@ internal static class DischargeModel
     /// Replays the cuts: at each reading off mains, the forecast drain (SOC points an hour over the next h minutes, from
     /// <paramref name="drain"/>, which must read only rows up to the index it gets) against the real SOC h minutes later
     /// in the same cut, for each of <see cref="Horizons"/>. A forecast is never below 0 %. No target near the horizon = not
-    /// scored.
+    /// scored, nor a forecast whose horizon spans a reading on mains (a flicker) or a SOC rise: the battery charged in
+    /// between and the real SOC says nothing about the forecast drain.
     /// </summary>
     public static void Replay(IReadOnlyList<HistoryRow> rows, IReadOnlyList<Cut> cuts, Func<int, Cut, int, double?> drain, Action<Residual> sink)
     {
@@ -449,6 +450,19 @@ internal static class DischargeModel
         {
             var cut = cuts[ci];
             long t0 = rows[cut.Start].At;
+            // breaks[k]: the readings on mains and the SOC rises from the cut's start up to row k
+            var breaks = new int[cut.End - cut.Start + 1];
+            double? prev = null;
+            for (int k = cut.Start, n = 0; k <= cut.End; k++)
+            {
+                if (!Off(rows[k])) { if (rows[k].Mains >= 0.5) n++; }
+                else
+                {
+                    if (rows[k].Soc > prev) n++;
+                    prev = rows[k].Soc;
+                }
+                breaks[k - cut.Start] = n;
+            }
             foreach (int h in Horizons)
             {
                 int j = cut.Start;
@@ -459,7 +473,7 @@ internal static class DischargeModel
                     if (j < i) j = i;
                     while (j < cut.End && rows[j].At < want - TargetEarlySec) j++;
                     if (rows[j].At < want - TargetEarlySec) break;   // the cut ends before the horizon
-                    if (rows[j].At > want + TargetLateSec || !Off(rows[j])) continue;
+                    if (rows[j].At > want + TargetLateSec || !Off(rows[j]) || breaks[j - cut.Start] != breaks[i - cut.Start]) continue;
                     if (drain(i, cut, h) is not { } d || !double.IsFinite(d)) continue;
                     double predicted = Math.Max(0, rows[i].Soc!.Value - d * h / 60.0);
                     sink(new(ci, h, rows[i].At - t0 < EarlyMin * 60L, predicted - rows[j].Soc!.Value));
