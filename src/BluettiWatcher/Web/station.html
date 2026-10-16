@@ -345,6 +345,9 @@ en: {
   dtekSecondHalf: "no power for the second 30 min",
   dtekDetails: "Details",
   dtekOnUntil: "Power on until {at}",
+  dtekBackEarly: "Power is back before the schedule",
+  dtekPlannedUntil: "by the schedule until {at}",
+  dtekUnplanned: "Outage outside the schedule",
   dtekPowerOn: "power on",
   dtekTodayDay: "Today {d}",
   dtekTomorrowDay: "Tomorrow {d}",
@@ -578,6 +581,9 @@ uk: {
   dtekSecondHalf: "світла не буде другі 30 хв",
   dtekDetails: "Подробиці",
   dtekOnUntil: "Світло є до {at}",
+  dtekBackEarly: "Світло є раніше графіка",
+  dtekPlannedUntil: "за графіком до {at}",
+  dtekUnplanned: "Відключення поза графіком",
   dtekPowerOn: "світло є",
   dtekTodayDay: "Сьогодні {d}",
   dtekTomorrowDay: "Завтра {d}",
@@ -795,7 +801,7 @@ else { $('cutK').textContent = t('lastCut'); const c = cuts[cuts.length - 1];
   else { $('cut').textContent = '–'; $('cutSub').textContent = t('noneRecorded'); $('cutSub2').textContent = ''; } }
 // the rate at the current load: the service's time already scales the measured drop to it
 const perH = leftH ? now.soc / leftH : measured;
-$('reach').innerHTML = [D.thresholds.emergencyAt, D.thresholds.stopAt, D.thresholds.hibernateAt].map((p) => { const txt = now.mains || !perH ? '–' : now.soc <= p ? t('passed') : t('aboutAt', { at: hm(NOW + (now.soc - p) / perH * 3600000) });
+$('reach').innerHTML = now.mains ? `<div class="rowbar" style="grid-template-columns:1fr"><span class="n ok" style="text-align:left">${t('charging')}</span></div>` : [D.thresholds.emergencyAt, D.thresholds.stopAt, D.thresholds.hibernateAt].map((p) => { const txt = now.mains || !perH ? '–' : now.soc <= p ? t('passed') : t('aboutAt', { at: hm(NOW + (now.soc - p) / perH * 3600000) });
   return `<div class="rowbar" style="grid-template-columns:54px 1fr"><span class="${cls(p)}">${p}%</span><span class="n" style="text-align:left">${txt}</span></div>`; }).join('');
 const omKey = 'om_' + (D.modeCode || '');
 $('volt').innerHTML = now.volt == null ? `<span class="na">${t('noData')}</span>` : `${fmt(now.volt, 1)}<small>${t('uV')}</small>`; $('voltSub').textContent = [now.hz == null ? '' : `${fmt(now.hz, 2)} ${t('uHz')}`, has(omKey) ? t(omKey) : D.mode].filter(Boolean).join(' · ');
@@ -945,7 +951,7 @@ function kyivOffsetDiffers(ms) {
 }
 
 // DTEK Watcher: the planned outages of the house's queue, as the service read them. Every text of the site is escaped.
-function renderDtek(w, th) {
+function renderDtek(w, th, mainsOn) {
   const card = $('dtekCard');
   card.hidden = !w || w.state === 'off';
   if (card.hidden) return;
@@ -999,7 +1005,10 @@ function renderDtek(w, th) {
   const icoOff = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 1.5 4 9h3.5L6.5 14.5 12 7H8.5z" fill="currentColor" opacity=".55"/><path d="M2.5 2.5l11 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
   const lastsHtml = w.batteryLasts ? ` · ${t('batteryLasts')}: <span class="${{ yes: 'ok', no: 'bad' }[w.batteryLasts] || 'dim'}">${esc(val(w.batteryLasts))}</span>` : '';
   const offNow = w.nextStart && Date.parse(w.nextStart) <= nowMs;
-  $('dtekPill').innerHTML = !w.nextStart ? (w.state !== 'none' && w.windows.length ? `<div class="dban ok"><b>${icoOn}${t('dtekNoCuts')}</b></div>` : '')
+  // the station's reading wins over the plan: power back early, or an outage the schedule does not have
+  $('dtekPill').innerHTML = mainsOn === true && offNow ? `<div class="dban ok"><b>${icoOn}${t('dtekBackEarly')}</b><span>${t('dtekPlannedUntil', { at: hm(w.nextEnd) + dayOf(w.nextEnd) })}</span></div>`
+    : mainsOn === false && !offNow ? `<div class="dban off"><b>${icoOff}${t('dtekUnplanned')}</b>${lastsHtml ? `<span>${lastsHtml.replace(/^ · /, '')}</span>` : ''}</div>`
+    : !w.nextStart ? (w.state !== 'none' && w.windows.length ? `<div class="dban ok"><b>${icoOn}${t('dtekNoCuts')}</b></div>` : '')
     : offNow ? `<div class="dban off"><b>${icoOff}${t('dtekBannerOff')}</b><span>${t('dtekFromTo', { a: hm(w.nextStart) + dayOf(w.nextStart), b: hm(w.nextEnd) + dayOf(w.nextEnd) })}${lastsHtml}</span></div>`
     : `<div class="dban ok"><b>${icoOn}${t('dtekOnUntil', { at: hm(w.nextStart) + dayOf(w.nextStart) })}</b><span>${t('dtekNextCut', { a: hm(w.nextStart) + dayOf(w.nextStart), b: hm(w.nextEnd) })}</span></div>`;
   // The schedule of the picked day (today / tomorrow tabs) as 24 hour cells in Kyiv time: an outage hour is amber, a half-hour outage fills its half.
@@ -1034,7 +1043,9 @@ function renderDtek(w, th) {
 let lastNow = null, lastRows = null;
 function show() {
   if (!lastNow) return;
-  renderDtek(lastNow.dtekWatcher, lastNow.thresholds);
+  // mains from the last reading, unknown when it is older than 10 minutes
+  const last = lastRows && lastRows.length ? lastRows[lastRows.length - 1] : null;
+  renderDtek(lastNow.dtekWatcher, lastNow.thresholds, last && Date.now() - Date.parse(last.at) < 600000 ? !!last.mains : null);
   render({ ...lastNow, rows: lastRows });
 }
 // Readings come once a minute, so the page asks once a minute, and only while it is seen. The 26 h of history is read whole
