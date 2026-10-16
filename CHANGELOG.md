@@ -6,6 +6,24 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-10-16
+
+### Download
+
+| File | What it is |
+|---|---|
+| `bluetti-watcher-1.3.2-win-x64.zip` | The service, the power-mode scripts, the installer and the docs |
+| `bluetti-watcher-1.3.2-win-x64.zip.sha256` | Its SHA-256. Check with `(Get-FileHash bluetti-watcher-1.3.2-win-x64.zip).Hash` |
+
+Upgrade: extract the zip, then `pwsh -NoProfile -File install.ps1` (a dry run) and the same with `-Apply`. Your
+config, database and history stay. Requirements and details: [README](https://github.com/vitaliy-shatskiy/bluetti-watcher#quick-start).
+
+### Added
+
+- Dashboard, DTEK hour grid: the hours of today already past show what the station really saw, hatched over the plan,
+  minute by minute: green = power was on, red = power was off, grey = no reading. A tooltip lists each phase with its
+  clock span and length.
+
 ## [1.3.1] - 2026-10-16
 
 ### Download
@@ -239,7 +257,8 @@ with `-Apply`. Requirements and details: [README](https://github.com/vitaliy-sha
 
 Source at this tag: [v1.0.0](https://github.com/vitaliy-shatskiy/bluetti-watcher/tree/v1.0.0)
 
-[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.1.1...v1.2.0

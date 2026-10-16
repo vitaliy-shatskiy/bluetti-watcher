@@ -60,7 +60,7 @@ tbody tr:hover td{background:rgba(255,255,255,.025)}
 .rowbar .fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#3d6fd6,var(--load))}
 .rowbar .n{text-align:right;font-variant-numeric:tabular-nums}
 details summary{cursor:pointer;color:var(--dim);font-size:12px}
-#tip{position:fixed;pointer-events:none;background:var(--raised);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12px;line-height:16px;display:none;z-index:5;max-width:340px;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+#tip{white-space:pre-line;position:fixed;pointer-events:none;background:var(--raised);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12px;line-height:16px;display:none;z-index:5;max-width:340px;box-shadow:0 6px 18px rgba(0,0,0,.35)}
 .note{color:var(--dim);font-size:12px;margin-top:10px}
 .dban{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:12px 16px;border-radius:12px;margin:12px 0 16px;font-size:13px}
 .dban b{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:600}
@@ -71,7 +71,12 @@ details summary{cursor:pointer;color:var(--dim);font-size:12px}
 .dtop{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
 .dq{color:var(--dim);font-size:12px}
 .dgrid{display:grid;grid-template-columns:repeat(12,1fr);gap:6px}
-.dgrid .c{height:58px;border-radius:9px;border:1px solid var(--edge);background:var(--onc);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font-size:12px;font-variant-numeric:tabular-nums;color:#b9c6ba;transition:transform .15s,border-color .15s}
+.dgrid .c{height:58px;border-radius:9px;border:1px solid var(--edge);background:var(--onc);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font-size:12px;font-variant-numeric:tabular-nums;color:#b9c6ba;transition:transform .15s,border-color .15s;position:relative;overflow:hidden}
+.dgrid .c>span,.dgrid .c>svg{position:relative;z-index:1}
+.dgrid .c .fact{position:absolute;inset:0;pointer-events:none}
+.fact.on{background:repeating-linear-gradient(135deg,rgba(95,173,101,.6) 0 2px,transparent 2px 7px)}
+.fact.off{background:repeating-linear-gradient(135deg,rgba(219,92,92,.65) 0 2px,transparent 2px 7px)}
+.fact.nd{background:repeating-linear-gradient(135deg,rgba(139,142,149,.45) 0 2px,transparent 2px 7px)}
 .dgrid .c svg{width:14px;height:14px;color:#6fbf75}
 .dgrid .c:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.18)}
 .dgrid .c.off{background:var(--offc);border-color:rgba(224,165,58,.55);color:#ffe2a8}
@@ -345,6 +350,8 @@ en: {
   dtekSecondHalf: "no power for the second 30 min",
   dtekDetails: "Details",
   dtekOnUntil: "Power on until {at}",
+  dtekWasOn: "power was on",
+  dtekWasOff: "power was off",
   dtekBackEarly: "Power is back before the schedule",
   dtekPlannedUntil: "by the schedule until {at}",
   dtekUnplanned: "Outage outside the schedule",
@@ -581,6 +588,8 @@ uk: {
   dtekSecondHalf: "світла не буде другі 30 хв",
   dtekDetails: "Подробиці",
   dtekOnUntil: "Світло є до {at}",
+  dtekWasOn: "світло було",
+  dtekWasOff: "світла не було",
   dtekBackEarly: "Світло є раніше графіка",
   dtekPlannedUntil: "за графіком до {at}",
   dtekUnplanned: "Відключення поза графіком",
@@ -954,7 +963,19 @@ function kyivOffsetDiffers(ms) {
 }
 
 // DTEK Watcher: the planned outages of the house's queue, as the service read them. Every text of the site is escaped.
-function renderDtek(w, th, mainsOn) {
+// What the station saw in each minute of today up to now: 'on' (mains), 'off' (battery) or 'nd' (no accepted reading within 10 minutes).
+// `day0` = the start of today's first minute in ms. A reading holds until the next one, or for one minute before a longer silence.
+function factMinutes(rows, day0, upto) {
+  const m = new Array(Math.max(0, upto)).fill('nd'), gap = 10 * 60000, end = day0 + upto * 60000, ok = rows.filter((r) => r.soc !== null);
+  for (let i = 0; i < ok.length; i++) {
+    const t = Date.parse(ok[i].at), next = i + 1 < ok.length ? Date.parse(ok[i + 1].at) : Date.now();
+    if (next <= day0 || t >= end) continue;
+    const to = next - t <= gap ? next : t + 60000, st = ok[i].mains ? 'on' : 'off';
+    for (let k = Math.max(0, Math.floor((t - day0) / 60000)); k < Math.min(upto, Math.ceil((to - day0) / 60000)); k++) m[k] = st;
+  }
+  return m;
+}
+function renderDtek(w, th, mainsOn, hist) {
   const card = $('dtekCard');
   card.hidden = !w || w.state === 'off';
   if (card.hidden) return;
@@ -1020,6 +1041,8 @@ function renderDtek(w, th, mainsOn) {
   const nowMin = minOf(kyivNow, kyivDmy(kyivNow)), nowDay = kyivDmy(kyivNow);
   const shown = w.queue ? w.windows.filter((q) => q.queue === w.queue).concat(w.windows.length && !w.windows.some((q) => q.queue === w.queue) ? [w.windows[0]] : []) : w.windows;
   const tomorrowPicked = dtekDay === 'tomorrow', day = tomorrowPicked ? w.tomorrow : w.today;
+  // the hours already past, today only: what really happened, hatched over the plan
+  const fact = !tomorrowPicked && day === nowDay && hist && hist.length ? factMinutes(hist, nowMs - nowMs % 60000 - nowMin * 60000, nowMin) : null;
   const tab = (key, label, has) => `<button data-day="${key}" aria-pressed="${dtekDay === key}">${esc(label)}${has ? '' : ` · ${t('noData')}`}</button>`;
   let grid = shown.length ? `<div class="dtop"><span class="dq">${t('queue')} ${esc(shown.map((q) => qd(q.queue)).join(', '))}</span><div class="seg" id="dtekTabs">${tab('today', t('dtekTodayDay', { d: w.today.slice(0, 5) }), shown.some((q) => q.today))}${tab('tomorrow', t('dtekTomorrowDay', { d: w.tomorrow.slice(0, 5) }), shown.some((q) => q.tomorrow))}</div></div>` : '';
   for (const q of shown) {
@@ -1031,11 +1054,22 @@ function renderDtek(w, th, mainsOn) {
       const full = cover.length === 1 && cover[0][0] === a0 && cover[0][1] === b0;
       const fill = cover.length && !full ? `background:linear-gradient(90deg,${cover.map(([a, b]) => `transparent ${(a - a0) / 0.6}%,var(--offc) ${(a - a0) / 0.6}% ${(b - a0) / 0.6}%,transparent ${(b - a0) / 0.6}%`).join(',')}),var(--onc)` : '';
       const cls = ['c', text ? '' : 'nd', cover.length ? 'off' : '', day === nowDay && nowMin >= a0 && nowMin < b0 ? 'now' : ''].filter(Boolean).join(' ');
-      cells += `<div class="${cls}" style="${text ? fill : ''}" title="${pad(h)}:00–${pad((h + 1) % 24)}:00 · ${text ? (cover.length ? t('outage') : t('dtekPowerOn')) : t('noData')}"><span>${pad(h)}–${pad(h + 1)}</span>${text ? (cover.length ? icoOff : icoOn) : ''}</div>`;
+      let over = '', factTip = '';
+      if (fact && a0 < nowMin) {
+        // one line per phase, in order: its clock span, what it was and how long
+        const to = Math.min(b0, nowMin), word = { on: t('dtekWasOn'), off: t('dtekWasOff'), nd: t('noData') }, clock = (k) => `${pad(Math.floor(k / 60) % 24)}:${pad(k % 60)}`;
+        for (let k = a0; k < to;) {
+          let j = k; while (j < to && fact[j] === fact[k]) j++;
+          // every phase layer spans the whole cell and is clipped to its minutes, so the stripes run on across phases
+          over += `<i class="fact ${fact[k]}" style="clip-path:inset(0 ${((b0 - j) / 0.6).toFixed(2)}% 0 ${((k - a0) / 0.6).toFixed(2)}%)"></i>`;
+          factTip += `&#10;${clock(k)}–${clock(j)} ${word[fact[k]]} (${j - k} ${t('uMin')})`; k = j;
+        }
+      }
+      cells += `<div class="${cls}" style="${text ? fill : ''}" title="${pad(h)}:00–${pad((h + 1) % 24)}:00 · ${text ? (cover.length ? t('outage') : t('dtekPowerOn')) : t('noData')}${factTip}">${over}<span>${pad(h)}–${pad(h + 1)}</span>${text ? (cover.length ? icoOff : icoOn) : ''}</div>`;
     }
     grid += (shown.length > 1 ? `<div class="dq" style="margin:10px 0 6px">${t('queue')} ${esc(qd(q.queue))}</div>` : '') + `<div class="dgrid">${cells}</div>`;
   }
-  if (shown.length) grid += `<div class="slegend"><span><b style="background:var(--onc);border:1px solid var(--edge)"></b>${t('dtekPowerOn')}</span><span><b style="background:var(--offc)"></b>${t('outage')}</span><span><b style="background:linear-gradient(90deg,var(--offc) 50%,var(--onc) 50%)"></b>${t('dtekFirstHalf')}</span><span><b style="background:linear-gradient(90deg,var(--onc) 50%,var(--offc) 50%)"></b>${t('dtekSecondHalf')}</span><span><b style="outline:2px solid var(--text);outline-offset:-2px"></b>${t('dtekNowHour')}</span><span><b style="background:repeating-linear-gradient(135deg,rgba(139,142,149,.4) 0 2px,transparent 2px 5px)"></b>${t('noData')}</span>${kyivTag}</div>`;
+  if (shown.length) grid += `<div class="slegend"><span><b style="background:var(--onc);border:1px solid var(--edge)"></b>${t('dtekPowerOn')}</span><span><b style="background:var(--offc)"></b>${t('outage')}</span><span><b style="background:linear-gradient(90deg,var(--offc) 50%,var(--onc) 50%)"></b>${t('dtekFirstHalf')}</span><span><b style="background:linear-gradient(90deg,var(--onc) 50%,var(--offc) 50%)"></b>${t('dtekSecondHalf')}</span><span><b style="outline:2px solid var(--text);outline-offset:-2px"></b>${t('dtekNowHour')}</span>${fact ? `<span><b style="background:repeating-linear-gradient(135deg,rgba(95,173,101,.9) 0 2px,transparent 2px 5px)"></b>${t('dtekWasOn')}</span><span><b style="background:repeating-linear-gradient(135deg,rgba(219,92,92,.9) 0 2px,transparent 2px 5px)"></b>${t('dtekWasOff')}</span>` : ''}<span><b style="background:repeating-linear-gradient(135deg,rgba(139,142,149,.4) 0 2px,transparent 2px 5px)"></b>${t('noData')}</span>${kyivTag}</div>`;
   $('dtekGrid').innerHTML = grid;
   $('dtekGrid').onclick = (e) => { const b = e.target.closest('[data-day]'); if (b) { dtekDay = b.dataset.day; show(); } };
   $('dtekBody').innerHTML = s;
@@ -1048,7 +1082,7 @@ function show() {
   if (!lastNow) return;
   // mains from the last reading, unknown when it is older than 10 minutes
   const last = lastRows && lastRows.length ? lastRows[lastRows.length - 1] : null;
-  renderDtek(lastNow.dtekWatcher, lastNow.thresholds, last && Date.now() - Date.parse(last.at) < 600000 ? !!last.mains : null);
+  renderDtek(lastNow.dtekWatcher, lastNow.thresholds, last && Date.now() - Date.parse(last.at) < 600000 ? !!last.mains : null, lastRows);
   render({ ...lastNow, rows: lastRows });
 }
 // Readings come once a minute, so the page asks once a minute, and only while it is seen. The 26 h of history is read whole
