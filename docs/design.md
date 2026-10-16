@@ -360,6 +360,9 @@ changes a decision. Use it to stop a heavy program when eco starts, or to notify
   discharge, load on battery. The layout fits a phone (tooltips on tap), Full HD and 2K (scaled up from 2200 px).
 - The DTEK banner checks the plan against the last reading (at most 10 minutes old): power back before the planned end
   shows green, an outage the schedule does not have shows amber.
+- The hours of today already past carry what happened, hatched over the plan: each minute takes the state of the last
+  accepted reading (mains or battery) while the next one comes within 10 minutes, else it is unknown. Runs of one state
+  are drawn as phases in clock order on one stripe layer, and the cell tooltip lists each phase with its span.
 - The page speaks English and Ukrainian. The default is the browser's language (`uk*` -> Ukrainian, else English); the
   switch in the header remembers the choice in the browser.
 - Prose the page shows also comes with a stable code it translates by (`notes`, `ecoNote`, `modeErrorNote`,

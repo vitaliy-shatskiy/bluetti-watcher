@@ -80,7 +80,7 @@ pwsh -NoProfile -File "$env:LOCALAPPDATA\bluetti-watcher\power-mode\power-mode.p
   eco-mode saving counted early in a cut, and a likely range once 5 cuts are recorded (`fittedRuntime`, on by default).
 - Manual control on the page: Auto, Eco, Max.
 - Your own command when a mode begins (`actions`), and a flag file other programs can read.
-- Optional wake timer and DTEK planned-outage schedule (Kyiv region): an hour grid for today and tomorrow, checked against the station's own mains reading.
+- Optional wake timer and DTEK planned-outage schedule (Kyiv region): an hour grid for today and tomorrow, checked against the station's own mains reading, and the hours already past show whether there really was power.
 - One NativeAOT exe, a per-user scheduled task, no window and no tray.
 
 ## Screenshots
