@@ -728,7 +728,8 @@ const cuts = cutsOf(rows);
 const live = cuts.length && cuts[cuts.length - 1].end === null && NOW - cuts[cuts.length - 1].last < GAP ? cuts[cuts.length - 1] : null;
 
 // Battery time from the service: the measured drop (%/h) when there is enough of it, else capacity x efficiency (learned or configured).
-const measured = D.runtimeSource === 'rate' ? D.ratePerHour : null;
+// the measured drop (%/h) whenever the service has one, whatever the time estimate's source
+const measured = D.ratePerHour ?? null;
 const leftH = !now.mains && D.hoursLeft != null ? D.hoursLeft : null;
 // the charge's zone by the configured levels: red at or under the stop level, amber at or under the emergency level
 const socColor = (v) => (v <= D.thresholds.stopAt ? 'var(--bad)' : v <= D.thresholds.emergencyAt ? 'var(--warn)' : 'var(--ok)');
