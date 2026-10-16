@@ -81,6 +81,63 @@ public class ModbusFrameTests
         Assert.DoesNotContain("DescriptorValue.Indicate", src, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Windows raises Disconnected during GATT setup while the link works: the disconnect watch starts only after the
+    /// notification subscription, and the status is checked right then, so a real disconnect during setup still ends the link.
+    /// </summary>
+    [Fact]
+    public void The_winrt_link_watches_disconnects_only_after_the_subscription()
+    {
+        string src = File.ReadAllText(Path.Combine(Repo(), "src", "BluettiWatcher", "Io", "Ble", "WinRtBleLink.cs"));
+        Assert.Equal(1, System.Text.RegularExpressions.Regex.Count(src, @"ConnectionStatusChanged \+="));
+        var watch = System.Text.RegularExpressions.Regex.Match(src, @"ConnectionStatusChanged \+= OnConnectionStatusChanged;\s*_watching = true;\s*EndIfDisconnected\(\);");
+        Assert.True(watch.Success, "the subscription is not followed by the status check");
+        int cccd = src.IndexOf(".WriteClientCharacteristicConfigurationDescriptorAsync(", StringComparison.Ordinal);
+        Assert.InRange(cccd, 0, watch.Index);
+    }
+
+    /// <summary>Windows answers null for an unpaired station it has not seen since boot: a scan, then one more open.</summary>
+    [Theory]
+    [InlineData(new[] { true }, 0)]
+    [InlineData(new[] { false, true }, 1)]
+    public async Task A_station_windows_does_not_know_is_scanned_for_and_opened_again(bool[] answers, int scans)
+    {
+        var left = new Queue<bool>(answers);
+        var caps = new List<TimeSpan>();
+        var (found, notFound) = await WinRtBleConnector.FindAsync(
+            _ => Task.FromResult(left.Dequeue() ? "dev" : null),
+            (cap, _) => { caps.Add(cap); return Task.FromResult(true); }, CancellationToken.None);
+        Assert.Equal("dev", found);
+        Assert.Null(notFound);
+        Assert.Empty(left);
+        Assert.Equal(scans, caps.Count);
+        Assert.All(caps, c => Assert.Equal(TimeSpan.FromSeconds(8), c));
+    }
+
+    [Theory]
+    [InlineData(false, "the station was not found at its address (not seen in an 8 s scan)")]
+    [InlineData(true, "the station was not found at its address (an 8 s scan saw it, Windows still did not open it)")]
+    public async Task A_station_still_not_opened_after_the_scan_names_it(bool seen, string why)
+    {
+        int opens = 0;
+        var (found, notFound) = await WinRtBleConnector.FindAsync<string>(
+            _ => { opens++; return Task.FromResult<string?>(null); }, (_, _) => Task.FromResult(seen), CancellationToken.None);
+        Assert.Null(found);
+        Assert.Equal(why, notFound);
+        Assert.Equal(2, opens);
+    }
+
+    [Fact]
+    public async Task A_cancelled_scan_opens_no_more()
+    {
+        int opens = 0;
+        using var cts = new CancellationTokenSource();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => WinRtBleConnector.FindAsync<string>(
+            _ => { opens++; return Task.FromResult<string?>(null); },
+            async (_, ct) => { await cts.CancelAsync(); await Task.Delay(TimeSpan.FromSeconds(30), ct); return true; }, cts.Token));
+        Assert.Equal(1, opens);
+    }
+
     private static string Repo([System.Runtime.CompilerServices.CallerFilePath] string here = "") => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(here)!, "..", ".."));
 
     internal static byte[] Answer(params ushort[] words)
@@ -475,6 +532,34 @@ internal sealed class ScriptedConnector(Func<BleOpen> open) : IBleConnector
     }
 }
 
+/// <summary>
+/// A link whose notifications ended before it was handed over, as WinRT's spurious Disconnected during GATT setup did;
+/// its writes still succeed, so only the answers are lost.
+/// </summary>
+internal sealed class EndedLink : IBleLink
+{
+    private readonly Channel<byte[]> _notes = Channel.CreateUnbounded<byte[]>();
+
+    /// <summary><paramref name="written"/>: a list several links share, else its own.</summary>
+    public EndedLink(List<ReadRequest>? written = null)
+    {
+        Written = written ?? [];
+        _notes.Writer.TryComplete(new IOException("the station disconnected"));
+    }
+
+    public List<ReadRequest> Written { get; }
+    public bool Disposed { get; private set; }
+    public ChannelReader<byte[]> Notifications => _notes.Reader;
+
+    public Task WriteAsync(ReadRequest request, CancellationToken ct)
+    {
+        Written.Add(request);
+        return Task.CompletedTask;
+    }
+
+    public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
+}
+
 public class NativeBleReaderTests
 {
     private static StationConfig Cfg(string type = "AC200PL") => new() { Mac = "AA:BB:CC:DD:EE:FF", Type = type, ReaderTimeoutSec = 10 };
@@ -550,7 +635,7 @@ public class NativeBleReaderTests
         await using var link = new ScriptedLink(_ => []);
         var log = new List<string>();
         Assert.Null(await Reader(new ScriptedConnector(() => new BleOpen(link, null)), log).ReadAsync(CancellationToken.None));
-        Assert.Equal(2, link.Written.Count);
+        Assert.Equal(3, link.Written.Count);   // 36+8, asked again over a new connection, then 70+5; its re-ask exceeds MaxReconnects
         Assert.Contains("no complete answer", log[0], StringComparison.Ordinal);
         Assert.True(link.Disposed);
     }
@@ -606,12 +691,13 @@ public class NativeBleReaderTests
         var conn = new ScriptedConnector(() => new BleOpen(links.Dequeue(), null));
         var log = new List<string>();
         var r = await Reader(conn, log).ReadAsync(CancellationToken.None);
-        // DC_INPUT_POWER (36) timed out: null, never another field's value; every other field is its own.
-        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", null, 12, 2301, 50), r);
+        // DC_INPUT_POWER (36) timed out and was asked again over the new connection: its own value, never another field's.
+        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50), r);
         Assert.Equal(2, conn.Opens);
         Assert.True(first.Disposed);
         Assert.Equal(36, first.Written[^1].Start);
-        Assert.Contains("registers 36+1", string.Join("\n", log), StringComparison.Ordinal);
+        Assert.Equal(36, second.Written[0].Start);
+        Assert.Contains("registers 36+1 asked again over a new connection (first: no complete answer to registers 36+1", Assert.Single(log), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -622,7 +708,8 @@ public class NativeBleReaderTests
         var links = new Queue<IBleLink>([first, second]);
         var conn = new ScriptedConnector(() => new BleOpen(links.Dequeue(), null));
         var r = await Reader(conn, []).ReadAsync(CancellationToken.None);
-        Assert.Equal(new Reading(null, null, null, "INVERTER_OUTPUT", null, null, 2301, 50), r);
+        // 36+8 is asked again over the new connection, which answers it whole.
+        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50), r);
         Assert.Equal(2, conn.Opens);
         Assert.True(first.Disposed);
         Assert.Single(first.Written);
@@ -640,6 +727,64 @@ public class NativeBleReaderTests
         Assert.Null(await read);
         Assert.InRange(sw.Elapsed, TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(6));
         Assert.Contains("did not return", log[0], StringComparison.Ordinal);
+    }
+
+    // A request whose connection dropped is asked once more over a new one: a spurious disconnect never costs its fields.
+    [Fact]
+    public async Task A_link_handed_over_already_dropped_is_replaced_and_its_request_asked_again()
+    {
+        await using var ended = new EndedLink();
+        await using var second = new ScriptedLink(Mtu20);
+        var links = new Queue<IBleLink>([ended, second]);
+        var conn = new ScriptedConnector(() => new BleOpen(links.Dequeue(), null));
+        var log = new List<string>();
+        var r = await Reader(conn, log).ReadAsync(CancellationToken.None);
+        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50), r);
+        Assert.Contains("native BLE: registers 36+8 asked again over a new connection (first: the link dropped", Assert.Single(log), StringComparison.Ordinal);
+        Assert.Equal(2, conn.Opens);
+        Assert.True(ended.Disposed);
+        Assert.Equal([36], ended.Written.Select(w => w.Start));
+        Assert.Equal(["0103002400080000", "0103004600050000"], second.Written.Select(w => Convert.ToHexString(w[..6]) + "0000"));
+    }
+
+    [Fact]
+    public async Task A_link_that_drops_on_every_open_stops_at_the_reconnect_limit()
+    {
+        var written = new List<ReadRequest>();
+        var conn = new ScriptedConnector(() => new BleOpen(new EndedLink(written), null));
+        var log = new List<string>();
+        Assert.Null(await Reader(conn, log).ReadAsync(CancellationToken.None));
+        Assert.Equal(3, conn.Opens);   // the first connection and MaxReconnects (2) more
+        Assert.Equal([36, 36, 70], written.Select(w => w.Start));   // one request per connection
+        Assert.Contains("stopped after 3 connections", Assert.Single(log), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_timed_out_request_is_asked_once_more_over_a_new_connection()
+    {
+        await using var first = new ScriptedLink(r => r.Start == 36 ? [] : Mtu20(r));
+        await using var second = new ScriptedLink(Mtu20);
+        var links = new Queue<IBleLink>([first, second]);
+        var conn = new ScriptedConnector(() => new BleOpen(links.Dequeue(), null));
+        var log = new List<string>();
+        var r = await Reader(conn, log).ReadAsync(CancellationToken.None);
+        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50), r);
+        Assert.Equal("native BLE: registers 36+8 asked again over a new connection (first: no complete answer to registers 36+8 within 0.3 s (0 of 21 bytes))", Assert.Single(log));
+        Assert.Equal(2, conn.Opens);
+        Assert.Single(first.Written);
+        Assert.Equal(2, second.Written.Count);
+    }
+
+    /// <summary>A station that loses every first connection is said once, not each poll, and is no miss ("reading again").</summary>
+    [Fact]
+    public async Task A_request_asked_again_every_poll_is_logged_once()
+    {
+        int opens = 0;
+        var conn = new ScriptedConnector(() => new BleOpen(opens++ % 2 == 0 ? new ScriptedLink(r => r.Start == 36 ? [] : Mtu20(r)) : new ScriptedLink(Mtu20), null));
+        var log = new List<string>();
+        var reader = Reader(conn, log);
+        for (int i = 0; i < 3; i++) Assert.Equal(85, (await reader.ReadAsync(CancellationToken.None))?.Soc);
+        Assert.Contains("asked again over a new connection", Assert.Single(log), StringComparison.Ordinal);
     }
 
     [Fact]

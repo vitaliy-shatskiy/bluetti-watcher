@@ -6,6 +6,31 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-10-16
+
+### Download
+
+| File | What it is |
+|---|---|
+| `bluetti-watcher-1.3.3-win-x64.zip` | The service, the power-mode scripts, the installer and the docs |
+| `bluetti-watcher-1.3.3-win-x64.zip.sha256` | Its SHA-256. Check with `(Get-FileHash bluetti-watcher-1.3.3-win-x64.zip).Hash` |
+
+Upgrade: extract the zip, then `pwsh -NoProfile -File install.ps1` (a dry run) and the same with `-Apply`. Your
+config, database and history stay. Requirements and details: [README](https://github.com/vitaliy-shatskiy/bluetti-watcher#quick-start).
+
+### Fixed
+
+- Bluetooth: after a restart of the PC, Windows did not find a station it had not paired with until something scanned
+  for it, so every poll fell back to the cloud. When the station is not found at its address, the watcher now scans for
+  it for up to 8 s and opens it again. A station still not found names whether the scan saw it.
+- Bluetooth: a reading no longer loses its battery % and AC values when Windows reports a disconnect while the
+  connection is set up. That report is ignored until the connection is ready, and a request whose connection dropped,
+  timed out or answered garbled is asked once more over a new connection.
+- Cloud fallback: a slow cloud answer no longer leaves a grey gap on the chart. Each cloud request may take 15 s
+  (was 10 s), and a device list request that got no answer at all (timed out, connection failed) is sent once more
+  in the same poll. An answer is never sent again, nor is a token refresh. The log names a second-try answer, and
+  a miss names both tries.
+
 ## [1.3.2] - 2026-10-16
 
 ### Download
@@ -257,7 +282,8 @@ with `-Apply`. Requirements and details: [README](https://github.com/vitaliy-sha
 
 Source at this tag: [v1.0.0](https://github.com/vitaliy-shatskiy/bluetti-watcher/tree/v1.0.0)
 
-[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.2...HEAD
+[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.3...HEAD
+[1.3.3]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.2.0...v1.3.0

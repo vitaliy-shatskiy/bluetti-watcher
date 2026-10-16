@@ -121,10 +121,11 @@ public class NativeBleLinkLossTests
         Assert.Equal(2, conn.Opens);
         Assert.True(first.Disposed);
         Assert.Single(first.Written);
-        Assert.Single(second.Written);   // the second range: the first one's request was lost, as in a timeout
+        // The lost request, as in a timeout, is asked again over the new connection, then the second range.
+        Assert.Equal([36, 70], second.Written.Select(w => (w[2] << 8) | w[3]));   // the frames' start registers
         Assert.NotNull(r);
-        Assert.Null(r.Soc);   // the lost request's field is null, never another's
-        Assert.Contains("could not be written", string.Join("\n", log), StringComparison.Ordinal);
+        Assert.Equal(85, r.Soc);
+        Assert.Contains("registers 36+8 asked again over a new connection (first: the request for registers 36+8 could not be written", Assert.Single(log), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -139,8 +140,8 @@ public class NativeBleLinkLossTests
         Assert.Equal(2, conn.Opens);
         Assert.True(first.Disposed);
         Assert.NotNull(r);
-        Assert.Null(r.Soc);
-        Assert.Contains("link dropped", string.Join("\n", log), StringComparison.Ordinal);
+        Assert.Equal(85, r.Soc);   // asked again over the new connection
+        Assert.Contains("registers 36+8 asked again over a new connection (first: the link dropped", Assert.Single(log), StringComparison.Ordinal);
     }
 
     [Fact]

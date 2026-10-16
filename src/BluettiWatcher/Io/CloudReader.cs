@@ -89,7 +89,7 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
     private DateTimeOffset _staleSocSince;
 
     /// <summary>The cap on each request.</summary>
-    public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(10);
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(15);
 
     public void Dispose()
     {
@@ -172,15 +172,17 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
         return answer.MsgCode == Expired ? (null, $"msgCode {Expired} (token expired) after a token refresh") : (answer.Reading, answer.Why);
     }
 
+    /// <summary>The GET is idempotent: with no answer at all (a timeout, a failed connection) it is sent once more; an answer never is.</summary>
     private async Task<(int? MsgCode, Reading? Reading, string Why)> DevicesAsync(string access, CancellationToken ct)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Get, new Uri(DevicesUrl));
-        req.Headers.TryAddWithoutValidation("Authorization", access);   // raw, no "Bearer"
-        req.Headers.Add("x-os", "open");
-        req.Headers.Add("x-app-key", AppKey);
-        req.Headers.Add("x-app-ver", AppVer);
-        var (status, body, why) = await SendAsync(req, ct);
-        if (body is null) return (null, null, $"devices: {why}");
+        var (status, body, why) = await DevicesOnceAsync(access, ct);
+        if (body is null)
+        {
+            string first = why;
+            (status, body, why) = await DevicesOnceAsync(access, ct);
+            if (body is null) return (null, null, why == first ? $"devices: {first}, again on retry" : $"devices: {first}, then {why} on retry");
+            log($"cloud: devices answered on the second try (first: {first})");
+        }
         if (status != HttpStatusCode.OK) return (null, null, Invariant($"devices answered HTTP {(int)status}"));
         try
         {
@@ -188,6 +190,16 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
             return Parse(doc.RootElement, config.Type);
         }
         catch (JsonException) { return (null, null, "the devices answer is not JSON"); }
+    }
+
+    private async Task<(HttpStatusCode Status, string? Body, string Why)> DevicesOnceAsync(string access, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, new Uri(DevicesUrl));
+        req.Headers.TryAddWithoutValidation("Authorization", access);   // raw, no "Bearer"
+        req.Headers.Add("x-os", "open");
+        req.Headers.Add("x-app-key", AppKey);
+        req.Headers.Add("x-app-ver", AppVer);
+        return await SendAsync(req, ct);
     }
 
     /// <summary>The first device whose model starts with <paramref name="type"/>; its SOC, AC in and AC out, and a derived mode (design.md §4 AC2a).</summary>

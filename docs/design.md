@@ -134,8 +134,8 @@ a localhost address, writes the token file and exits. It never prints the token.
   and `ACLoadAllTotalPower` > 0 = `INVERTER_OUTPUT` (the AC load runs from the battery); anything else = no mode, so
   the reading is incomplete.
 - AC3: when the device is offline (`online` not "1"), the answer is not `msgCode` 0, `SOC` is missing or not a
-  number, HTTP fails or times out (10 s cap), or the token file is missing or unreadable, the result is a miss with
-  one log line naming why, never the token.
+  number, HTTP fails or times out (15 s cap; a device list request with no answer at all is sent once more), or the
+  token file is missing or unreadable, the result is a miss with one log line naming why, never the token.
 - AC4: when the access token expires within 3 days (`created_at` + `expires_in`) or the API answers `msgCode` 805,
   the reader refreshes once (`POST https://sso.bluettipower.com/oauth2/token`, `grant_type=refresh_token`), writes the
   token file atomically (temp file flushed to disk, then replace) and retries once; a failed refresh after 805 is a

@@ -276,7 +276,10 @@ public sealed class CloudReaderTests : IDisposable
             case "soc-missing": _http.Json(Answer("""[{"fnCode":"GridAllTotalPower","fnValue":"0"}]""")); break;
             case "other-model": _http.Json(Answer(State(), model: "EB3A-EB3A")); break;
             case "http-500": _http.Json($$"""{"echo":"{{Access}}"}""", HttpStatusCode.InternalServerError); break;
-            case "http-throws": _http.Throw(new HttpRequestException($"connection reset, token {Access}")); break;
+            case "http-throws":   // no answer at all: tried once more
+                _http.Throw(new HttpRequestException($"connection reset, token {Access}"));
+                _http.Throw(new HttpRequestException($"connection reset, token {Access}"));
+                break;
             case "not-json": _http.Json($"<html>{Access}</html>"); break;
         }
         Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
@@ -285,19 +288,89 @@ public sealed class CloudReaderTests : IDisposable
         AssertClean();
     }
 
-    // design.md §4 AC3: 10 s cap
+    private void Slow() =>
+        _http.Next.Enqueue(async (_, ct) => { await Task.Delay(TimeSpan.FromSeconds(30), ct); return new HttpResponseMessage(HttpStatusCode.OK); });
+
+    // design.md §4 AC3: 15 s cap; the devices call is tried once more
     [Fact]
     public async Task A_slow_answer_is_a_miss()
     {
         Token(Now);
         Cloud.Timeout = TimeSpan.FromMilliseconds(200);
-        _http.Next.Enqueue(async (_, ct) => { await Task.Delay(TimeSpan.FromSeconds(30), ct); return new HttpResponseMessage(HttpStatusCode.OK); });
+        Slow();
+        Slow();
         Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
-        Assert.Contains("timed out", Assert.Single(_log), StringComparison.Ordinal);
+        Assert.Contains("devices: timed out after 0.2 s, again on retry", Assert.Single(_log), StringComparison.Ordinal);
+        Assert.Equal(2, _http.Calls.Count);
     }
 
     [Fact]
-    public void The_cap_is_10_seconds() => Assert.Equal(TimeSpan.FromSeconds(10), Cloud.Timeout);
+    public void The_cap_is_15_seconds() => Assert.Equal(TimeSpan.FromSeconds(15), Cloud.Timeout);
+
+    [Theory]
+    [InlineData("timeout", "timed out after 0.2 s")]
+    [InlineData("http-throws", "HTTP failed")]
+    public async Task A_devices_call_with_no_answer_is_tried_once_more(string kind, string first)
+    {
+        Token(Now);
+        Cloud.Timeout = TimeSpan.FromMilliseconds(200);
+        if (kind == "timeout") Slow();
+        else _http.Throw(new HttpRequestException($"connection reset, token {Access}"));
+        _http.Json(Answer(State()));
+        Assert.Equal(71, (await Cloud.ReadAsync(CancellationToken.None))?.Soc);
+        Assert.Equal([HttpMethod.Get, HttpMethod.Get], _http.Calls.Select(c => c.Method));
+        Assert.Contains($"cloud: devices answered on the second try (first: {first}", Assert.Single(_log), StringComparison.Ordinal);
+        AssertClean();
+    }
+
+    [Theory]
+    [InlineData("http-500")]
+    [InlineData("msgCode")]
+    [InlineData("not-json")]
+    public async Task An_answer_is_never_retried(string kind)
+    {
+        Token(Now);
+        switch (kind)
+        {
+            case "http-500": _http.Json("""{"error":"server"}""", HttpStatusCode.InternalServerError); break;
+            case "msgCode": _http.Json(Answer(State(), msgCode: 500)); break;
+            case "not-json": _http.Json("<html></html>"); break;
+        }
+        _http.Json(Answer(State()));   // a retry would read this
+        Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
+        Assert.Single(_http.Calls);
+    }
+
+    // The caller's cancellation stops the read at once: never a retry, never a miss
+    [Fact]
+    public async Task A_cancelled_read_is_not_retried()
+    {
+        Token(Now);
+        using var cts = new CancellationTokenSource();
+        _http.Next.Enqueue(async (_, ct) =>
+        {
+            await cts.CancelAsync();
+            await Task.Delay(TimeSpan.FromSeconds(30), ct);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        _http.Json(Answer(State()));   // a retry would read this
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Cloud.ReadAsync(cts.Token));
+        Assert.Single(_http.Calls);
+        Assert.Empty(_log);
+    }
+
+    // The token refresh POST is never retried
+    [Fact]
+    public async Task A_refresh_with_no_answer_after_805_is_not_retried()
+    {
+        Token(Now);
+        _http.Json(Answer("[]", msgCode: 805));
+        _http.Throw(new HttpRequestException("connection reset"));
+        Refreshed();   // a retry would read this
+        Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
+        Assert.Equal([HttpMethod.Get, HttpMethod.Post], _http.Calls.Select(c => c.Method));
+        Assert.Contains("the token refresh HTTP failed", Assert.Single(_log), StringComparison.Ordinal);
+    }
 
     // design.md §4 AC3: token file missing or unreadable
     [Theory]

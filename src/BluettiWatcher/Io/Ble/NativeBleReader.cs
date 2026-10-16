@@ -188,8 +188,22 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         List<ReadRequest> unanswered;
         lock (_flightLock) unanswered = _unanswered;
 
-        // One request over the current connection, opening one first when there is none; null = no further request this poll.
+        // A request whose answer was lost (its connection dropped, timed out or garbled) is asked once more over a new connection,
+        // so a spurious disconnect never costs its fields; the first answer stands when no new connection opens.
         async Task<ResponseAssembler?> NextAsync(int start, int quantity)
+        {
+            var answer = await AskAsync(start, quantity);
+            if (answer?.State != AssemblyState.Invalid) return answer;
+            var again = await AskAsync(start, quantity);
+            if (again is null) return answer;
+            // Recovered, so no miss: said once (a station that loses every first connection shows), not each poll.
+            if (again.State != AssemblyState.Invalid)
+                Note(string.Create(CultureInfo.InvariantCulture, $"registers {start}+{quantity} asked again over a new connection (first: {answer.Error})"), miss: false);
+            return again;
+        }
+
+        // One request over the current connection, opening one first when there is none; null = no further request this poll.
+        async Task<ResponseAssembler?> AskAsync(int start, int quantity)
         {
             if (stopped) return null;
             if (link is null)
@@ -398,7 +412,8 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         return null;
     }
 
-    private void Note(string text)
+    /// <summary><paramref name="miss"/> false: information only, deduplicated like a miss, but no "reading again" follows it.</summary>
+    private void Note(string text, bool miss = true)
     {
         // The first line keeps its byte counts; a repeat that differs only in them is the same line.
         string key = ByteCounts.Replace(text, "(bytes)");
@@ -407,7 +422,7 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         {
             if (string.Equals(key, _lastKey, StringComparison.Ordinal)) return;
             _lastKey = key;
-            _lastMiss = text;
+            if (miss) _lastMiss = text;
             log($"native BLE: {text}");
         }
     }
