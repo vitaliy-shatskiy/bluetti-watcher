@@ -6,6 +6,13 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+### Added
+
+- `fittedRuntime` (default `true`): the battery time comes from a loss model (idle draw plus a proportional loss)
+  fitted to the station's own discharges, shrunk toward the configured `efficiency` while data are few, with a
+  P10-P90 range: `/api/now` adds `hoursLeftLow`, `hoursLeftHigh` and the `runtimeSource` value `model`. Chosen by a
+  leave-one-cut-out backtest that ships with the tests; `false` keeps the measured rate and the efficiency formula.
+
 ## [1.2.0] - 2026-10-14
 
 ### Download

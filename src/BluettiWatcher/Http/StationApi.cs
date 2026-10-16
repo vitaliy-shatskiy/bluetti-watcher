@@ -211,19 +211,68 @@ internal sealed class StationApi(StationConfig config, StationService service, S
         }
     }
 
+    /// <summary>The meta key of the fitted battery model (<see cref="FittedRuntime.Format"/>).</summary>
+    internal const string ModelKey = "runtimeModel";
+    /// <summary>The model is refitted at most this often, seconds: never on each request.</summary>
+    internal const long RefitSec = 15 * 60;
     /// <summary>
-    /// The battery time for the current reading: the measured rate over the stored readings, else the formula. A clean
-    /// window moves the learned efficiency by <see cref="LearnWeight"/>, at most once per rate window.
+    /// The newest rows a refit reads: about 14 days at one reading a minute (more with 5-minute aggregates), enough cuts to
+    /// fit and to read a range from, and a bounded read every <see cref="RefitSec"/>.
+    /// </summary>
+    internal const int RefitRows = 20_000;
+    private readonly Lock _modelGate = new();
+    private FittedRuntime? _model;
+    private bool _modelRead;
+    private long _modelTriedAt = long.MinValue;
+
+    /// <summary>
+    /// The fitted model: read from meta once, refitted from the stored history when it is missing or older than
+    /// <see cref="RefitSec"/> (a clock step back refits too), at most one attempt per <see cref="RefitSec"/>. Null when
+    /// <c>fittedRuntime</c> is off or nothing could be read or fitted.
+    /// </summary>
+    private FittedRuntime? Model(long nowSec)
+    {
+        if (!config.FittedRuntime) return null;
+        lock (_modelGate)
+        {
+            if (!_modelRead)
+            {
+                try { _model = FittedRuntime.Parse(store.GetMeta(ModelKey), config); }
+                catch (Exception e) when (e is System.Data.Common.DbException or InvalidOperationException) { Once("model read", e); return null; }
+                _modelRead = true;
+            }
+            bool stale = _model is null || nowSec - _model.FittedAt >= RefitSec || nowSec < _model.FittedAt;
+            if (stale && (_modelTriedAt == long.MinValue || nowSec - _modelTriedAt >= RefitSec || nowSec < _modelTriedAt))
+            {
+                _modelTriedAt = nowSec;
+                try
+                {
+                    var rows = store.History(nowSec - config.RawRetentionDays * 86400L, nowSec + 1, 1, RefitRows);
+                    var next = DischargeModel.Learn(rows, config, nowSec);
+                    store.SetMeta(ModelKey, next.Format());
+                    _model = next;
+                }
+                catch (Exception e) when (e is System.Data.Common.DbException or InvalidOperationException) { Once("model fit", e); }
+            }
+            return _model;
+        }
+    }
+
+    /// <summary>
+    /// The battery time for the current reading: the fitted model when it rests on clean data, else the measured rate over
+    /// the stored readings, else the formula. A clean window moves the learned efficiency by <see cref="LearnWeight"/>, at
+    /// most once per rate window.
     /// </summary>
     internal RuntimeEstimate Runtime(Reading? current, DateTimeOffset now)
     {
-        if (current is null || current.InAc > 0) return RuntimeEstimate.None;
         long nowSec = now.ToUnixTimeSeconds();
+        var model = Model(nowSec);   // refits on mains too, so a cut that just ended is learned before the next one
+        if (current is null || current.InAc > 0) return RuntimeEstimate.None;
         IReadOnlyList<HistoryRow> rows = [];
         try { if (config.RateWindowMin > 0) rows = store.History(nowSec - config.RateWindowMin * 60L, nowSec + 1, 1); }
         catch (Exception e) when (e is System.Data.Common.DbException or InvalidOperationException) { Once("history read", e); }
         double? learned = Learned();
-        var est = RuntimeEstimator.Estimate(current, rows, nowSec, config, learned);
+        var est = RuntimeEstimator.Estimate(current, rows, nowSec, config, learned, model);
         if (est.MeasuredEfficiency is { } m)
         {
             lock (_learnGate)
@@ -301,6 +350,8 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             Num(w, "hoursLeft", runtime.HoursLeft);
             if (runtime.Source is { } src) w.WriteString("runtimeSource", src); else w.WriteNull("runtimeSource");
             Num(w, "ratePerHour", runtime.RatePerHour);
+            Num(w, "hoursLeftLow", runtime.HoursLeftLow);
+            Num(w, "hoursLeftHigh", runtime.HoursLeftHigh);
             Num(w, "learnedEfficiency", Learned(), 3);
             w.WriteStartObject("thresholds");
             w.WriteNumber("emergencyAt", config.EmergencyAt);

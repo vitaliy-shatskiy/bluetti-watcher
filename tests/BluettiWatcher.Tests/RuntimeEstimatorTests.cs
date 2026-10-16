@@ -96,6 +96,34 @@ public sealed class RuntimeEstimatorTests : IDisposable
         Assert.Equal(14.7, Est(rows, soc: 75).RatePerHour);
     }
 
+    private static readonly FittedRuntime Model = new(new LossFit(2, 0.05, 10), null, null, Now);
+
+    [Fact]
+    public void The_model_keeps_the_measured_rate_beside_it()
+    {
+        var e = RuntimeEstimator.Estimate(Bat(70), TenPerHour(), Now, new StationConfig(), null, Model);
+        Assert.Equal(("model", 10.0, 0.868), (e.Source, e.RatePerHour, e.MeasuredEfficiency));
+    }
+
+    [Fact]
+    public void Solar_input_leaves_the_time_to_the_measured_drop()
+    {
+        // the model was fitted without DC input and cannot tell what the panels give; the measured drop includes it
+        var solar = new Reading(70, 0, 220, "INVERTER_OUTPUT", InDc: 100);
+        Assert.Equal("rate", RuntimeEstimator.Estimate(solar, TenPerHour(), Now, new StationConfig(), null, Model).Source);
+        Assert.Equal("config", RuntimeEstimator.Estimate(solar, [], Now, new StationConfig(), null, Model).Source);
+    }
+
+    [Fact]
+    public void The_model_needs_as_many_clean_hours_as_the_prior_weighs_before_it_beats_the_rate()
+    {
+        var c = new StationConfig();
+        var thin = Model with { Fit = new LossFit(2, 0.05, DischargeModel.PriorHours - 0.1) };
+        Assert.Equal("rate", RuntimeEstimator.Estimate(Bat(70), TenPerHour(), Now, c, null, thin).Source);
+        var enough = Model with { Fit = new LossFit(2, 0.05, DischargeModel.PriorHours) };
+        Assert.Equal("model", RuntimeEstimator.Estimate(Bat(70), TenPerHour(), Now, c, null, enough).Source);
+    }
+
     [Fact]
     public void A_dirty_window_measures_but_teaches_nothing()
     {
@@ -234,6 +262,8 @@ public sealed class RuntimeEstimatorTests : IDisposable
     [Fact]
     public async Task Now_names_the_source_and_the_rate_and_a_restart_during_a_cut_keeps_measuring()
     {
+        // the measured rate and the learned efficiency, with the fitted model off (it is tested below)
+        static StationConfig Off() => new() { FittedRuntime = false };
         using (var rig = Open())
         {
             rig.Reader.Next.Enqueue(Bat(100));
@@ -243,7 +273,7 @@ public sealed class RuntimeEstimatorTests : IDisposable
             Assert.Equal(("config", JsonValueKind.Null, JsonValueKind.Null, 8.9),
                 (r.GetProperty("runtimeSource").GetString(), r.GetProperty("ratePerHour").ValueKind, r.GetProperty("learnedEfficiency").ValueKind, r.GetProperty("hoursLeft").GetDouble()));
         }
-        using (var rig = Open("b"))
+        using (var rig = Open("b", Off()))
         {
             Seed(rig.Store, -60, -1, m => 80 - (m + 60) / 6);   // the cut ran an hour before the restart
             rig.Reader.Next.Enqueue(Bat(70));
@@ -257,7 +287,7 @@ public sealed class RuntimeEstimatorTests : IDisposable
             Assert.Equal($"0.87;{T0.ToUnixTimeSeconds()}", rig.Store.GetMeta(StationApi.LearnedKey));
         }
         // the next cut starts on the learned efficiency, after a restart too
-        using (var rig = Open("b"))
+        using (var rig = Open("b", Off()))
         {
             rig.Clock.Now = T0.AddHours(3);
             rig.Reader.Next.Enqueue(Bat(70));
@@ -295,7 +325,53 @@ public sealed class RuntimeEstimatorTests : IDisposable
         rig.Store.Dispose();
         for (int i = 0; i < 2; i++)
             using (var doc = await GetNow(api)) Assert.Equal("config", doc.RootElement.GetProperty("runtimeSource").GetString());
-        Assert.Equal(2, logs.Count);   // the history read and the meta read, once each
+        Assert.Equal(3, logs.Count);   // the model read, the history read and the meta read, once each
+    }
+
+    [Fact]
+    public async Task Now_gives_the_fitted_model_and_its_range_and_refits_at_most_every_15_minutes()
+    {
+        using var rig = Open();
+        // over three hours of a clean discharge at 10 %/h and 200 W before now: more clean hours than the prior weighs
+        Seed(rig.Store, -200, -1, m => 100 - (m + 200) / 6);
+        rig.Reader.Next.Enqueue(Bat(67));
+        await rig.Service.PollAsync(CancellationToken.None);
+        using (var doc = await GetNow(rig.Api))
+        {
+            var r = doc.RootElement;
+            Assert.Equal("model", r.GetProperty("runtimeSource").GetString());
+            Assert.Equal(10.0, r.GetProperty("ratePerHour").GetDouble());   // the measured rate stays beside the model
+            Assert.InRange(r.GetProperty("hoursLeft").GetDouble(), 5.0, 7.5);   // 67 % at about 10-11 %/h
+            Assert.Equal(JsonValueKind.Null, r.GetProperty("hoursLeftLow").ValueKind);   // one cut: too few for a range
+        }
+        string stored = rig.Store.GetMeta(StationApi.ModelKey)!;
+        Assert.EndsWith($";{T0.ToUnixTimeSeconds()}", stored, StringComparison.Ordinal);
+        // 14 minutes on: the same model; 15: refitted
+        rig.Clock.Now = T0.AddMinutes(14);
+        using (await GetNow(rig.Api)) Assert.Equal(stored, rig.Store.GetMeta(StationApi.ModelKey));
+        rig.Clock.Now = T0.AddMinutes(15);
+        using (await GetNow(rig.Api)) Assert.EndsWith($";{T0.AddMinutes(15).ToUnixTimeSeconds()}", rig.Store.GetMeta(StationApi.ModelKey), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Without_clean_history_or_with_the_model_off_the_old_sources_stand()
+    {
+        using (var rig = Open())
+        {
+            rig.Reader.Next.Enqueue(Bat(100));
+            await rig.Service.PollAsync(CancellationToken.None);
+            using var doc = await GetNow(rig.Api);
+            Assert.Equal(("config", JsonValueKind.Null), (doc.RootElement.GetProperty("runtimeSource").GetString(), doc.RootElement.GetProperty("hoursLeftLow").ValueKind));
+        }
+        using (var rig = Open("b", new StationConfig { FittedRuntime = false }))
+        {
+            Seed(rig.Store, -120, -1, m => 90 - (m + 120) / 6);
+            rig.Reader.Next.Enqueue(Bat(70));
+            await rig.Service.PollAsync(CancellationToken.None);
+            using var doc = await GetNow(rig.Api);
+            Assert.Equal("rate", doc.RootElement.GetProperty("runtimeSource").GetString());
+            Assert.Null(rig.Store.GetMeta(StationApi.ModelKey));
+        }
     }
 
     [Fact]

@@ -37,8 +37,9 @@ The current state, for the page.
 | `note`, `notes` | Notes for the page: one text joined with ` · `, and the list as `{code, text, args}`. |
 | `dryRun` | true in a dry run. |
 | `hoursLeft` | Hours of battery to empty at the current load; null on mains or without an estimate. |
-| `runtimeSource` | `rate` (measured), `learned`, `config`; null without an estimate. |
-| `ratePerHour` | Measured discharge, % per hour; null unless `runtimeSource` is `rate`. |
+| `hoursLeftLow`, `hoursLeftHigh` | With `runtimeSource` `model`: the P10-P90 range of `hoursLeft`; null otherwise or without enough history (5 cuts; high null = no upper bound). |
+| `runtimeSource` | `model` (fitted to this station's discharges), `rate` (measured), `learned`, `config`; null without an estimate. |
+| `ratePerHour` | Measured discharge, % per hour, whenever the readings yield one (with `runtimeSource` `rate` or `model`); else null. |
 | `learnedEfficiency` | The learned efficiency, or null. |
 | `thresholds` | `emergencyAt`, `stopAt`, `warnAt`, `hibernateAt`. |
 | `last` | The last accepted reading, or null: `at`, `soc`, `inAc`, `inDc`, `outAc`, `outDc`, `volt`, `hz`, `mains`. |

@@ -5,11 +5,14 @@ using BluettiWatcher.Storage;
 namespace BluettiWatcher.Runtime;
 
 /// <summary>
-/// A battery-time estimate. <see cref="Source"/>: <c>rate</c> (the measured drop), <c>learned</c> (capacity x the learned
-/// efficiency), <c>config</c> (capacity x the configured efficiency); null with no estimate (on mains, no load).
-/// <see cref="MeasuredEfficiency"/>: this window's efficiency, set only when the window is clean enough to learn from.
+/// A battery-time estimate. <see cref="Source"/>: <c>model</c> (the loss model fitted from the station's history),
+/// <c>rate</c> (the measured drop), <c>learned</c> (capacity x the learned efficiency), <c>config</c> (capacity x the
+/// configured efficiency); null with no estimate (on mains, no load). <see cref="MeasuredEfficiency"/>: this window's
+/// efficiency, set only when the window is clean enough to learn from. <see cref="HoursLeftLow"/> and
+/// <see cref="HoursLeftHigh"/>: the model's P10-P90 range, set only with <c>model</c> and an interval; high null = unbounded.
 /// </summary>
-internal sealed record RuntimeEstimate(double? HoursLeft, double? HoursToHibernate, string? Source, double? RatePerHour, double? MeasuredEfficiency)
+internal sealed record RuntimeEstimate(double? HoursLeft, double? HoursToHibernate, string? Source, double? RatePerHour, double? MeasuredEfficiency,
+    double? HoursLeftLow = null, double? HoursLeftHigh = null)
 {
     public static readonly RuntimeEstimate None = new(null, null, null, null, null);
 }
@@ -76,18 +79,40 @@ internal static class RuntimeEstimator
     /// Hours of battery at the current reading's load, to empty and to <c>hibernateAt</c>; null on mains or with no load.
     /// Measured: SOC / rate x mean output over the window / current output, so a load raised now shortens the time now.
     /// <paramref name="learned"/>: the learned efficiency, used instead of the configured one when it is sound.
+    /// <paramref name="model"/>: the fitted model; when it rests on at least <see cref="DischargeModel.PriorHours"/> of clean
+    /// data (as much as the prior weighs) and is within the physical bounds it gives the time instead (its drain at the
+    /// current load); the measured rate and efficiency are still reported beside it. With DC input the model stands aside:
+    /// it was fitted without any and cannot tell what the panels give, while the measured drop includes it.
     /// </summary>
-    public static RuntimeEstimate Estimate(Reading? current, IReadOnlyList<HistoryRow> rows, long nowSec, StationConfig c, double? learned)
+    public static RuntimeEstimate Estimate(Reading? current, IReadOnlyList<HistoryRow> rows, long nowSec, StationConfig c, double? learned, FittedRuntime? model = null)
     {
         if (current is not { Soc: { } soc } || !double.IsFinite(soc) || current.InAc > 0) return RuntimeEstimate.None;
         double load = (current.OutAc ?? 0) + (current.OutDc ?? 0);
         if (!(load > 0)) return RuntimeEstimate.None;
-        if (Rate(rows, nowSec, c) is { } m)
+        var rate = Rate(rows, nowSec, c);
+        double? measured = null;
+        if (rate is { } m)
         {
-            double scale = m.MeanLoad > 0 ? m.MeanLoad / load : 1;
             double eff = m.MeanLoad / (m.Rate / 100 * c.CapacityWh);
-            double? measured = m.Clean && double.IsFinite(eff) && eff > 0 ? Math.Round(Bound(eff, c), 3) : null;
-            return new(Cap(soc / m.Rate * scale), Cap(Math.Max(0, soc - c.HibernateAt) / m.Rate * scale), "rate", Math.Round(m.Rate, 1), measured);
+            measured = m.Clean && double.IsFinite(eff) && eff > 0 ? Math.Round(Bound(eff, c), 3) : null;
+        }
+        if (model is { Fit: var fit } && fit.CleanHours >= DischargeModel.PriorHours && !(current.InDc > 0)
+            && DischargeModel.Physical(fit, c) && fit.Drain(load) is var drain && drain > 0)
+        {
+            double? low = null, high = null;
+            if (model.ErrLo is { } lo && model.ErrHi is { } hi)
+            {
+                // the range always holds the estimate; a drain that may reach 0 leaves the top open
+                double fast = Math.Max(drain, drain + hi), slow = Math.Min(drain, drain + lo);
+                low = Cap(soc / fast);
+                high = slow > 0 ? Cap(soc / slow) : null;
+            }
+            return new(Cap(soc / drain), Cap(Math.Max(0, soc - c.HibernateAt) / drain), "model", rate is { } r ? Math.Round(r.Rate, 1) : null, measured, low, high);
+        }
+        if (rate is { } w)
+        {
+            double scale = w.MeanLoad > 0 ? w.MeanLoad / load : 1;
+            return new(Cap(soc / w.Rate * scale), Cap(Math.Max(0, soc - c.HibernateAt) / w.Rate * scale), "rate", Math.Round(w.Rate, 1), measured);
         }
         double? sound = Sound(learned, c);
         double e = sound ?? c.Efficiency;
