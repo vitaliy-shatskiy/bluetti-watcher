@@ -12,15 +12,15 @@ h1{font-size:16px;line-height:22px;margin:0;font-weight:600}
 h2{font-size:11px;line-height:16px;margin:0 0 12px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
 .head{display:grid;grid-template-columns:1fr auto auto;grid-template-areas:"brand mode lang" "chips mode lang";align-items:center;gap:12px 20px}
 .head .sp{display:none}
-.head .brand{grid-area:brand}.head .chips{grid-area:chips}.head .modebox{grid-area:mode}.head #langSeg{grid-area:lang;align-self:start}
+.head .brand{grid-area:brand}.head .chips{grid-area:chips}.head .modebox{grid-area:mode;align-self:start}.head #langSeg{grid-area:lang;align-self:start;margin-top:3px}
 .brand{display:flex;align-items:center;gap:12px}
 .brand svg{width:34px;height:34px;flex:none}
 .brand .sub{color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .modebox{display:grid;justify-items:end;gap:4px}
 .modebox .hint{color:var(--dim);font-size:12px;max-width:360px;text-align:right}
-.chip{display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 11px;border-radius:13px;background:var(--raised);font-size:12px;color:var(--text);white-space:nowrap}
-.chip i{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+.chip{display:inline-flex;align-items:center;gap:7px;min-height:26px;max-width:100%;padding:4px 11px;border-radius:13px;background:var(--raised);font-size:12px;line-height:16px;color:var(--text)}
+.chip i{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}
 #ecoChip{font-variant-numeric:tabular-nums}
 .chip.ok{background:rgba(95,173,101,.13);color:#9bd59f}.chip.warn{background:rgba(224,165,58,.13);color:#efc36f}.chip.bad{background:rgba(219,92,92,.14);color:#ef9191}.chip.acc{background:rgba(84,138,247,.14);color:#94b6fb}
 .chip.ok i{background:var(--ok)}.chip.warn i{background:var(--warn)}.chip.bad i{background:var(--bad)}.chip.acc i{background:var(--accent)}
@@ -71,12 +71,48 @@ details summary{cursor:pointer;color:var(--dim);font-size:12px}
 .strip.axis span{color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums}
 .slegend{display:flex;gap:16px;color:var(--dim);font-size:12px;flex-wrap:wrap;margin:8px 0 14px}
 .slegend b{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:6px}
+/* motion: cards rise in once, the ring fills, the chart lines draw on first paint and on a range switch, live dots breathe */
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes breathe{0%,100%{box-shadow:0 0 0 0 currentColor}50%{box-shadow:0 0 0 4px transparent}}
+@keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(224,165,58,.0)}50%{box-shadow:0 0 12px 2px rgba(224,165,58,.55)}}
+main>*{animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
+main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12s}main>*:nth-child(4){animation-delay:.18s}main>*:nth-child(5){animation-delay:.24s}main>*:nth-child(n+6){animation-delay:.3s}
+.top>.card,.tiles>.card{animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
+.tiles>.card:nth-child(2){animation-delay:.08s}.tiles>.card:nth-child(3){animation-delay:.16s}.tiles>.card:nth-child(4){animation-delay:.1s}.tiles>.card:nth-child(5){animation-delay:.18s}.tiles>.card:nth-child(6){animation-delay:.26s}
+.card{transition:border-color .2s,background-color .2s}
+.card:hover{border-color:rgba(255,255,255,.11)}
+#arc{transition:stroke-dasharray 1.2s cubic-bezier(.2,.7,.2,1),stroke .4s}
+.chip i{color:inherit}
+#gridChip i,#ecoChip i{animation:breathe 2.4s ease-in-out infinite}
+.intro .socl,.intro .loadl{stroke-dasharray:4000;stroke-dashoffset:4000;animation:draw 1.4s cubic-bezier(.3,.6,.2,1) forwards}
+.intro .loadl{animation-delay:.15s}
+.intro .area,.intro .fc{animation:fade .9s ease .5s both}
+.intro rect.hbar{transform-box:fill-box;transform-origin:bottom;animation:grow .7s cubic-bezier(.2,.7,.2,1) both}
+.rowbar .fill{transition:width .8s cubic-bezier(.2,.7,.2,1)}
+.strip i{transition:transform .15s}
+.strip i:hover{transform:scaleY(1.15)}
+.strip i.now.off{animation:glow 2s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+/* wide monitors (2K): a wider page, the same layout */
+@media(min-width:1800px){main{max-width:1560px}body{padding:28px}.top{grid-template-columns:360px 1fr}.ring svg{width:280px;height:280px}.ring .pct{font-size:64px;line-height:68px}.v{font-size:34px;line-height:42px}}
+@media(min-width:2200px){html{zoom:1.15}}
 @media(max-width:900px){.head{grid-template-columns:1fr auto;grid-template-areas:"brand lang" "chips chips" "mode mode"}.top{grid-template-columns:1fr}.tiles{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.modebox{justify-items:start}.modebox .hint{text-align:left}.strip{grid-template-columns:90px repeat(24,1fr);gap:2px}}
+/* phones */
+@media(max-width:600px){body{padding:10px}main{gap:8px}.card{padding:14px;border-radius:12px}.tiles{gap:8px}.v{font-size:24px;line-height:30px}.v small{font-size:12px;margin:0 4px 0 2px}
+  .ring svg{width:200px;height:200px}.ring .pct{font-size:46px;line-height:50px}
+  #modeSeg{width:100%}#modeSeg button{flex:1;text-align:center;padding:0 8px}.modebox{justify-items:stretch}
+  .strip{grid-template-columns:repeat(24,1fr);gap:2px}.strip>span:first-child{grid-column:1/-1;margin-top:6px}.strip.axis>span:first-child{display:none}.strip i{height:18px;border-radius:3px}
+  #dtekBody .rowbar{grid-template-columns:1fr!important;gap:0;margin-bottom:6px}
+  .ring svg{width:220px;height:220px}.ring .wh{font-size:11px;line-height:15px}.ring{padding:12px}
+  td,th{padding:6px 4px;font-size:11px}.bar{flex-wrap:wrap}}
 </style></head><body><main>
 <div class="card head"><div class="brand"><svg viewBox="0 0 34 34" aria-hidden="true"><rect x="1" y="1" width="32" height="32" rx="9" fill="#26282c"/><rect x="8" y="11" width="16" height="12" rx="2.5" fill="none" stroke="#5fad65" stroke-width="2"/><rect x="24.5" y="14.5" width="2.5" height="5" rx="1" fill="#5fad65"/><path d="M17 13.5l-3.5 4.5h3l-1 3.5 3.5-4.5h-3z" fill="#5fad65"/></svg><div><h1 id="title"></h1><div class="sub" id="readAt"></div></div></div><div class="chips"><span class="chip" id="gridChip"><i></i><span></span></span><span class="chip" id="ecoChip" hidden><i></i><span></span></span><span class="chip warn" id="staleChip" hidden><i></i><span></span></span><span class="chip acc" id="maxChip" hidden><i></i><span></span></span><span class="chip" id="noteChip" hidden><i></i><span></span></span></div><span class="sp"></span><div class="modebox"><div class="seg" id="modeSeg" role="group" data-i18n-aria="powerMode"><button data-m="auto" data-i18n="modeAuto" data-i18n-title="modeAutoTip"></button><button data-m="eco" data-i18n="modeEco" data-i18n-title="modeEcoTip"></button><button data-m="max" data-i18n="modeMax" data-i18n-title="modeMaxTip"></button></div><div class="hint" id="modeHint"></div></div><div class="seg" id="langSeg" role="group" data-i18n-aria="language"><button data-lang="en" data-i18n="langEn"></button><button data-lang="uk" data-i18n="langUk"></button></div></div>
 
 <div class="top">
-  <div class="card ring"><svg viewBox="0 0 240 240" aria-hidden="true"><circle cx="120" cy="120" r="100" fill="none" stroke="#26282c" stroke-width="16"/><circle id="arc" cx="120" cy="120" r="100" fill="none" stroke-width="16" stroke-linecap="round" transform="rotate(-90 120 120)"/><g id="ticks"></g></svg>
+  <div class="card ring"><svg viewBox="0 0 240 240" aria-hidden="true"><circle cx="120" cy="120" r="100" fill="none" stroke="#26282c" stroke-width="16"/><circle id="arc" cx="120" cy="120" r="100" fill="none" stroke-width="16" style="stroke-dasharray:0 629" stroke-linecap="round" transform="rotate(-90 120 120)"/><g id="ticks"></g></svg>
     <div class="mid"><div class="pct" id="pct"></div><div class="wh" id="wh"></div><div class="wh" id="trend"></div></div></div>
   <div class="tiles">
     <div class="card"><div class="k" data-i18n="loadNow"></div><div class="v" id="load"></div><svg id="spark" viewBox="0 0 200 34" style="width:100%;height:34px;display:block"></svg><div class="s" id="loadSub"></div></div>
@@ -582,6 +618,8 @@ function gapsOf(rows, t0, end, gap) {
   for (let i = 1; i < pts.length; i++) if (pts[i] - pts[i - 1] > gap) out.push({ a: Math.max(pts[i - 1], t0), b: pts[i], from: pts[i - 1] });
   return out;
 }
+// the CSS zoom of wide screens: measured boxes are zoomed, an SVG viewBox is not
+const pageZoom = () => parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
 function render(D) {
 clearInterval(ecoTimer); ecoTimer = null;
 if (!D.rows.length) { $('title').textContent = `${t('appName')} · ${t('noReadings')}`; return; }
@@ -642,7 +680,7 @@ if (iconSoc !== now.soc) try { iconSoc = now.soc; const cv = document.createElem
 
 // Ring
 const C = 2 * Math.PI * 100, arc = $('arc');
-arc.setAttribute('stroke', socColor(now.soc)); arc.setAttribute('stroke-dasharray', `${C * now.soc / 100} ${C}`);
+arc.setAttribute('stroke', socColor(now.soc)); arc.style.strokeDasharray = `${C * now.soc / 100} ${C}`;
 // the emergency, stop and hibernate levels: a notch cut across the ring and a dot of the level's colour outside it
 $('ticks').innerHTML = [D.thresholds.emergencyAt, D.thresholds.stopAt, D.thresholds.hibernateAt].map((p) => { const a = (p / 100) * 2 * Math.PI - Math.PI / 2, pt = (r) => [(120 + r * Math.cos(a)).toFixed(1), (120 + r * Math.sin(a)).toFixed(1)];
   const [x1, y1] = pt(91), [x2, y2] = pt(109), [dx, dy] = pt(115);
@@ -678,7 +716,8 @@ $('today').textContent = offMs ? dur(offMs) : `0 ${t('uMin')}`; $('todaySub').te
 $('todaySub2').textContent = t('todayEnergy', { e: uWh(Math.round(wh(today))) });
 
 // Chart
-const W = 1140, H = 300, L = 44, R = 52, T = 14, B = 28;
+// the chart is drawn at its rendered width, so its text stays 12 px on a phone and on a 2K screen alike
+const W = Math.max(320, Math.round($('chart').getBoundingClientRect().width / pageZoom()) || 1140), H = W < 600 ? 220 : 300, L = 44, R = 52, T = 14, B = 28;
 function draw(hours) {
   // On battery the axis runs a quarter of the range into the future, for the forecast line.
   const ahead = live && perH ? hours * 0.25 * 3600000 : 0;
@@ -695,19 +734,19 @@ function draw(hours) {
     s += `<rect x="${a.toFixed(1)}" y="${T}" width="${Math.max(2, b - a).toFixed(1)}" height="${H - T - B}" fill="url(#nodata)" stroke="#9a9da4" stroke-opacity=".18"/>`; }
   for (const p of [0, 25, 50, 75, 100]) { s += `<line x1="${L}" x2="${W - R}" y1="${ys(p)}" y2="${ys(p)}" stroke="#34363b" ${p ? 'stroke-dasharray="2 5"' : ''}/><text x="${L - 8}" y="${ys(p) + 4}" fill="#8b8e95" font-size="12" text-anchor="end">${p}%</text><text x="${W - R + 8}" y="${ys(p) + 4}" fill="#8b8e95" font-size="12">${uW(Math.round(maxLoad * p / 100))}</text>`; }
   for (const p of [D.thresholds.emergencyAt, D.thresholds.stopAt]) s += `<line x1="${L}" x2="${W - R}" y1="${ys(p)}" y2="${ys(p)}" stroke="${p === D.thresholds.stopAt ? '#db5c5c' : '#e0a53a'}" stroke-opacity=".55" stroke-dasharray="6 4"/>`;
-  const step = hours <= 1 ? 10 : hours <= 4 ? 30 : hours <= 8 ? 60 : 180, first = Math.ceil(t0 / (step * 60000)) * step * 60000;
+  const step = (hours <= 1 ? 10 : hours <= 4 ? 30 : hours <= 8 ? 60 : 180) * (W < 700 ? 2 : 1), first = Math.ceil(t0 / (step * 60000)) * step * 60000;
   for (let t = first; t <= t1; t += step * 60000) s += `<line x1="${x(t).toFixed(1)}" x2="${x(t).toFixed(1)}" y1="${H - B}" y2="${H - B + 4}" stroke="#34363b"/><text x="${x(t).toFixed(1)}" y="${H - 8}" fill="#8b8e95" font-size="12" text-anchor="middle">${hm(t)}</text>`;
   const seg = (fn) => { let d = ''; list.forEach((r, i) => { d += `${i === 0 || r.t - list[i - 1].t > GAP ? 'M' : 'L'}${x(r.t).toFixed(1)},${fn(r).toFixed(1)}`; }); return d; };
   // the battery line's area: one closed shape per unbroken run of readings
   const runs = []; list.forEach((r, i) => { if (i === 0 || r.t - list[i - 1].t > GAP) runs.push([]); runs[runs.length - 1].push(r); });
-  for (const run of runs) if (run.length > 1) s += `<path d="M${x(run[0].t).toFixed(1)},${H - B}${run.map((r) => `L${x(r.t).toFixed(1)},${ys(r.soc).toFixed(1)}`).join('')}L${x(run[run.length - 1].t).toFixed(1)},${H - B}Z" fill="url(#socFill)"/>`;
-  if (list.length) { s += `<path d="${seg((r) => yl(r.load))}" fill="none" stroke="#548af7" stroke-width="1.5" stroke-linejoin="round"/><path d="${seg((r) => ys(r.soc))}" fill="none" stroke="#5fad65" stroke-width="2.2" stroke-linejoin="round"/>`;
+  for (const run of runs) if (run.length > 1) s += `<path d="M${x(run[0].t).toFixed(1)},${H - B}${run.map((r) => `L${x(r.t).toFixed(1)},${ys(r.soc).toFixed(1)}`).join('')}L${x(run[run.length - 1].t).toFixed(1)},${H - B}Z" fill="url(#socFill)" class="area"/>`;
+  if (list.length) { s += `<path class="loadl" d="${seg((r) => yl(r.load))}" fill="none" stroke="#548af7" stroke-width="1.5" stroke-linejoin="round"/><path class="socl" d="${seg((r) => ys(r.soc))}" fill="none" stroke="#5fad65" stroke-width="2.2" stroke-linejoin="round"/>`;
     const last = list[list.length - 1]; s += `<circle cx="${x(last.t).toFixed(1)}" cy="${ys(last.soc).toFixed(1)}" r="3.5" fill="#5fad65"/>`;
     if (ahead) { const tEnd = Math.min(t1, last.t + last.soc / perH * 3600000), socEnd = Math.max(0, last.soc - perH * (tEnd - last.t) / 3600000);
-      s += `<line x1="${x(last.t).toFixed(1)}" y1="${ys(last.soc).toFixed(1)}" x2="${x(tEnd).toFixed(1)}" y2="${ys(socEnd).toFixed(1)}" stroke="#5fad65" stroke-width="1.5" stroke-dasharray="5 5" stroke-opacity=".7"/>`
-        + `<line x1="${x(NOW).toFixed(1)}" x2="${x(NOW).toFixed(1)}" y1="${T}" y2="${H - B}" stroke="#8b8e95" stroke-opacity=".35"/><text x="${(x(NOW) + 6).toFixed(1)}" y="${T + 12}" fill="#8b8e95" font-size="12">${t('nowForecast')}</text>`; } }
+      s += `<line x1="${x(last.t).toFixed(1)}" y1="${ys(last.soc).toFixed(1)}" x2="${x(tEnd).toFixed(1)}" y2="${ys(socEnd).toFixed(1)}" stroke="#5fad65" stroke-width="1.5" stroke-dasharray="5 5" stroke-opacity=".7" class="fc"/>`
+        + `<line x1="${x(NOW).toFixed(1)}" x2="${x(NOW).toFixed(1)}" y1="${T}" y2="${H - B}" stroke="#8b8e95" stroke-opacity=".35"/><text x="${(x(NOW) + (x(NOW) + 110 > W - R ? -6 : 6)).toFixed(1)}" y="${H - B - 8}" fill="#8b8e95" font-size="12" text-anchor="${x(NOW) + 110 > W - R ? 'end' : 'start'}">${t('nowForecast')}</text>`; } }
   s += `<line id="cross" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="#8b8e95" stroke-opacity=".6" visibility="hidden"/>`;
-  const svg = $('chart'); svg.innerHTML = s; $('count').textContent = t('readingsCount', { n: list.length });
+  const svg = $('chart'); svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.innerHTML = s; svg.classList.toggle('intro', introChart); $('hours').classList.toggle('intro', introChart); $('count').textContent = t('readingsCount', { n: list.length });
   svg.onmousemove = (e) => { const b = svg.getBoundingClientRect(), px = (e.clientX - b.left) * W / b.width; if (px < L || px > W - R) { svg.onmouseleave(); return; }
     const tt = t0 + (px - L) / (W - L - R) * (t1 - t0), hole = gaps.find((g) => tt >= g.a && tt <= g.b), c = document.getElementById('cross'), tip = $('tip');
     // inside a no-data band the custom tooltip names the hole (the nearest reading would mislead)
@@ -719,14 +758,14 @@ function draw(hours) {
     tip.style.left = Math.min(window.innerWidth - tip.offsetWidth - 8, e.clientX + 12) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; };
   svg.onmouseleave = () => { $('tip').style.display = 'none'; const c = document.getElementById('cross'); if (c) c.setAttribute('visibility', 'hidden'); };
   // Energy per clock hour
-  { const hw = 560, hh = 150, hl = 40, hb = 24, ht = 8, buckets = new Map();
+  { const hw = Math.max(280, Math.round($('hours').getBoundingClientRect().width / pageZoom()) || 560), hh = 150, hl = 40, hb = 24, ht = 8, buckets = new Map();
     for (let i = 1; i < list.length; i++) { const dt = list[i].t - list[i - 1].t; if (dt > GAP) continue; const k = Math.floor(list[i].t / 3600000); buckets.set(k, (buckets.get(k) || 0) + (list[i].load + list[i - 1].load) / 2 * dt / 3600000); }
     const k1 = Math.floor(NOW / 3600000), n = Math.min(24, Math.max(4, hours)), keys = Array.from({ length: n }, (_, i) => k1 - n + 1 + i), mxE = Math.max(50, ...keys.map((k) => buckets.get(k) || 0));
-    const bw = (hw - hl - 8) / n; let h = `<line x1="${hl}" x2="${hw - 8}" y1="${hh - hb}" y2="${hh - hb}" stroke="#34363b"/><text x="${hl - 6}" y="${ht + 10}" fill="#8b8e95" font-size="12" text-anchor="end">${Math.round(mxE)}</text><text x="${hl - 6}" y="${hh - hb + 4}" fill="#8b8e95" font-size="12" text-anchor="end">${uWh(0)}</text>`;
+    const bw = (hw - hl - 8) / n; let h = `<line x1="${hl}" x2="${hw - 8}" y1="${hh - hb}" y2="${hh - hb}" stroke="#34363b"/><line x1="${hl}" x2="${hw - 8}" y1="${ht}" y2="${ht}" stroke="#34363b" stroke-dasharray="2 5"/><text x="${hl - 6}" y="${ht + 4}" fill="#8b8e95" font-size="12" text-anchor="end">${Math.round(mxE)}</text><text x="${hl - 6}" y="${hh - hb + 4}" fill="#8b8e95" font-size="12" text-anchor="end">0</text><text x="${hl + 4}" y="${ht + 14}" fill="#8b8e95" font-size="11">${t('uWh')}</text>`;
     keys.forEach((k, i) => { const e = buckets.get(k) || 0, bh = (hh - hb - ht) * e / mxE, bx = hl + i * bw + 2;
-      h += `<rect x="${bx.toFixed(1)}" y="${(hh - hb - bh).toFixed(1)}" width="${Math.max(2, bw - 4).toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="#548af7" fill-opacity="${k === k1 ? .55 : 1}"><title>${pad(new Date(k * 3600000).getHours())}:00 · ${uWh(Math.round(e))}</title></rect>`;
+      h += `<rect x="${bx.toFixed(1)}" y="${(hh - hb - bh).toFixed(1)}" width="${Math.max(2, bw - 4).toFixed(1)}" height="${bh.toFixed(1)}" rx="2" class="hbar" fill="#548af7" fill-opacity="${k === k1 ? .55 : 1}"><title>${pad(new Date(k * 3600000).getHours())}:00 · ${uWh(Math.round(e))}</title></rect>`;
       if (n <= 8 || i % Math.ceil(n / 8) === 0) h += `<text x="${(bx + bw / 2 - 2).toFixed(1)}" y="${hh - 6}" fill="#8b8e95" font-size="12" text-anchor="middle">${pad(new Date(k * 3600000).getHours())}</text>`; });
-    $('hours').innerHTML = h; const firstK = rows.length ? Math.floor(rows[0].t / 3600000) : k1; // the hour the record began in is partial too
+    $('hours').setAttribute('viewBox', `0 0 ${hw} ${hh}`); $('hours').innerHTML = h; const firstK = rows.length ? Math.floor(rows[0].t / 3600000) : k1; // the hour the record began in is partial too
     const full = keys.slice(0, -1).filter((k) => k !== firstK).map((k) => buckets.get(k) || 0).filter((e) => e > 0);
     const avgE = full.length ? full.reduce((a, b) => a + b, 0) / full.length : 0;
     $('hoursNote').textContent = full.length ? t('hoursNoteFull', { avg: uWh(Math.round(avgE)), n: fmt(D.capacityWh * (D.learnedEfficiency || D.efficiency) / avgE) }) : t('hoursNoteFirst'); }
@@ -746,8 +785,8 @@ function draw(hours) {
     + `<div class="rowbar"><span title="${t('statOnTop')}">${t('statOnTop')}</span><span></span><span class="n">${t('upTo', { w: uW(Math.round(Math.max(0, stats[3][1] - stats[0][1]))) })}</span></div><div class="rowbar"><span title="${t('statEnergy')}">${t('statEnergy')}</span><span></span><span class="n">${uWh(Math.round(wh(list)))}</span></div>`;
 }
 let range = 8; try { range = Number(localStorage.getItem('station.range')) || 8; } catch (e) { /* private window */ }
-document.querySelectorAll('#rangeSeg button').forEach((b) => { b.onclick = () => { range = Number(b.dataset.h); try { localStorage.setItem('station.range', String(range)); } catch (e) { /* ignore */ } paint(); }; });
-function paint() { document.querySelectorAll('#rangeSeg button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.h) === range))); draw(range); }
+document.querySelectorAll('#rangeSeg button').forEach((b) => { b.onclick = () => { range = Number(b.dataset.h); introChart = true; try { localStorage.setItem('station.range', String(range)); } catch (e) { /* ignore */ } paint(); }; });
+function paint() { document.querySelectorAll('#rangeSeg button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.h) === range))); draw(range); introChart = false; }
 paint();
 
 // Tables
@@ -857,7 +896,7 @@ function renderDtek(w, th) {
     let cells = '';
     for (let h = 0; h < 24; h++) {
       const a0 = h * 60, b0 = a0 + 60, cover = spans.map(([a, b]) => [Math.max(a, a0), Math.min(b, b0)]).filter(([a, b]) => b > a).sort((p, q2) => p[0] - q2[0]);
-      const cur = day === nowDay && nowMin >= a0 && nowMin < b0 ? ' now' : '';
+      const cur = day === nowDay && nowMin >= a0 && nowMin < b0 ? (cover.length ? ' now off' : ' now') : '';
       const off = cover.length ? `background:linear-gradient(90deg,${cover.map(([a, b]) => `transparent ${(a - a0) / 0.6}%,var(--warn) ${(a - a0) / 0.6}% ${(b - a0) / 0.6}%,transparent ${(b - a0) / 0.6}%`).join(',')}),rgba(95,173,101,.16)` : '';
       cells += `<i class="${text ? '' : 'nd'}${cur}" style="${text ? off : ''}" title="${pad(h)}:00–${pad((h + 1) % 24)}:00 · ${text ? (cover.length ? t('outage') : t('dtekPowerOn')) : t('noData')}"></i>`;
     }
@@ -927,6 +966,7 @@ document.querySelectorAll('#langSeg button').forEach((b) => { b.onclick = () => 
 // The last mode button's failure stays on the note chip across refreshes until the next press.
 var modeError = '';
 var ecoTimer = null; // the eco countdown's one-second tick, stopped while the page is hidden
+var introChart = true; // the chart draws its lines in on the first paint and on a range switch, not on the minute repaint
 var iconSoc = null; // the charge the tab icon was last drawn for
 document.querySelectorAll('#modeSeg button').forEach((b) => { b.onclick = async () => {
   modeError = '';
@@ -941,6 +981,9 @@ document.querySelectorAll('#modeSeg button').forEach((b) => { b.onclick = async 
     load(true);
   }
 }; });
+// a new width redraws the charts at it (a quarter second after the last resize event)
+let resizeTimer = null;
+window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(show, 250); });
 applyStatic();
 load().then(schedule);
 </script></body></html>
