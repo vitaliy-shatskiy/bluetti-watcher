@@ -1,8 +1,8 @@
 <#
 install.ps1 - install Bluetti Watcher for the current user. DRY RUN by default: prints every step and changes nothing.
 
-  pwsh -NoProfile -File install.ps1 [-Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048]          dry run: what would happen, and what blocks it
-  pwsh -NoProfile -File install.ps1 [-Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048] -Apply   do it
+  pwsh -NoProfile -File install.ps1 [-Mac AA:BB:CC:DD:EE:FF -CapacityWh <Wh>]          dry run: what would happen, and what blocks it
+  pwsh -NoProfile -File install.ps1 [-Mac AA:BB:CC:DD:EE:FF -CapacityWh <Wh>] -Apply   do it
   pwsh -NoProfile -File install.ps1 -RemoveWake [-Apply]              only the wake task: removed
 
 Runs from a release zip (bin\BluettiWatcher.exe beside this script: the exe is copied) or from a source checkout

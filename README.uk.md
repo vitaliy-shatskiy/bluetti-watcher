@@ -53,8 +53,8 @@
 3. У PowerShell 7, у розпакованій теці:
 
    ```powershell
-   pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048          # пробний запуск: показує кожен крок і що йому заважає
-   pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048 -Apply   # встановлення
+   pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh <Wh>          # пробний запуск: показує кожен крок і що йому заважає
+   pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh <Wh> -Apply   # встановлення
    ```
 
 Усе встановлюється в `%LOCALAPPDATA%\bluetti-watcher` (`bin\`, `power-mode\`, `config.json`, `station.db`,
