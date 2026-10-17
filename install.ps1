@@ -1,8 +1,8 @@
 <#
 install.ps1 - install Bluetti Watcher for the current user. DRY RUN by default: prints every step and changes nothing.
 
-  pwsh -NoProfile -File install.ps1 [-Mac AA:BB:CC:DD:EE:FF]          dry run: what would happen, and what blocks it
-  pwsh -NoProfile -File install.ps1 [-Mac AA:BB:CC:DD:EE:FF] -Apply   do it
+  pwsh -NoProfile -File install.ps1 [-Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048]          dry run: what would happen, and what blocks it
+  pwsh -NoProfile -File install.ps1 [-Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048] -Apply   do it
   pwsh -NoProfile -File install.ps1 -RemoveWake [-Apply]              only the wake task: removed
 
 Runs from a release zip (bin\BluettiWatcher.exe beside this script: the exe is copied) or from a source checkout
@@ -14,8 +14,9 @@ Both modes first print what an interrupted run left and the state of the task (m
 enabled and started, a bin that never passed the health check replaced by bin.old.
 
 -Apply:
-  1. config.json: written from a template only when there is none (with -Mac as the station's address); an existing
-     one is never changed. No station MAC in it blocks the install.
+  1. config.json: written from a template only when there is none (with -Mac as the station's address and -CapacityWh
+     as its battery capacity in Wh, both required then); an existing one is never changed. No station MAC in it blocks
+     the install.
   2. the exe into the staging directory <data dir>\bin.new, never into the live bin: copied from the release, or
      published (tools/publish.ps1; -Fallback = trimmed self-contained single file instead of NativeAOT). The service
      keeps running; a failure here changes nothing
@@ -45,6 +46,7 @@ param(
     [switch] $Fallback,
     [switch] $RemoveWake,
     [string] $Mac = '',
+    [int] $CapacityWh = 0,
     [int] $Port = 18940
 )
 $ErrorActionPreference = 'Stop'
@@ -96,10 +98,11 @@ $macPattern = '^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$'
 
 function Step([string] $text) { Write-Output "$(if ($Apply) { 'do ' } else { 'would' })  $text" }
 
-# The fresh config.json: the station's address and nothing else; every other key keeps its default (docs/configuration.md).
-function New-WatcherConfigText([string] $Address) {
+# The fresh config.json: the station's address and battery capacity; every other key keeps its default (docs/configuration.md).
+function New-WatcherConfigText([string] $Address, [int] $Capacity) {
     $lines = @('{', '  // Every key and its default: docs/configuration.md. The service reads this file at start.')
-    $lines += if ($Address) { "  `"mac`": `"$Address`"" } else { '  // "mac": "AA:BB:CC:DD:EE:FF"' }
+    $lines += if ($Address) { "  `"mac`": `"$Address`"," } else { '  // "mac": "AA:BB:CC:DD:EE:FF",' }
+    $lines += "  `"capacityWh`": $Capacity"
     ($lines + '}') -join "`n"
 }
 
@@ -122,7 +125,9 @@ if (Test-Path -LiteralPath $config) {
         if (-not $station -and @(& $wrongCase 'mac').Count) { $problems += "no station MAC: the key $(@(& $wrongCase 'mac')[0]) in $config must be written exactly `"mac`" (the service reads keys case-sensitively and would ignore it)" }
         elseif (-not $station) { $problems += "no station MAC: add `"mac`": `"AA:BB:CC:DD:EE:FF`" to $config" }
         elseif ($station -notmatch $macPattern) { $problems += "the mac in $config is not a Bluetooth address: $station" }
-        $configNote = "keep $config as it is$(if ($Mac) { ' (-Mac is used only for a new config.json)' })"
+        $newOnly = @($(if ($Mac) { '-Mac' }), $(if ($PSBoundParameters.ContainsKey('CapacityWh')) { '-CapacityWh' }) | Where-Object { $_ })
+        $configNote = "keep $config as it is$(if ($newOnly) { " ($($newOnly -join ' and ') $(if ($newOnly.Count -gt 1) { 'are' } else { 'is' }) used only for a new config.json)" })"
+        if ($keys -cnotcontains 'capacityWh') { $configNote += "; it has no capacityWh, so the battery time assumes 2304 Wh (add `"capacityWh`" for another station)" }
     }
     catch { $problems += "$config cannot be read as JSON: $($_.Exception.Message)" }
 }
@@ -130,7 +135,9 @@ else {
     $station = $Mac.Trim()
     if (-not $station) { $problems += 'no station MAC: pass -Mac AA:BB:CC:DD:EE:FF (the station''s Bluetooth address)' }
     elseif ($station -notmatch $macPattern) { $problems += "-Mac is not a Bluetooth address: $station" }
-    $configNote = "write $config from the template$(if ($station) { " with mac $station" })"
+    if (-not $PSBoundParameters.ContainsKey('CapacityWh')) { $problems += 'no battery capacity: pass -CapacityWh <Wh> (the station''s battery capacity in Wh, from its spec sheet)' }
+    elseif ($CapacityWh -le 0) { $problems += "-CapacityWh must be a positive number of Wh: $CapacityWh" }
+    $configNote = "write $config from the template$(if ($station) { " with mac $station" })$(if ($CapacityWh -gt 0) { " and capacityWh $CapacityWh" })"
 }
 if ($wakeName) {
     $nameVerdict = Test-WatcherWakeTaskName $wakeName $task
@@ -197,7 +204,7 @@ try {
     # ---- 1. config, only when there is none
     $null = New-Item -ItemType Directory -Force -Path $root
     if (-not (Test-Path -LiteralPath $config)) {
-        [IO.File]::WriteAllText($config, (New-WatcherConfigText $station) + "`n", [Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllText($config, (New-WatcherConfigText $station $CapacityWh) + "`n", [Text.UTF8Encoding]::new($false))
         Write-Output "install: wrote $config"
     }
 

@@ -114,7 +114,7 @@ key out for its default. JSON strings need `\\` for each backslash.
 
 Since 1.1.0 the Python reader's keys `bleBackend` and `readerPath` (and the flag `--reader`) are ignored: an old
 config.json still loads, and `service.log` names them once at start.
-| `capacityWh` | number | 2304 | Battery capacity, Wh, for the battery-time formula. |
+| `capacityWh` | number | 2304 | Battery capacity, Wh, for the battery-time formula. A new install writes the value of `install.ps1 -CapacityWh` (required there); an upgrade keeps the config as it is. |
 | `efficiency` | number | 0.85 | Inverter efficiency for the formula, until a learned value exists. |
 
 ## Polling and readings

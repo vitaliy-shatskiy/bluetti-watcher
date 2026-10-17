@@ -48,12 +48,13 @@
    (Get-FileHash .\bluetti-watcher-*-win-x64.zip).Hash   # має збігатися з хешем у файлі .sha256
    ```
 
-2. Знайдіть Bluetooth-адресу станції (у застосунку BLUETTI або в Параметрах Windows > Bluetooth).
+2. Знайдіть Bluetooth-адресу станції (у застосунку BLUETTI або в Параметрах Windows > Bluetooth) і ємність її батареї у Вт·год
+   (у характеристиках або на етикетці; з неї рахується час роботи від батареї).
 3. У PowerShell 7, у розпакованій теці:
 
    ```powershell
-   pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF          # пробний запуск: показує кожен крок і що йому заважає
-   pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -Apply   # встановлення
+   pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048          # пробний запуск: показує кожен крок і що йому заважає
+   pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048 -Apply   # встановлення
    ```
 
 Усе встановлюється в `%LOCALAPPDATA%\bluetti-watcher` (`bin\`, `power-mode\`, `config.json`, `station.db`,
