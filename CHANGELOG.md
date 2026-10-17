@@ -6,6 +6,12 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+### Changed
+
+- `install.ps1` requires `-CapacityWh` for a new install and writes it to `config.json`: the battery time no longer
+  assumes the 2304 Wh of an AC200PL on another station. An upgrade keeps the existing `config.json`, and the dry run
+  names a config without `capacityWh`.
+
 ## [1.3.3] - 2026-10-16
 
 ### Download

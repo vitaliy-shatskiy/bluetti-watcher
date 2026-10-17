@@ -48,12 +48,13 @@ and `service.log` names the version found.
    (Get-FileHash .\bluetti-watcher-*-win-x64.zip).Hash   # must equal the hash in the .sha256 file
    ```
 
-2. Find the station's Bluetooth address (the BLUETTI app, or Windows Settings > Bluetooth).
+2. Find the station's Bluetooth address (the BLUETTI app, or Windows Settings > Bluetooth) and its battery capacity in Wh
+   (the spec sheet or the label; the battery time is computed from it).
 3. In PowerShell 7, in the extracted folder:
 
    ```powershell
-   pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF          # dry run: prints every step and what blocks it
-   pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -Apply   # install
+   pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh <Wh>          # dry run: prints every step and what blocks it
+   pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh <Wh> -Apply   # install
    ```
 
 Everything lands in `%LOCALAPPDATA%\bluetti-watcher` (`bin\`, `power-mode\`, `config.json`, `station.db`,
@@ -198,8 +199,8 @@ No. The reader speaks the BLUETTI protocol only.
 ```powershell
 git clone https://github.com/vitaliy-shatskiy/bluetti-watcher.git
 cd bluetti-watcher
-pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF          # dry run
-pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -Apply   # publishes NativeAOT, then installs as above
+pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh <Wh>          # dry run
+pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh <Wh> -Apply   # publishes NativeAOT, then installs as above
 ```
 
 Needs the .NET SDK named in `global.json` and, for NativeAOT, the MSVC linker (Visual Studio Build Tools, "Desktop

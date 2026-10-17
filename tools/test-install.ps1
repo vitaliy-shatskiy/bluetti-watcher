@@ -1,6 +1,6 @@
 <#
 test-install.ps1 - install.ps1's dry run against a temp data directory (LOCALAPPDATA pointed at a temp folder for the
-child only): the station MAC it requires, the config it would write, a release zip told from a checkout. Never runs
+child only): the station MAC and battery capacity it requires, the config it would write, a release zip told from a checkout. Never runs
 -Apply; registers nothing, writes nothing outside its own temp directory.
 
   pwsh -NoProfile -File tools/test-install.ps1
@@ -66,10 +66,40 @@ try {
     Check 'no mac: says nothing changed' ($r.Text -match 'dry run: nothing changed')
 
     # -Mac: the template would carry it
-    $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:01')
+    $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:01', '-CapacityWh', '2048')
     Check '-Mac: no mac problem' ($r.Text -notmatch 'no station MAC') $r.Text
     Check '-Mac: the config would be written with it' ($r.Text -match 'would\s+config: write .+config\.json from the template with mac AA:BB:CC:DD:EE:01') $r.Text
     Check '-Mac: nothing written' $r.Unchanged
+    Check '-CapacityWh: the config would carry it' ($r.Text -match 'with mac AA:BB:CC:DD:EE:01 and capacityWh 2048') $r.Text
+    Check '-Mac and -CapacityWh: exit 1 only with a blocked line' (($r.Code -eq 1) -eq ($r.Text -match 'blocked:')) "exit $($r.Code)"
+
+    # a new install without -CapacityWh: named, nothing written, exit 1
+    $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:01')
+    Check 'no capacity: named' ($r.Text -match 'blocked: no battery capacity: pass -CapacityWh' -and $r.Code -eq 1) $r.Text
+    Check 'no capacity: nothing written' $r.Unchanged
+    foreach ($bad in '0', '-5') {
+        $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:01', '-CapacityWh', $bad)
+        Check "capacity ${bad}: refused" ($r.Text -match "blocked: -CapacityWh must be a positive number of Wh: $bad" -and $r.Code -eq 1) $r.Text
+    }
+
+    # an existing config (an upgrade): no -CapacityWh needed, the config kept, a missing capacityWh named, not blocked
+    $r = Invoke-DryRun -Config '{ "mac": "AA:BB:CC:DD:EE:09" }'
+    Check 'upgrade: no capacity problem' ($r.Text -notmatch 'no battery capacity|CapacityWh must') $r.Text
+    Check 'upgrade: no capacityWh named with the default' ($r.Text -match 'it has no capacityWh, so the battery time assumes 2304 Wh') $r.Text
+    $r = Invoke-DryRun -Config '{ "mac": "AA:BB:CC:DD:EE:09", "capacityWh": 1000 }' -Extra @('-Mac', 'AA:BB:CC:DD:EE:0A', '-CapacityWh', '2048')
+    Check 'upgrade: -Mac and -CapacityWh only for a new config' ($r.Text -match 'keep .+config\.json as it is \(-Mac and -CapacityWh are used only for a new config\.json\)') $r.Text
+    Check 'upgrade with capacityWh: no default note' ($r.Text -notmatch 'assumes 2304') $r.Text
+    Check 'upgrade: unchanged' $r.Unchanged
+
+    # the template install.ps1 writes: JSON with the mac and the capacity
+    $tast = [Management.Automation.Language.Parser]::ParseFile($installer, [ref] $null, [ref] $null)
+    $tfn = $tast.FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'New-WatcherConfigText' }, $true) | Select-Object -First 1
+    Check 'template: install.ps1 has New-WatcherConfigText' ($null -ne $tfn)
+    if ($tfn) {
+        . ([scriptblock]::Create($tfn.Extent.Text))
+        $cfg = New-WatcherConfigText 'AA:BB:CC:DD:EE:0B' 2048 | ConvertFrom-Json
+        Check 'template: mac and capacityWh' ($cfg.mac -ceq 'AA:BB:CC:DD:EE:0B' -and $cfg.capacityWh -eq 2048) "$($cfg | ConvertTo-Json -Compress)"
+    }
 
     # a malformed -Mac
     $r = Invoke-DryRun -Extra @('-Mac', 'not-a-mac')
@@ -104,7 +134,7 @@ try {
     foreach ($f in 'swap.ps1', 'wake-task.ps1') { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $f) -Destination (Join-Path $rel 'tools') }
     [IO.File]::WriteAllText((Join-Path $rel 'bin\BluettiWatcher.exe'), 'stand-in')
     [IO.File]::WriteAllText((Join-Path $rel 'power-mode\power-mode.ps1'), '# stand-in')
-    $r = Invoke-DryRun -Script (Join-Path $rel 'install.ps1') -Extra @('-Mac', 'AA:BB:CC:DD:EE:04')
+    $r = Invoke-DryRun -Script (Join-Path $rel 'install.ps1') -Extra @('-Mac', 'AA:BB:CC:DD:EE:04', '-CapacityWh', '2048')
     Check 'release: copies the exe' ($r.Text -match "would\s+copy the release's .+\\bin to the staging directory") $r.Text
     Check 'release: no publish, no dotnet' ($r.Text -notmatch 'publish NativeAOT|no dotnet') $r.Text
     Check 'release: the power-mode switch is copied' ($r.Text -match 'would\s+copy the power-mode switch .+power-mode\\\*\.ps1 to .+bluetti-watcher\\power-mode') $r.Text
@@ -113,9 +143,9 @@ try {
     Check 'release: nothing written' $r.Unchanged
 
     # a checkout: published
-    $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:05')
+    $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:05', '-CapacityWh', '2048')
     Check 'checkout: publishes into the staging directory' ($r.Text -match 'would\s+publish NativeAOT to the staging directory') $r.Text
-    $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:05', '-Fallback')
+    $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:05', '-CapacityWh', '2048', '-Fallback')
     Check 'checkout: -Fallback is the single file' ($r.Text -match 'would\s+publish trimmed self-contained single file') $r.Text
 
     # -RemoveWake without -Apply: a dry run
@@ -147,7 +177,7 @@ try {
     $fake = Join-Path $base 'fakepython'
     $null = New-Item -ItemType Directory -Path $fake
     [IO.File]::WriteAllText((Join-Path $fake 'python.cmd'), "@exit /b 9`r`n")
-    $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:08') -Env @{ PATH = "$fake;$env:PATH" }
+    $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:08', '-CapacityWh', '2048') -Env @{ PATH = "$fake;$env:PATH" }
     Check 'no Python needed: no python or venv in any line' ($r.Text -notmatch '(?i)python|venv|requirements\.lock') $r.Text
     Check 'no Python needed: nothing blocked by it' ($r.Text -notmatch 'blocked: .*(?i)python') $r.Text
     # the 1.0.0 venv's removal (the function out of install.ps1, run on temp folders only): a plain folder goes whole; a
