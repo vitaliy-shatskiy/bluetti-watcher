@@ -270,6 +270,13 @@ internal sealed partial class PowerModeSwitch
         return name == plan ? plan : $"{name} ({plan})";
     }
 
+    /// <summary>The active plan as the switch reads it (<c>powercfg /list</c>): (GUID, name) · ("", "") = no answer.</summary>
+    internal (string Guid, string Name) ActivePlan()
+    {
+        var plans = Plans();
+        return plans is null || plans.Active.Length == 0 ? ("", "") : (plans.Active, PlanName(plans.Active, plans));
+    }
+
     /// <summary>The plans from <c>powercfg /list</c> (the active one ends with <c>*</c> in every UI language) · null = no answer.</summary>
     private PmPlans? Plans()
     {

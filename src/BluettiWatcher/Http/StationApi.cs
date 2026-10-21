@@ -17,7 +17,7 @@ namespace BluettiWatcher.Http;
 /// from / to: ISO 8601 or Unix milliseconds; step: seconds (default 60).
 /// </summary>
 internal sealed class StationApi(StationConfig config, StationService service, StationStore store, TimeProvider time, DateTimeOffset startedAt, IDtekWatcher? dtek = null, Action<string>? log = null,
-    Func<bool>? bluetoothEncrypted = null, Func<bool>? bluetoothStalled = null)
+    Func<bool>? bluetoothEncrypted = null, Func<bool>? bluetoothStalled = null, Func<(string Guid, string Name)>? activePlan = null)
 {
     /// <summary>The page, read once; encoded once per coding on first use; a reload with its ETag is a 304.</summary>
     private static readonly Lazy<StaticAsset> Page = new(() =>
@@ -47,6 +47,8 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             return SetReturnPlan(r);
         }
         if (r.Method != "GET") return HttpResponse.Text(405, "GET only");
+        // /api/now?settle=1: answers once the saved page choice is applied, refused or failed (bounded under the server's 10 s).
+        if (r.Path == "/api/now" && r.Query.TryGetValue("settle", out var settle) && settle == "1") await service.WaitModeSettledAsync(SettleWait, ct);
         var now = time.GetLocalNow();
         return r.Path switch
         {
@@ -147,6 +149,27 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             w.WriteString("code", res.Message == StationService.MaxHeldBack ? PageCodes.MaxHeld : "");
             w.WriteEndObject();
         }));
+    }
+
+    /// <summary>The longest /api/now?settle=1 waits for a page choice to settle.</summary>
+    internal static readonly TimeSpan SettleWait = TimeSpan.FromSeconds(8);
+
+    /// <summary>The active Windows plan for the page: id high | balanced | saver | other ("" = unknown) and its name.</summary>
+    private (string Id, string Name) ActivePlan()
+    {
+        if (activePlan is null) return ("", "");
+        (string guid, string name) = ("", "");
+        try { (guid, name) = activePlan(); }
+        catch (Exception e) when (e is InvalidOperationException or IOException or System.ComponentModel.Win32Exception) { Once("plan read", e); }
+        string id = guid switch
+        {
+            "" => "",
+            PowerModeSwitch.HighPlan => "high",
+            PowerModeSwitch.BalancedPlan => "balanced",
+            PowerModeSwitch.SaverPlan => "saver",
+            _ => "other",
+        };
+        return (id, name);
     }
 
     /// <summary>The plan the end of eco sets (power-mode.config.json beside the flag); the switch reads the file as before.</summary>
@@ -381,6 +404,12 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             w.WriteString("modeError", service.ModeError);
             w.WriteString("returnPlan", ReturnPlanFile.Read(config.FlagFile));
             Note(w, "modeErrorNote", ModeErrorNote(service.ModeError));
+            w.WriteString("powerMode", (flag?.View ?? FlagView.Unreadable).Mode);
+            var plan = ActivePlan();
+            w.WriteStartObject("powerPlan");
+            w.WriteString("id", plan.Id);
+            w.WriteString("name", plan.Name);
+            w.WriteEndObject();
             w.WriteString("level", s.Level.ToString().ToLowerInvariant());
             w.WriteBoolean("cut", s.Cut);
             if (s.HibernateDelayedUntil is { } until && s.Cut) w.WriteString("hibernateDelayedUntil", Iso(until)); else w.WriteNull("hibernateDelayedUntil");

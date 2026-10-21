@@ -19,7 +19,7 @@ The dashboard page (`text/html`). Also `/index.html`.
 
 ## GET /api/now
 
-The current state, for the page.
+The current state, for the page. `?settle=1` answers once a saved page choice (`modePending`) is applied, refused or failed, at most 8 s later; at once when none waits.
 
 | Field | Meaning |
 |---|---|
@@ -28,6 +28,9 @@ The current state, for the page.
 | `eco`, `ecoNote` | The power mode in words ("" when normal) and as a coded note. |
 | `manual` | The page's choice: `auto`, `eco`, `max`. `modePending`: a choice not applied yet, or null. |
 | `modeError`, `modeErrorNote` | The last refusal or failure of a page choice ("" when none), and as a coded note. |
+| `powerMode` | The flag's mode in force as the service last read it: `normal`, `eco`, `emergency`, or `unreadable` (not read yet or untrusted). |
+| `powerPlan` | The active Windows power plan as the switch reads it (`powercfg /list`): `{ "id": "high" \| "balanced" \| "saver" \| "other" \| "", "name" }`; `""` = unknown. |
+| `returnPlan` | The plan the end of eco sets (see `/api/return-plan`). |
 | `level` | Battery level: `ok`, `low`, `critical`, `hibernating`. |
 | `cut` | true while a power cut is confirmed. |
 | `grid` | Mains: `on`, `off`, `unknown`. |

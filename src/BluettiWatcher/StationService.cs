@@ -27,6 +27,40 @@ internal sealed class StationService(StationConfig config, IStationReader reader
     private DateTimeOffset? _lastAt;
     private DateTimeOffset? _lastPollAt;
     private PowerModeFlag? _flag;
+    private readonly Lock _settledGate = new();
+    /// <summary>Completed while no page choice waits; a new one while a choice is saved and not yet applied, refused or failed.</summary>
+    private TaskCompletionSource _settled = Settled();
+
+    private static TaskCompletionSource Settled()
+    {
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        done.SetResult();
+        return done;
+    }
+
+    /// <summary>
+    /// Returns when the saved page choice is applied, refused or has failed (at once when none waits), or after
+    /// <paramref name="wait"/>: the page's "applying" ends on this event, not on a timer.
+    /// </summary>
+    public async Task WaitModeSettledAsync(TimeSpan wait, CancellationToken ct)
+    {
+        Signal();   // a choice saved before a restart waits too
+        Task settled;
+        lock (_settledGate) settled = _settled.Task;
+        try { await settled.WaitAsync(wait, ct); }
+        catch (TimeoutException) { /* still applying: the caller answers with the state as it is */ }
+    }
+
+    /// <summary>The settle signal after a change of the page choice, under the gate.</summary>
+    private void Signal()
+    {
+        bool waiting = _state.ModePending is not null && _state.ModeError.Length == 0;
+        lock (_settledGate)
+        {
+            if (!waiting) _settled.TrySetResult();
+            else if (_settled.Task.IsCompleted) _settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+    }
 
     public void Dispose()
     {
@@ -303,6 +337,7 @@ internal sealed class StationService(StationConfig config, IStationReader reader
             _state.ModeError = "";
             store.SaveState(_state);
             store.AddEvent(now, "mode", mode.ToString().ToLowerInvariant());
+            Signal();
             _wake.Release();
             return new ModeChange(true, 202, "accepted", _state.Manual);
         }
@@ -350,7 +385,11 @@ internal sealed class StationService(StationConfig config, IStationReader reader
             store.SaveState(_state);
             store.AddEvent(now, "mode-applied", mode.ToString().ToLowerInvariant() + (r.DryRun ? " (dry run)" : ""));
         }
-        finally { _gate.Release(); }
+        finally
+        {
+            Signal();
+            _gate.Release();
+        }
     }
 
     /// <summary>Waits until <paramref name="wait"/> passes or a page choice arrives.</summary>
