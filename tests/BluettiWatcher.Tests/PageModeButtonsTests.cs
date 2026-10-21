@@ -20,7 +20,7 @@ public sealed partial class PageI18nTests
     {
         string page = Page();
         string script = $$"""
-            var modeError = '', modePress = null, writeSeq = 0, lastNow = { manual: 'auto' }, painted = [];
+            var modeError = '', modeErrorCode = '', modePress = null, writeSeq = 0, lastNow = { manual: 'auto' }, painted = [];
             const fetches = []; let release;
             function fetch(u, o) { fetches.push(u + ' ' + o.body); return new Promise((r) => { release = () => r({ ok: true, status: 202, json: () => Promise.resolve({ ok: true }) }); }); }
             let loads = 0, settles = 0;
@@ -59,17 +59,18 @@ public sealed partial class PageI18nTests
     {
         string page = Page();
         string script = $$"""
-            var modeError = '', modePress = null, writeSeq = 0, lastNow = null;
+            var modeError = '', modeErrorCode = '', modePress = null, writeSeq = 0, lastNow = null;
             function fetch() { return Promise.resolve({ ok: false, status: 409, json: () => Promise.resolve({ code: 'max-held', message: 'Max held back' }) }); }
             let settles = 0; function load() { return Promise.resolve(); } async function settle() { settles++; }
             function t(k) { return k; } function noteText(n) { return 'note:' + n.code; }
             function $() { return { hidden: true, lastChild: {} }; } function paintMode() {}
             const all = [{ dataset: { m: 'max' }, disabled: false, textContent: 'Max' }];
             eval({{Js(FunctionText(page, "pressMode"))}});
-            pressMode(all[0], all).then(() => console.log(JSON.stringify({ modeError, settles })));
+            pressMode(all[0], all).then(() => console.log(JSON.stringify({ modeError, modeErrorCode, settles })));
             """;
         using var doc = JsonDocument.Parse(RunScript(script));
         Assert.Equal("note:max-held", doc.RootElement.GetProperty("modeError").GetString());
+        Assert.Equal("max-held", doc.RootElement.GetProperty("modeErrorCode").GetString());
         Assert.Equal(0, doc.RootElement.GetProperty("settles").GetInt32());
     }
 
@@ -93,6 +94,8 @@ public sealed partial class PageI18nTests
               modeLine(base, null),
               modeLine({ ...base, powerMode: 'eco', powerPlan: { id: 'other', name: 'My plan' } }, null),
               modeLine({ ...base, powerMode: 'unreadable', powerPlan: { id: '', name: '' } }, null),
+              modeLine(base, null, 'Max held back', 'max-held'),
+              modeLine({ ...base, modePending: 'eco' }, null, 'Eco: service not answering', ''),
             ]));
             """;
         using var doc = JsonDocument.Parse(RunScript(script));
@@ -104,6 +107,8 @@ public sealed partial class PageI18nTests
         Assert.Equal(("", "modeNowPlan{\"m\":\"pmNormal\",\"p\":\"activeBalanced\"}"), got[4]);
         Assert.Equal(("", "modeNowPlan{\"m\":\"pmEco\",\"p\":\"My plan\"}"), got[5]);
         Assert.Equal(("", "modeNow{\"m\":\"pmUnknown\"}"), got[6]);
+        Assert.Equal(("warn", "Max held back"), got[7]);   // a 409 at once, never saved by the service
+        Assert.Equal(("bad", "Eco: service not answering"), got[8]);   // the own failure beats a stale pending
     }
 
     [Fact]
@@ -127,5 +132,34 @@ public sealed partial class PageI18nTests
         var (en, uk) = Dictionaries(Page().Replace("\r\n", "\n", StringComparison.Ordinal));
         string[] keys = ["modeApplying", "modeNow", "modeNowPlan", "pmNormal", "pmEco", "pmEmergency", "pmUnknown", "activeHigh", "activeBalanced", "activeSaver"];
         Assert.DoesNotContain(keys, k => !en.Contains(k) || !uk.Contains(k));
+    }
+    [Fact]
+    public void An_after_eco_press_shows_at_once_and_a_second_click_sends_nothing()
+    {
+        string page = Page();
+        string script = $$"""
+            var modeError = '', modeErrorCode = '', planPress = null, writeSeq = 0, lastNow = null;
+            const fetches = []; let release;
+            function fetch(u, o) { fetches.push(o.body); return new Promise((r) => { release = () => r({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) }); }); }
+            let loads = 0; function load() { loads++; return Promise.resolve(); }
+            function t(k) { return k; } function $() { return { hidden: true, lastChild: {} }; } function paintMode() {}
+            const mk = (p) => { const a = {}; return { dataset: { p }, disabled: false, textContent: p, attrs: a, setAttribute: (k, v) => { a[k] = v; }, removeAttribute: (k) => { delete a[k]; } }; };
+            const all = [mk('balanced'), mk('high'), mk('previous')];
+            eval({{Js(FunctionText(page, "pressPlan"))}});
+            const p1 = pressPlan(all[2], all), p2 = pressPlan(all[0], all);
+            const during = { fetches: fetches.length, disabled: all.map((b) => b.disabled), pressed: all.map((b) => b.attrs['aria-pressed']), pending: all.map((b) => 'data-pending' in b.attrs) };
+            release();
+            Promise.all([p1, p2]).then(() => console.log(JSON.stringify({ during, body: fetches[0], disabled: all.map((b) => b.disabled), pending: all.map((b) => 'data-pending' in b.attrs), loads })));
+            """;
+        using var doc = JsonDocument.Parse(RunScript(script));
+        var r = doc.RootElement; var during = r.GetProperty("during");
+        Assert.Equal(1, during.GetProperty("fetches").GetInt32());
+        Assert.Equal("[true,true,true]", during.GetProperty("disabled").GetRawText());
+        Assert.Equal("[\"false\",\"false\",\"true\"]", during.GetProperty("pressed").GetRawText());
+        Assert.Equal("[false,false,true]", during.GetProperty("pending").GetRawText());
+        Assert.Equal("{\"returnPlan\":\"previous\"}", r.GetProperty("body").GetString());
+        Assert.Equal("[false,false,false]", r.GetProperty("disabled").GetRawText());
+        Assert.Equal("[false,false,false]", r.GetProperty("pending").GetRawText());
+        Assert.Equal(1, r.GetProperty("loads").GetInt32());
     }
 }

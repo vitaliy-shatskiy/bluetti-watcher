@@ -47,8 +47,8 @@ h2{font-size:11px;line-height:16px;margin:0 0 12px;font-weight:600;color:var(--d
 #modeSeg button[aria-pressed=true],#planSeg button[aria-pressed=true]{background:var(--accent);color:#fff}
 .rp{display:flex;align-items:center;gap:8px;color:var(--dim);font-size:12px}
 /* a mode press on its way: the pressed option outlined and marked, the group waiting; the line under it says what is applied */
-#modeSeg button[data-pending]{outline:1px dashed var(--accent);outline-offset:-1px;color:var(--text)}
-#modeSeg button[data-pending]::after{content:" …"}
+#modeSeg button[data-pending],#planSeg button[data-pending]{outline:1px dashed var(--accent);outline-offset:-1px;color:var(--text)}
+#modeSeg button[data-pending]::after,#planSeg button[data-pending]::after{content:" …"}
 .seg button:disabled{cursor:progress}
 .modebox .hint.pend{color:var(--accent)}.modebox .hint.warn{color:var(--warn)}.modebox .hint.bad{color:var(--bad)}
 .legend{display:flex;gap:18px;color:var(--dim);font-size:12px;flex-wrap:wrap;margin-top:6px}
@@ -460,7 +460,7 @@ uk: {
   planPreviousTip: "Схема, що була до еко (висока продуктивність, коли невідомо)",
   modeApplying: "Застосовую: {m}…",
   modeNow: "Зараз: {m}",
-  modeNowPlan: "Зараз: {m} · план {p}",
+  modeNowPlan: "Зараз: {m} · схема {p}",
   pmNormal: "звичайний режим",
   pmEco: "еко",
   pmEmergency: "аварійний режим",
@@ -1185,15 +1185,38 @@ document.querySelectorAll('#langSeg button').forEach((b) => { b.onclick = () => 
 // The last mode button's failure stays on the note chip across refreshes until the next press.
 var modeError = '';
 var modePress = null; // the mode a press is sending, until its reply
+var modeErrorCode = ''; // the code of the press's own refusal (max-held), '' for a failure without one
+var planPress = null; // the After-eco option a press is sending, until its reply
 var settling = false; // a settle read is out
 const MODE_KEY = { auto: 'modeAuto', eco: 'modeEco', max: 'modeMax' };
 const ACTIVE_PLAN_KEY = { high: 'activeHigh', balanced: 'activeBalanced', saver: 'activeSaver' };
 const HELD_CODES = ['max-held', 'eco-held', 'auto-held'];
-// A mode press: one at a time (a second click while one is out is ignored), the pressed option marked pending at once and
+// The plan after eco: the pressed option shown at once, a second click while the POST is out ignored; a failure goes to the
+// note chip and the line under the mode buttons as a mode press's does.
+async function pressPlan(b, all) {
+  if (planPress) return;
+  planPress = b.dataset.p;
+  all.forEach((x) => { x.disabled = true; x.setAttribute('aria-pressed', String(x === b)); if (x === b) x.setAttribute('data-pending', ''); else x.removeAttribute('data-pending'); });
+  modeError = ''; modeErrorCode = ''; writeSeq++;
+  const what = `${t('afterEco')} ${b.textContent}`;
+  try {
+    const r = await fetch('/api/return-plan', { method: 'POST', headers: { 'X-Station': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ returnPlan: b.dataset.p }) });
+    const j = await r.json().catch(() => ({ message: `HTTP ${r.status}` }));
+    if (!r.ok) modeError = `${what}: ${j.message || r.status}`;
+  } catch (e) {
+    modeError = `${what}: ${t('serviceDown', { e: e.message })}`;
+  } finally {
+    planPress = null; writeSeq++;
+    all.forEach((x) => { x.disabled = false; x.removeAttribute('data-pending'); });
+    if (modeError) { const nc = $('noteChip'); nc.hidden = false; nc.lastChild.textContent = modeError; }
+    if (lastNow) paintMode(lastNow);
+  }
+  await load(true);
+}// A mode press: one at a time (a second click while one is out is ignored), the pressed option marked pending at once and
 // the group disabled until the reply; then the service's own state, followed until the choice is applied.
 async function pressMode(b, all) {
   if (modePress) return;
-  modePress = b.dataset.m; modeError = ''; writeSeq++;
+  modePress = b.dataset.m; modeError = ''; modeErrorCode = ''; writeSeq++;
   all.forEach((x) => { x.disabled = true; });
   if (lastNow) paintMode(lastNow);
   let accepted = false;
@@ -1202,7 +1225,7 @@ async function pressMode(b, all) {
     const signal = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined;
     const r = await fetch('/api/mode', { method: 'POST', headers: { 'X-Station': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: b.dataset.m }), signal });
     const j = await r.json().catch(() => ({ message: `HTTP ${r.status}` }));
-    if (!r.ok) modeError = j.code ? noteText({ code: j.code, text: j.message, args: [] }) : `${b.textContent}: ${j.message || r.status}`;
+    if (!r.ok) { modeError = j.code ? noteText({ code: j.code, text: j.message, args: [] }) : `${b.textContent}: ${j.message || r.status}`; modeErrorCode = j.code || ''; }
     accepted = r.status === 202;
   } catch (e) {
     modeError = `${b.textContent}: ${t('serviceDown', { e: e.message })}`;
@@ -1210,6 +1233,7 @@ async function pressMode(b, all) {
     modePress = null; writeSeq++;
     all.forEach((x) => { x.disabled = false; });
     if (modeError) { const nc = $('noteChip'); nc.hidden = false; nc.lastChild.textContent = modeError; }
+    if (lastNow) paintMode(lastNow);   // the refusal or failure on the line at once, the service down included
   }
   await load(true);
   if (accepted) await settle();
@@ -1228,8 +1252,11 @@ async function settle() {
   } finally { settling = false; }
 }
 // The line under the mode buttons: what is applying, why a choice was held back or failed, else what is in force now.
-function modeLine(D, press) {
-  const applying = press || (!D.modeError && D.modePending);
+function modeLine(D, press, own, ownCode) {
+  if (press) return { kind: 'pend', text: t('modeApplying', { m: t(MODE_KEY[press] || 'modeAuto') }) };
+  // the press's own refusal (409 at once) or a service out of reach: the reply the service never saved
+  if (own) return { kind: HELD_CODES.includes(ownCode) ? 'warn' : 'bad', text: own };
+  const applying = !D.modeError && D.modePending;
   if (applying) return { kind: 'pend', text: t('modeApplying', { m: t(MODE_KEY[applying] || 'modeAuto') }) };
   if (D.modeError) {
     const n = D.modeErrorNote;
@@ -1246,30 +1273,15 @@ function paintMode(D) {
     b.setAttribute('aria-pressed', String(b.dataset.m === (modePress || D.manual)));
     if (b.dataset.m === applying) b.setAttribute('data-pending', ''); else b.removeAttribute('data-pending');
   });
-  const l = modeLine(D, modePress), el = $('modeLine');
+  const l = modeLine(D, modePress, modeError, modeErrorCode), el = $('modeLine');
   el.textContent = l.text; el.className = `hint ${l.kind}`.trim();
 }
 var ecoTimer = null; // the eco countdown's one-second tick, stopped while the page is hidden
 var dtekDay = 'today'; // the DTEK tab picked: today or tomorrow
 var introChart = true; // the chart draws its lines in on the first paint and on a range switch, not on the minute repaint
 var iconSoc = null; // the charge the tab icon was last drawn for
-document.querySelectorAll('#modeSeg button').forEach((b, _, all) => { b.onclick = () => pressMode(b, [...all]); });// The plan after eco: saved at once; a failure goes to the note chip as a mode button's does.
-document.querySelectorAll('#planSeg button').forEach((b) => { b.onclick = async () => {
-  modeError = ''; writeSeq++;
-  const what = `${t('afterEco')} ${b.textContent}`;
-  try {
-    const r = await fetch('/api/return-plan', { method: 'POST', headers: { 'X-Station': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ returnPlan: b.dataset.p }) });
-    const j = await r.json().catch(() => ({ message: `HTTP ${r.status}` }));
-    if (!r.ok) modeError = `${what}: ${j.message || r.status}`;
-  } catch (e) {
-    modeError = `${what}: ${t('serviceDown', { e: e.message })}`;
-  } finally {
-    writeSeq++;
-    if (modeError) { const nc = $('noteChip'); nc.hidden = false; nc.lastChild.textContent = modeError; }
-    load(true);
-  }
-}; });
-// Phones have no hover: a tap on anything with a tooltip (or on the ring) shows it in the tip box, a tap elsewhere hides it.
+document.querySelectorAll('#modeSeg button').forEach((b, _, all) => { b.onclick = () => pressMode(b, [...all]); });
+document.querySelectorAll('#planSeg button').forEach((b, _, all) => { b.onclick = () => pressPlan(b, [...all]); });// Phones have no hover: a tap on anything with a tooltip (or on the ring) shows it in the tip box, a tap elsewhere hides it.
 if (window.matchMedia && matchMedia('(hover: none)').matches) document.addEventListener('click', (e) => {
   const tip = $('tip'), ring = e.target.closest('#ring'), el = e.target.closest('[title]');
   if (ring && ring.onmousemove) { ring.onmousemove(e); return; }
