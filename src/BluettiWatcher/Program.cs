@@ -79,6 +79,8 @@ Log($"Bluetti Watcher started: http://127.0.0.1:{config.Port}/ · reader {(confi
 
 var serving = http.RunAsync(stop.Token);
 var scheduleReads = dtek.RunAsync(stop.Token);
+// A page choice applies when it is saved, never after a station read that is still running.
+var presses = service.RunPressesAsync(stop.Token);
 long lastCompact = time.GetTimestamp();
 var memory = new ProcessMemory(config, new Win32MemoryCalls(), Log);
 try
@@ -119,5 +121,7 @@ catch (OperationCanceledException)
 }
 await serving;
 await scheduleReads;
+try { await presses; }
+catch (OperationCanceledException) { /* the press loop ends with the stop */ }
 Log("stopped");
 return 0;

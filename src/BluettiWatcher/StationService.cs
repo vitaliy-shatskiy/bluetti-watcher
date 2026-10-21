@@ -21,6 +21,8 @@ internal sealed class StationService(StationConfig config, IStationReader reader
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Backoff _backoff = new();
     private readonly SemaphoreSlim _wake = new(0, int.MaxValue);
+    /// <summary>A page choice saved: wakes <see cref="RunPressesAsync"/>, which never waits for a station read.</summary>
+    private readonly SemaphoreSlim _press = new(0, int.MaxValue);
     private StationState _state = store.LoadState();
     private BatteryWritten? _battery;
     private Reading? _last;
@@ -66,6 +68,7 @@ internal sealed class StationService(StationConfig config, IStationReader reader
     {
         _gate.Dispose();
         _wake.Dispose();
+        _press.Dispose();
     }
 
     public StationState State => _state.Clone();
@@ -339,6 +342,7 @@ internal sealed class StationService(StationConfig config, IStationReader reader
             store.AddEvent(now, "mode", mode.ToString().ToLowerInvariant());
             Signal();
             _wake.Release();
+            _press.Release();
             return new ModeChange(true, 202, "accepted", _state.Manual);
         }
         finally { _gate.Release(); }
@@ -389,6 +393,21 @@ internal sealed class StationService(StationConfig config, IStationReader reader
         {
             Signal();
             _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Applies each page choice as it is saved, beside the poll loop: a station read runs outside the gate, so a press never
+    /// waits for Bluetooth (only for a poll's own decision and commands, which hold the gate, the single writer of the state
+    /// and of the switch's calls). Retries after a failure stay with the poll loop's backoff. Ends on cancellation.
+    /// </summary>
+    public async Task RunPressesAsync(CancellationToken ct)
+    {
+        while (true)
+        {
+            await _press.WaitAsync(ct);
+            try { await ApplyPendingAsync(ct); }
+            catch (Exception e) when (e is not OperationCanceledException) { log($"mode change failed: {e.GetType().Name}: {e.Message}"); }
         }
     }
 

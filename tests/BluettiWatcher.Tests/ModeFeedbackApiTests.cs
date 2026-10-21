@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json;
+using BluettiWatcher.Decision;
 using BluettiWatcher.Http;
+using BluettiWatcher.Io;
 using BluettiWatcher.PowerMode;
 using BluettiWatcher.Storage;
 using static BluettiWatcher.Tests.Fx;
@@ -129,5 +131,30 @@ public sealed class ModeFeedbackApiTests : IDisposable
         _flag.View = Flag("eco", "manual");
         await _service.PollAsync(CancellationToken.None);   // the service reads the flag on a poll
         Assert.Equal("eco", Json(await api.HandleAsync(Req("GET", "/api/now"), CancellationToken.None)).GetProperty("powerMode").GetString());
+    }
+    /// <summary>A station read that never answers until released, as a Bluetooth read stuck on its timeout.</summary>
+    private sealed class HangingReader : IStationReader
+    {
+        public readonly TaskCompletionSource<Reading?> Answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task<Reading?> ReadAsync(CancellationToken ct) => Answer.Task.WaitAsync(ct);
+    }
+
+    [Fact]
+    public async Task A_press_settles_while_a_station_read_hangs()
+    {
+        var reader = new HangingReader();
+        using var service = new StationService(_cfg, reader, _actions, new FakeHibernator(true), _flag, _store, _clock, _ => { });
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var poll = service.PollAsync(stop.Token);
+        var presses = service.RunPressesAsync(stop.Token);
+        Assert.Equal(202, (await service.SetModeAsync(ManualMode.Eco, stop.Token)).Status);
+        await service.WaitModeSettledAsync(StationApi.SettleWait, stop.Token);
+        Assert.Null(service.State.ModePending);   // applied within the settle window, the read still hanging
+        Assert.Contains("eco", _actions.Calls);
+        Assert.False(poll.IsCompleted);
+        reader.Answer.SetResult(null);
+        await poll;
+        await stop.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => presses);
     }
 }
