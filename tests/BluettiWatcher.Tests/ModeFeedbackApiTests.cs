@@ -132,6 +132,55 @@ public sealed class ModeFeedbackApiTests : IDisposable
         await _service.PollAsync(CancellationToken.None);   // the service reads the flag on a poll
         Assert.Equal("eco", Json(await api.HandleAsync(Req("GET", "/api/now"), CancellationToken.None)).GetProperty("powerMode").GetString());
     }
+    [Fact]
+    public async Task A_press_while_the_command_backs_off_shows_the_last_failure_and_the_retry_time()
+    {
+        _actions.FailEco = true;
+        var api = Api();
+        Assert.Equal(202, (await Press(api, "eco")).Status);
+        await _service.ApplyPendingAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(202, (await Press(api, "eco")).Status);   // again, inside the backoff
+        var settle = api.HandleAsync(Req("GET", "/api/now?settle=1"), TestContext.Current.CancellationToken);
+        await _service.ApplyPendingAsync(TestContext.Current.CancellationToken);
+        var now = Json(await settle.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.Equal("Eco: COULD NOT RUN - retry at 20:01", now.GetProperty("modeError").GetString());
+        Assert.Single(_actions.Calls, c => c == "eco");   // the closed backoff ran nothing
+    }
+
+    [Fact]
+    public async Task The_active_plan_is_read_once_per_poll_or_choice_not_per_request()
+    {
+        int reads = 0;
+        var api = Api(() => { Interlocked.Increment(ref reads); return (PowerModeSwitch.BalancedPlan, "Balanced"); });
+        for (int i = 0; i < 3; i++) await api.HandleAsync(Req("GET", "/api/now"), TestContext.Current.CancellationToken);
+        Assert.Equal(1, reads);
+        await _service.PollAsync(TestContext.Current.CancellationToken);
+        await api.HandleAsync(Req("GET", "/api/now"), TestContext.Current.CancellationToken);
+        await api.HandleAsync(Req("GET", "/api/now"), TestContext.Current.CancellationToken);
+        Assert.Equal(2, reads);
+        Assert.Equal(202, (await Press(api, "eco")).Status);
+        await _service.ApplyPendingAsync(TestContext.Current.CancellationToken);
+        await api.HandleAsync(Req("GET", "/api/now"), TestContext.Current.CancellationToken);
+        Assert.Equal(3, reads);
+    }
+
+    [Fact]
+    public async Task A_hanging_plan_read_keeps_the_settle_answer_under_the_request_limit()
+    {
+        using var hold = new ManualResetEventSlim(false);
+        var api = Api(() => { hold.Wait(TimeSpan.FromSeconds(30)); return ("", ""); });
+        try
+        {
+            Assert.True(StationApi.SettleWait + StationApi.PlanWait < TimeSpan.FromSeconds(10));
+            Assert.Equal(202, (await Press(api, "eco")).Status);
+            var started = System.Diagnostics.Stopwatch.StartNew();
+            var r = await api.HandleAsync(Req("GET", "/api/now?settle=1"), TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Assert.Equal(200, r.Status);
+            Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), $"{started.Elapsed}");
+            Assert.Equal("", Json(r).GetProperty("powerPlan").GetProperty("id").GetString());
+        }
+        finally { hold.Set(); }
+    }
     /// <summary>A station read that never answers until released, as a Bluetooth read stuck on its timeout.</summary>
     private sealed class HangingReader : IStationReader
     {

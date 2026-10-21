@@ -53,7 +53,7 @@ internal sealed class StationApi(StationConfig config, StationService service, S
         return r.Path switch
         {
             "/" or "/index.html" => Page.Value.Respond(r),
-            "/api/now" => HttpResponse.Json(200, Now(now)),
+            "/api/now" => HttpResponse.Json(200, Now(now, await ActivePlanAsync(ct))),
             "/api/health" => HttpResponse.Json(200, Health(now)),
             "/api/history" => History(r, now),
             "/api/events" => Events(r, now),
@@ -151,17 +151,52 @@ internal sealed class StationApi(StationConfig config, StationService service, S
         }));
     }
 
-    /// <summary>The longest /api/now?settle=1 waits for a page choice to settle.</summary>
-    internal static readonly TimeSpan SettleWait = TimeSpan.FromSeconds(8);
+    /// <summary>The longest /api/now?settle=1 waits for a page choice to settle; with <see cref="PlanWait"/> under the server's 10 s.</summary>
+    internal static readonly TimeSpan SettleWait = TimeSpan.FromSeconds(7);
 
-    /// <summary>The active Windows plan for the page: id high | balanced | saver | other ("" = unknown) and its name.</summary>
-    private (string Id, string Name) ActivePlan()
+    /// <summary>The longest a request waits for a fresh read of the active plan; past it the last one known answers.</summary>
+    internal static readonly TimeSpan PlanWait = TimeSpan.FromSeconds(2);
+    private readonly Lock _planGate = new();
+    private (string Id, string Name) _plan = ("", "");
+    private long _planEpoch = -1;
+    private long _planWrites;
+    private Task<(string, string)>? _planRead;
+
+    /// <summary>
+    /// The active Windows plan for the page: id high | balanced | saver | other ("" = unknown) and its name. Read again only
+    /// after a poll, an applied page choice or a plan write moved the epoch; one read at a time, off the request thread
+    /// (powercfg could hang), waited for at most <see cref="PlanWait"/>.
+    /// </summary>
+    private async Task<(string Id, string Name)> ActivePlanAsync(CancellationToken ct)
     {
         if (activePlan is null) return ("", "");
-        (string guid, string name) = ("", "");
-        try { (guid, name) = activePlan(); }
-        catch (Exception e) when (e is InvalidOperationException or IOException or System.ComponentModel.Win32Exception) { Once("plan read", e); }
-        string id = guid switch
+        long epoch = service.PlanEpoch + Interlocked.Read(ref _planWrites);
+        Task<(string, string)>? read;
+        lock (_planGate)
+        {
+            if (epoch == _planEpoch && _planRead is null) return _plan;
+            if (_planRead is null)
+            {
+                _planEpoch = epoch;
+                // A blocking process call kept off the request: the request waits for it only up to PlanWait.
+                _planRead = Task.Run(activePlan, CancellationToken.None);
+            }
+            read = _planRead;
+        }
+        try
+        {
+            var (guid, name) = await read.WaitAsync(PlanWait, ct);
+            lock (_planGate) { _plan = (PlanId(guid), name); if (ReferenceEquals(_planRead, read)) _planRead = null; return _plan; }
+        }
+        catch (TimeoutException) { lock (_planGate) return _plan; }
+        catch (Exception e) when (e is InvalidOperationException or IOException or System.ComponentModel.Win32Exception)
+        {
+            Once("plan read", e);
+            lock (_planGate) { if (ReferenceEquals(_planRead, read)) _planRead = null; return _plan; }
+        }
+    }
+
+    private static string PlanId(string guid) => guid switch
         {
             "" => "",
             PowerModeSwitch.HighPlan => "high",
@@ -169,8 +204,6 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             PowerModeSwitch.SaverPlan => "saver",
             _ => "other",
         };
-        return (id, name);
-    }
 
     /// <summary>The plan the end of eco sets (power-mode.config.json beside the flag); the switch reads the file as before.</summary>
     private HttpResponse SetReturnPlan(HttpRequest r)
@@ -184,6 +217,7 @@ internal sealed class StationApi(StationConfig config, StationService service, S
         catch (JsonException) { return HttpResponse.Text(400, "body must be JSON { \"returnPlan\": \"high\" | \"balanced\" | \"previous\" }"); }
         if (plan is null || !ReturnPlanFile.IsChoice(plan)) return HttpResponse.Text(400, "returnPlan must be high, balanced or previous");
         var (status, error) = ReturnPlanFile.Write(config.FlagFile, plan);
+        Interlocked.Increment(ref _planWrites);
         if (status == 0) log?.Invoke($"page: after eco = {plan}");
         else log?.Invoke($"page: after eco = {plan} not saved: {error}");
         return HttpResponse.Json(status == 0 ? 200 : status, Write(w =>
@@ -369,7 +403,7 @@ internal sealed class StationApi(StationConfig config, StationService service, S
         return string.Join(' ', words).ToLowerInvariant();
     }
 
-    private byte[] Now(DateTimeOffset now)
+    private byte[] Now(DateTimeOffset now, (string Id, string Name) plan)
     {
         var s = service.State;
         var last = service.LastAccepted;
@@ -405,7 +439,6 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             w.WriteString("returnPlan", ReturnPlanFile.Read(config.FlagFile));
             Note(w, "modeErrorNote", ModeErrorNote(service.ModeError));
             w.WriteString("powerMode", (flag?.View ?? FlagView.Unreadable).Mode);
-            var plan = ActivePlan();
             w.WriteStartObject("powerPlan");
             w.WriteString("id", plan.Id);
             w.WriteString("name", plan.Name);
