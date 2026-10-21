@@ -4,6 +4,7 @@ using System.Text.Json;
 using BluettiWatcher.Decision;
 using BluettiWatcher.DtekWatcher;
 using BluettiWatcher.Io;
+using BluettiWatcher.PowerMode;
 using BluettiWatcher.Runtime;
 using BluettiWatcher.Storage;
 
@@ -11,7 +12,8 @@ namespace BluettiWatcher.Http;
 
 /// <summary>
 /// The routes. GET /, /api/now, /api/history?from&amp;to&amp;step, /api/events?from&amp;to, /api/health;
-/// POST /api/mode { "mode": "auto" | "eco" | "max" } behind <see cref="RequestGuard"/>.
+/// POST /api/mode { "mode": "auto" | "eco" | "max" } behind <see cref="RequestGuard"/>; GET /api/return-plan and, behind the
+/// same guard, POST /api/return-plan { "returnPlan": "high" | "balanced" | "previous" }.
 /// from / to: ISO 8601 or Unix milliseconds; step: seconds (default 60).
 /// </summary>
 internal sealed class StationApi(StationConfig config, StationService service, StationStore store, TimeProvider time, DateTimeOffset startedAt, IDtekWatcher? dtek = null, Action<string>? log = null,
@@ -39,6 +41,11 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             if (RequestGuard.WriteRefusal(r, config.Port) is { } why) return HttpResponse.Text(403, "forbidden: " + why);
             return await ModeAsync(r, ct);
         }
+        if (r.Path == "/api/return-plan" && r.Method == "POST")
+        {
+            if (RequestGuard.WriteRefusal(r, config.Port) is { } why) return HttpResponse.Text(403, "forbidden: " + why);
+            return SetReturnPlan(r);
+        }
         if (r.Method != "GET") return HttpResponse.Text(405, "GET only");
         var now = time.GetLocalNow();
         return r.Path switch
@@ -48,6 +55,7 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             "/api/health" => HttpResponse.Json(200, Health(now)),
             "/api/history" => History(r, now),
             "/api/events" => Events(r, now),
+            "/api/return-plan" => HttpResponse.Json(200, Write(w => { w.WriteStartObject(); w.WriteString("returnPlan", ReturnPlanFile.Read(config.FlagFile)); w.WriteEndObject(); })),
             _ => HttpResponse.Text(404, "not found"),
         };
     }
@@ -137,6 +145,30 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             w.WriteString("manual", res.Manual.ToString().ToLowerInvariant());
             w.WriteString("message", res.Message);
             w.WriteString("code", res.Message == StationService.MaxHeldBack ? PageCodes.MaxHeld : "");
+            w.WriteEndObject();
+        }));
+    }
+
+    /// <summary>The plan the end of eco sets (power-mode.config.json beside the flag); the switch reads the file as before.</summary>
+    private HttpResponse SetReturnPlan(HttpRequest r)
+    {
+        string? plan;
+        try
+        {
+            using var doc = JsonDocument.Parse(r.Body);
+            plan = doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("returnPlan", out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        }
+        catch (JsonException) { return HttpResponse.Text(400, "body must be JSON { \"returnPlan\": \"high\" | \"balanced\" | \"previous\" }"); }
+        if (plan is null || !ReturnPlanFile.IsChoice(plan)) return HttpResponse.Text(400, "returnPlan must be high, balanced or previous");
+        var (status, error) = ReturnPlanFile.Write(config.FlagFile, plan);
+        if (status == 0) log?.Invoke($"page: after eco = {plan}");
+        else log?.Invoke($"page: after eco = {plan} not saved: {error}");
+        return HttpResponse.Json(status == 0 ? 200 : status, Write(w =>
+        {
+            w.WriteStartObject();
+            w.WriteBoolean("ok", status == 0);
+            w.WriteString("returnPlan", ReturnPlanFile.Read(config.FlagFile));
+            w.WriteString("message", error);
             w.WriteEndObject();
         }));
     }
@@ -347,6 +379,7 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             w.WriteString("manual", s.Manual.ToString().ToLowerInvariant());
             if (s.ModePending is { } pending) w.WriteString("modePending", pending.ToString().ToLowerInvariant()); else w.WriteNull("modePending");
             w.WriteString("modeError", service.ModeError);
+            w.WriteString("returnPlan", ReturnPlanFile.Read(config.FlagFile));
             Note(w, "modeErrorNote", ModeErrorNote(service.ModeError));
             w.WriteString("level", s.Level.ToString().ToLowerInvariant());
             w.WriteBoolean("cut", s.Cut);
