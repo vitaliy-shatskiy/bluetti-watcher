@@ -436,6 +436,28 @@ public sealed class PowerModeStationTests
         Ok(m.TaskXml() is not null, "the end task of the manual eco");
     }
 
+    [Fact(DisplayName = "a kept eco that owes a plan sets Power saver again when it is not active; prevPlan stays; a list failure is a warn")]
+    public async Task A_station_eco_sets_Power_saver_again_when_a_plan_is_owed()
+    {
+        await using Cleanup t = new();
+        foreach (string[] first in new[] { new[] { "eco", "-Source", "station" }, new[] { "eco", "-For", "90" } })
+        {
+            Machine m = NewMachine(t);
+            Res failed = await m.Run(first, Env(("FAKE_PM_SETFAIL", "1")));
+            Ok(Lines(failed.Out).Any(l => l.StartsWith("warn: the Power saver plan could not be set", StringComparison.Ordinal)), failed.Out);
+            Eq(Balanced, (string?)m.Json().V("prevPlan"));
+            Eq(Balanced, m.Active());
+            string before = ReadText(m.Flag);
+            Res listFail = await m.Run(["eco", "-Source", "station"], Env(("FAKE_PM_LISTFAIL", "1")));
+            Ok(Lines(listFail.Out).Contains("warn: powercfg did not list the power plans: the power plan is unchanged"), listFail.Out);
+            Res again = await m.Run(["eco", "-Source", "station"]);
+            Eq(0, again.Status, again.Out);
+            Eq(Saver, m.Active());
+            Ok(Lines(again.Out).Contains($"plan: Power saver on; returns to {Balanced}"), again.Out);
+            Eq(before, ReadText(m.Flag));
+        }
+    }
+
     [Fact(DisplayName = "a station eco over an eco never records Power saver: Power saver on by hand records the return plan")]
     public async Task A_station_eco_repair_never_records_Power_saver()
     {

@@ -22,8 +22,10 @@ config, database and history stay. Requirements and details: [README](https://gi
 
 - Eco: an eco whose Power saver plan or GPU cap did not apply (powercfg or nvidia-smi gave no answer, as right after a
   restart) stayed that way until off, and the page's Eco or the station's next eco only said "already on, kept". Both
-  now apply what is missing: Power saver when no plan is owed (the plan to return to is recorded first, never Power
-  saver), the GPU cap when none is recorded. The eco keeps its start, its end time and its end task.
+  now apply what is missing: Power saver whenever it is not the active plan (a plan to return to that is not recorded
+  yet is recorded first, never Power saver), the GPU cap when none is recorded. The eco keeps its start, its end time
+  and its end task.
+- The page no longer answers every request with an error after one failed read of the active power plan.
 - `service.log` names every `warn:` and `note:` line of an eco, on or off call after its exit line, so a plan or GPU
   step that failed is no longer silent behind `exit 0`.
 

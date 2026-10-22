@@ -124,6 +124,20 @@ public sealed class ModeFeedbackApiTests : IDisposable
     }
 
     [Fact]
+    public async Task A_plan_read_that_fails_with_any_exception_is_dropped_and_read_again()
+    {
+        int reads = 0;
+        var api = Api(() => Interlocked.Increment(ref reads) == 1 ? throw new ArgumentException("odd powercfg output") : (PowerModeSwitch.BalancedPlan, "Balanced"));
+        var first = await api.HandleAsync(Req("GET", "/api/now"), CancellationToken.None);
+        Assert.Equal(200, first.Status);
+        Assert.Equal("", Json(first).GetProperty("powerPlan").GetProperty("id").GetString());
+        await _service.PollAsync(CancellationToken.None);   // a poll moves the epoch: the plan is read again
+        var second = await api.HandleAsync(Req("GET", "/api/now"), CancellationToken.None);
+        Assert.Equal(200, second.Status);
+        Assert.Equal("balanced", Json(second).GetProperty("powerPlan").GetProperty("id").GetString());
+    }
+
+    [Fact]
     public async Task Now_carries_the_flag_mode_in_force()
     {
         var api = Api();

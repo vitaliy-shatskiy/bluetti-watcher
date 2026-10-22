@@ -512,15 +512,16 @@ internal sealed partial class PowerModeSwitch
             keep = station && flag is not null && flag.Mode == "eco";
             // A plan already recorded (eco on, or ended and not restored yet) stays the plan to return to.
             prev = keptPlan = flag?.PrevPlan ?? "";
-            // A kept eco that owes a plan had Power saver set: nothing to repair, powercfg is not asked.
+            // A kept eco that owes a plan: Power saver is set again when it is not the active plan (its switch failed or
+            // something switched it off); the plan recorded stays the plan to return to.
             bool planOwed = keep && prev.Length > 0;
-            var plans = planOwed ? null : Plans();
-            if (plans is null) { if (!planOwed) notes.Add("warn: powercfg did not list the power plans: the power plan is unchanged"); }
+            var plans = Plans();
+            if (plans is null) notes.Add("warn: powercfg did not list the power plans: the power plan is unchanged");
             else if (!plans.All.Contains(SaverPlan)) notes.Add($"warn: the Power saver plan ({SaverPlan}) is not on this machine: the power plan is unchanged");
             else if (plans.Active == SaverPlan)
             {
                 // Power saver is never recorded: switched on by hand before eco, the plan off returns to is recorded instead.
-                if (prev.Length > 0) notes.Add($"plan: Power saver stays on; returns to {ResolveReturnPlan(prev, cfg, plans).Target}");
+                if (prev.Length > 0) { if (!planOwed) notes.Add($"plan: Power saver stays on; returns to {ResolveReturnPlan(prev, cfg, plans).Target}"); }
                 else
                 {
                     prev = ResolveReturnPlan("", cfg, plans).Target;

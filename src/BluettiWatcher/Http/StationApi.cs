@@ -189,7 +189,8 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             lock (_planGate) { _plan = (PlanId(guid), name); if (ReferenceEquals(_planRead, read)) _planRead = null; return _plan; }
         }
         catch (TimeoutException) { lock (_planGate) return _plan; }
-        catch (Exception e) when (e is InvalidOperationException or IOException or System.ComponentModel.Win32Exception)
+        // Any failure but the request's own cancellation drops the read: a faulted read kept would fail every later request.
+        catch (Exception e) when (!(e is OperationCanceledException && ct.IsCancellationRequested))
         {
             Once("plan read", e);
             lock (_planGate) { if (ReferenceEquals(_planRead, read)) _planRead = null; return _plan; }
