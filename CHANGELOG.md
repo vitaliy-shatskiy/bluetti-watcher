@@ -6,6 +6,27 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-10-22
+
+### Download
+
+| File | What it is |
+|---|---|
+| `bluetti-watcher-1.3.4-win-x64.zip` | The service, the power-mode scripts, the installer and the docs |
+| `bluetti-watcher-1.3.4-win-x64.zip.sha256` | Its SHA-256. Check with `(Get-FileHash bluetti-watcher-1.3.4-win-x64.zip).Hash` |
+
+Upgrade: extract the zip, then `pwsh -NoProfile -File install.ps1` (a dry run) and the same with `-Apply`. Your
+config, database and history stay. Requirements and details: [README](https://github.com/vitaliy-shatskiy/bluetti-watcher#quick-start).
+
+### Fixed
+
+- Eco: an eco whose Power saver plan or GPU cap did not apply (powercfg or nvidia-smi gave no answer, as right after a
+  restart) stayed that way until off, and the page's Eco or the station's next eco only said "already on, kept". Both
+  now apply what is missing: Power saver when no plan is owed (the plan to return to is recorded first, never Power
+  saver), the GPU cap when none is recorded. The eco keeps its start, its end time and its end task.
+- `service.log` names every `warn:` and `note:` line of an eco, on or off call after its exit line, so a plan or GPU
+  step that failed is no longer silent behind `exit 0`.
+
 ### Changed
 
 - `install.ps1` requires `-CapacityWh` for a new install and writes it to `config.json`: the battery time no longer

@@ -184,6 +184,7 @@ internal static class Pm
         [IO.File]::AppendAllText("$d\calls.log", "powercfg $($args -join ' ')`n")
         $plans = @(Get-Content -LiteralPath "$d\plans.txt")
         $active = (Get-Content -LiteralPath "$d\active.txt" -Raw).Trim()
+        if ($args[0] -eq '/list' -and $env:FAKE_PM_LISTFAIL -eq '1') { 'An unexpected error condition has occurred.'; exit 1 }
         if ($args[0] -eq '/list') { 'Existing Power Schemes (* Active)'; foreach ($p in $plans) { "Power Scheme GUID: $p  (a plan)$(if ($p -eq $active) { ' *' })" }; exit 0 }
         if ($args[0] -eq '/setactive' -and $plans -contains $args[1] -and $env:FAKE_PM_SETFAIL -ne '1') { [IO.File]::WriteAllText("$d\active.txt", $args[1]); exit 0 }
         if ($args[0] -eq '/overlaysetactive' -and $env:FAKE_PM_OVERLAYFAIL -ne '1') { [IO.File]::WriteAllText("$d\overlay.txt", $args[1]); exit 0 }
