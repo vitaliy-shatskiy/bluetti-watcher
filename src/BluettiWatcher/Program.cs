@@ -56,7 +56,9 @@ var wake = new WakeKeeper(config, new ScheduledWakeTask(config, runner, Log), st
 using var cloudHttp = new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(10) };
 using var cloud = new BluettiCloudReader(config, cloudHttp, time, Log);
 // The cloud's own 5-minute history fills the database's gaps (design.md §4a): two read-only statistics calls, its own task, never on the poll path.
-using var historyReader = new CloudHistoryReader(cloudHttp);
+// Its own pool: it never follows a redirect; the live reader's handler keeps its behaviour.
+using var historyHttp = CloudHistoryReader.NewHandler();
+using var historyReader = new CloudHistoryReader(historyHttp);
 using var backfill = new CloudBackfill(config, historyReader, cloud.HistorySessionAsync, store, time, Log);
 // Bluetooth: the built-in WinRT reader, IoT V1 and V2 models, read only (Io/Ble).
 var bluetooth = new NativeBleReader(config, new WinRtBleConnector(), Log);

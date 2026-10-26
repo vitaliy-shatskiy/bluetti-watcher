@@ -14,11 +14,15 @@ internal sealed record HistoryDay(int? MsgCode, List<HistoryPoint> Points, bool 
 
 /// <summary>
 /// The station's own history from the BLUETTI cloud statistics API (design.md §4a), with the token and headers of
-/// <see cref="BluettiCloudReader"/> on the same connection pool. READ ONLY, FOREVER: a request is built only for the two
-/// statistics paths below, with only their query fields; any other path throws before a request exists.
+/// <see cref="BluettiCloudReader"/> on its own connection pool (<see cref="NewHandler"/>). READ ONLY, FOREVER: a request is
+/// built only for the two statistics paths below, with only their query fields; any other path throws before a request
+/// exists, and no redirect is followed.
 /// </summary>
 internal sealed class CloudHistoryReader(HttpMessageHandler handler) : IDisposable
 {
+    /// <summary>The service's handler for this reader: a redirect is never followed, so no request reaches a path off the allow-list.</summary>
+    internal static SocketsHttpHandler NewHandler() => new() { PooledConnectionLifetime = TimeSpan.FromMinutes(10), AllowAutoRedirect = false };
+
     private const string Base = "https://gw.bluettipower.com";
     // The whole allow-list. Not configurable: no other path of the BLUETTI API may ever be called from here.
     private const string PowerPath = "/api/bluiotdata/dashboard/v2/getDevicePowerStatistics";
@@ -36,6 +40,7 @@ internal sealed class CloudHistoryReader(HttpMessageHandler handler) : IDisposab
     {
         var (status, body, why) = await PostAsync(PowerPath, access, serial, day, 0, ct);
         if (body is null) return new HistoryDay(null, [], false, why);
+        if ((int)status is >= 300 and < 400) return new HistoryDay(null, [], false, string.Create(CultureInfo.InvariantCulture, $"answered a redirect (HTTP {(int)status}), not followed"));
         if (status != HttpStatusCode.OK) return new HistoryDay(null, [], false, string.Create(CultureInfo.InvariantCulture, $"answered HTTP {(int)status}"));
         try
         {
@@ -97,7 +102,8 @@ internal sealed class CloudHistoryReader(HttpMessageHandler handler) : IDisposab
     /// <summary>
     /// <c>data.chart_x</c> local labels "yyyy-MM-dd HH:mm" and <c>data.chart_y</c> series <c>{title, data[]}</c>: soc,
     /// grid (AC in), ac (AC out), pv (DC in), dc (DC out). A point needs a SOC above 0 (a later point of today, or an
-    /// hour the station sent nothing, has none). A day whose points are not 5 minutes apart is hourly: no points.
+    /// hour the station sent nothing, has none). A day whose first two adjacent readable labels are not 5 minutes apart is
+    /// hourly: no points.
     /// On the fall-back day a repeated label is the summer hour the first time and the winter hour the second; a label
     /// in the spring-forward hour does not exist and is dropped.
     /// </summary>
@@ -114,8 +120,12 @@ internal sealed class CloudHistoryReader(HttpMessageHandler handler) : IDisposab
         var labels = new List<DateTime?>();
         foreach (var x in xs.EnumerateArray())
             labels.Add(x.ValueKind == JsonValueKind.String && DateTime.TryParseExact(x.GetString(), "yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var t) ? t : null);
-        if (labels.Count >= 2 && labels[0] is { } a && labels[1] is { } b && b - a != TimeSpan.FromMinutes(5))
-            return new HistoryDay(code, [], true, "");
+        for (int i = 0; i + 1 < labels.Count; i++)
+        {
+            if (labels[i] is not { } a || labels[i + 1] is not { } b) continue;
+            if (b - a != TimeSpan.FromMinutes(5)) return new HistoryDay(code, [], true, "");
+            break;
+        }
         var series = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
         foreach (var y in ys.EnumerateArray())
             if (y.ValueKind == JsonValueKind.Object && y.TryGetProperty("title", out var title) && title.ValueKind == JsonValueKind.String
@@ -159,7 +169,7 @@ internal sealed class CloudHistoryReader(HttpMessageHandler handler) : IDisposab
 /// once, at most <see cref="CallsPerRun"/> calls a run and <see cref="CallsPerDay"/> a day. Runs after start, once a day
 /// and after a gap in the live readings ends. Never in the poll path: a failed call is a log line and nothing else.
 /// </summary>
-internal sealed class CloudBackfill(StationConfig config, CloudHistoryReader reader, Func<CancellationToken, Task<(string? Access, string? Serial, string Why)>> session,
+internal sealed class CloudBackfill(StationConfig config, CloudHistoryReader reader, Func<string?, CancellationToken, Task<(string? Access, string? Serial, string Why)>> session,
     StationStore store, TimeProvider time, Action<string> log) : IDisposable
 {
     public const int GapMinutes = 10;
@@ -168,6 +178,8 @@ internal sealed class CloudBackfill(StationConfig config, CloudHistoryReader rea
     public const int LagMinutes = 10;
     internal const string CallsKey = "cloudHistoryCalls";
     internal const string DoneKey = "cloudHistoryDone";
+    /// <summary>The cloud's msgCode for an expired token.</summary>
+    private const int ExpiredToken = 805;
     private static readonly TimeSpan DoneAfterDayEnd = TimeSpan.FromHours(1);
     private static readonly TimeSpan FirstRunAfter = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan RunEvery = TimeSpan.FromDays(1);
@@ -235,25 +247,45 @@ internal sealed class CloudBackfill(StationConfig config, CloudHistoryReader rea
         int callsToday = calls.Length == 2 && calls[0] == today && int.TryParse(calls[1], NumberStyles.None, CultureInfo.InvariantCulture, out int n) ? n : 0;
         string? access = null, serial = null;
         int made = 0;
-        foreach (var day in days)
+        bool refreshed = false;
+        bool CapReached()
         {
-            if (callsToday >= CallsPerDay) { log(Invariant($"cloud history: the daily cap of {CallsPerDay} calls is reached; the other days wait for tomorrow")); break; }
-            if (made >= CallsPerRun) break;
-            if (access is null)
-            {
-                var (a, sn, why) = await session(ct);
-                if (a is null || sn is null) { log($"cloud history: not run - {why}"); return made; }
-                (access, serial) = (a, sn);
-            }
+            if (callsToday >= CallsPerDay) { log(Invariant($"cloud history: the daily cap of {CallsPerDay} calls is reached; the other days wait for tomorrow")); return true; }
+            return made >= CallsPerRun;
+        }
+        Task<HistoryDay> CallAsync(DateOnly day)
+        {
             callsToday++;
             made++;
             store.SetMeta(CallsKey, Invariant($"{today} {callsToday}"));   // counted before the call: a crash mid-call still counts
-            var answer = await reader.PowerDayAsync(access, serial!, day, zone, ct);
+            return reader.PowerDayAsync(access!, serial!, day, zone, ct);
+        }
+        foreach (var day in days)
+        {
+            if (CapReached()) break;
+            if (access is null)
+            {
+                var (a, sn, why) = await session(null, ct);
+                if (a is null || sn is null) { log($"cloud history: not run - {why}"); return made; }
+                (access, serial) = (a, sn);
+            }
+            var answer = await CallAsync(day);
             string label = day.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
+            if (answer.MsgCode == ExpiredToken && !refreshed)
+            {
+                // The token was refused: refreshed once a run, then the same day asked once more.
+                log(Invariant($"cloud history: {label} - {answer.Why} (calls today {callsToday}/{CallsPerDay}); the token is refreshed and the day asked again"));
+                refreshed = true;
+                var (a, sn, why) = await session(access, ct);
+                if (a is null || sn is null) { log($"cloud history: not run - {why}"); return made; }
+                (access, serial) = (a, sn);
+                if (CapReached()) break;
+                answer = await CallAsync(day);
+            }
             if (answer.Why.Length > 0)
             {
                 log(Invariant($"cloud history: {label} - {answer.Why} (calls today {callsToday}/{CallsPerDay})"));
-                if (answer.MsgCode is not null) break;   // the API refused (an expired token, ...): the next run asks again
+                if (answer.MsgCode is not null) break;   // the API refused (still an expired token, ...): the next run asks again
                 continue;
             }
             int added = 0;

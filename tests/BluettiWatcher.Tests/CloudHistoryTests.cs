@@ -26,13 +26,24 @@ internal sealed class DayHandler(Func<string, string> reply) : HttpMessageHandle
 {
     public List<(HttpMethod Method, string Url, HttpRequestMessage Request, string Body)> Calls { get; } = [];
     public Exception? Fail { get; set; }
+    /// <summary>A redirect answer: this status with a Location header, no body.</summary>
+    public HttpStatusCode? Redirect { get; set; }
+    /// <summary>The answer for a request with this Authorization header; else <c>reply(body)</c>.</summary>
+    public Dictionary<string, string> ByAccess { get; } = [];
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         string body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
         Calls.Add((request.Method, request.RequestUri!.ToString(), request, body));
         if (Fail is not null) throw Fail;
-        return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply(body), Encoding.UTF8, "application/json") };
+        if (Redirect is { } status)
+        {
+            var moved = new HttpResponseMessage(status);
+            moved.Headers.Location = new Uri("https://gw.bluettipower.com/api/bluiotdata/ha/v1/fulfillment");
+            return moved;
+        }
+        string answer = request.Headers.TryGetValues("Authorization", out var a) && ByAccess.TryGetValue(a.Single(), out var canned) ? canned : reply(body);
+        return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(answer, Encoding.UTF8, "application/json") };
     }
 }
 
@@ -118,8 +129,9 @@ public sealed class CloudHistoryTests : IDisposable
 
     private StationConfig Config(bool? history = null) => new() { DataDir = _dir, CloudHistory = history };
 
-    private CloudBackfill Backfill(HttpMessageHandler handler, StationConfig? config = null, int perRun = 4, int perDay = 40) =>
-        new(config ?? Config(), Owned(new CloudHistoryReader(handler)), _ => Task.FromResult<(string?, string?, string)>(("ACCESS-1", "SERIAL-1", "")), _store, _clock, _log.Add)
+    private CloudBackfill Backfill(HttpMessageHandler handler, StationConfig? config = null, int perRun = 4, int perDay = 40,
+        Func<string?, CancellationToken, Task<(string?, string?, string)>>? session = null) =>
+        new(config ?? Config(), Owned(new CloudHistoryReader(handler)), session ?? ((_, _) => Task.FromResult<(string?, string?, string)>(("ACCESS-1", "SERIAL-1", ""))), _store, _clock, _log.Add)
         { CallsPerRun = perRun, CallsPerDay = perDay };
 
     private T Owned<T>(T d) where T : IDisposable
@@ -198,6 +210,38 @@ public sealed class CloudHistoryTests : IDisposable
     {
         var day = Parse(Answer(Labels(Day, 60, 24), _ => "64"), Plus3);
         Assert.Equal("", day.Why);
+        Assert.True(day.Hourly);
+        Assert.Empty(day.Points);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.MovedPermanently)]
+    [InlineData(HttpStatusCode.TemporaryRedirect)]
+    [InlineData(HttpStatusCode.PermanentRedirect)]
+    public async Task PowerDayAsync_Redirect_FailsAndSendsNoSecondRequest(HttpStatusCode status)
+    {
+        using var handler = new DayHandler(_ => Answer(Labels(Day, 5, 288), _ => "50")) { Redirect = status };
+        using var reader = new CloudHistoryReader(handler);
+        var day = await reader.PowerDayAsync("ACCESS-1", "SERIAL-1", Day, Plus3, TestContext.Current.CancellationToken);
+        Assert.Equal(string.Create(CultureInfo.InvariantCulture, $"answered a redirect (HTTP {(int)status}), not followed"), day.Why);
+        Assert.Null(day.MsgCode);
+        Assert.Empty(day.Points);
+        Assert.Single(handler.Calls);
+    }
+
+    [Fact]
+    public void NewHandler_NeverFollowsARedirect()
+    {
+        using var handler = CloudHistoryReader.NewHandler();
+        Assert.False(handler.AllowAutoRedirect);
+    }
+
+    [Fact]
+    public void ParsePower_HourlyDayWithAnUnreadableFirstLabel_IsHourly()
+    {
+        var labels = Labels(Day, 60, 24);
+        labels[0] = "--";
+        var day = Parse(Answer(labels, _ => "64"), Plus3);
         Assert.True(day.Hourly);
         Assert.Empty(day.Points);
     }
@@ -337,6 +381,43 @@ public sealed class CloudHistoryTests : IDisposable
     }
 
     [Fact]
+    public async Task RunOnce_ExpiredToken_RefreshesOnceAndAsksTheDayAgain()
+    {
+        Fill(At("2026-10-17 12:00"), _clock.Now, 300, (At("2026-10-18 10:00"), At("2026-10-18 11:00")));
+        using var handler = new DayHandler(b => DayFor(b, "66"));
+        handler.ByAccess["ACCESS-1"] = Answer(Labels(Day, 5, 288), _ => "50", msgCode: 805);
+        var refused = new List<string?>();
+        using var backfill = Backfill(handler, session: (r, _) =>
+        {
+            refused.Add(r);
+            return Task.FromResult<(string?, string?, string)>((r is null ? "ACCESS-1" : "ACCESS-2", "SERIAL-1", ""));
+        });
+        Assert.Equal(2, await backfill.RunOnceAsync(TestContext.Current.CancellationToken));
+        Assert.Equal([null, "ACCESS-1"], refused);
+        Assert.Equal(["ACCESS-1", "ACCESS-2"], handler.Calls.Select(c => c.Request.Headers.GetValues("Authorization").Single()));
+        Assert.Equal(12, Rows().Count(r => r.Reason == StationStore.CloudHistoryReason));
+        Assert.Contains(_log, l => l.Contains("18.10.2026 - 288 points, 12 rows added (calls today 2/40)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RunOnce_TokenStillExpiredAfterTheRefresh_EndsTheRun()
+    {
+        var holes = Enumerable.Range(16, 3).Select(d => (At($"2026-10-{d} 10:00"), At($"2026-10-{d} 11:00"))).ToArray();
+        Fill(At("2026-10-15 12:00"), _clock.Now, 300, holes);
+        using var handler = new DayHandler(b => Answer(Labels(Day, 5, 288), _ => "50", msgCode: 805));
+        var refused = new List<string?>();
+        using var backfill = Backfill(handler, session: (r, _) =>
+        {
+            refused.Add(r);
+            return Task.FromResult<(string?, string?, string)>(("ACCESS-1", "SERIAL-1", ""));
+        });
+        Assert.Equal(2, await backfill.RunOnceAsync(TestContext.Current.CancellationToken));
+        Assert.Equal([null, "ACCESS-1"], refused);
+        Assert.Equal(2, handler.Calls.Count);
+        Assert.DoesNotContain(Rows(), r => r.Reason == StationStore.CloudHistoryReason);
+    }
+
+    [Fact]
     public async Task RunOnce_KeepsTheDailyCapAcrossRestarts()
     {
         var holes = Enumerable.Range(13, 5).Select(d => (At($"2026-10-{d} 10:00"), At($"2026-10-{d} 11:00"))).ToArray();
@@ -372,8 +453,25 @@ public sealed class CloudHistoryTests : IDisposable
         http.Json("""{"msgCode":0,"message":"OK","data":[{"sn":"SERIAL-9","online":"0","model":"AC200PL","stateList":[]}]}""");
         using var cloud = new BluettiCloudReader(Config(), http, _clock, _log.Add);
         var ct = TestContext.Current.CancellationToken;
-        Assert.Equal(("ACCESS-1", "SERIAL-9", ""), await cloud.HistorySessionAsync(ct));
-        Assert.Equal(("ACCESS-1", "SERIAL-9", ""), await cloud.HistorySessionAsync(ct));
+        Assert.Equal(("ACCESS-1", "SERIAL-9", ""), await cloud.HistorySessionAsync(null, ct));
+        Assert.Equal(("ACCESS-1", "SERIAL-9", ""), await cloud.HistorySessionAsync(null, ct));
         Assert.Single(http.Calls);
+    }
+
+    [Fact]
+    public async Task HistorySession_RefusedToken_IsRefreshedOnceAndWritten()
+    {
+        using var http = new CannedHandler();
+        http.Json("""{"msgCode":0,"message":"OK","data":[{"sn":"SERIAL-9","online":"0","model":"AC200PL","stateList":[]}]}""");
+        http.Json("""{"access_token":"ACCESS-2","refresh_token":"REFRESH-2","token_type":"bearer","expires_in":999999999}""");
+        using var cloud = new BluettiCloudReader(Config(), http, _clock, _log.Add);
+        var ct = TestContext.Current.CancellationToken;
+        Assert.Equal(("ACCESS-1", "SERIAL-9", ""), await cloud.HistorySessionAsync(null, ct));
+        Assert.Equal(("ACCESS-2", "SERIAL-9", ""), await cloud.HistorySessionAsync("ACCESS-1", ct));
+        // A token another read already renewed is not refreshed again.
+        Assert.Equal(("ACCESS-2", "SERIAL-9", ""), await cloud.HistorySessionAsync("ACCESS-1", ct));
+        Assert.Equal(2, http.Calls.Count);
+        Assert.Equal("https://sso.bluettipower.com/oauth2/token", http.Calls[1].Url);
+        Assert.Contains("ACCESS-2", await File.ReadAllTextAsync(Path.Combine(_dir, "cloud-token.json"), ct), StringComparison.Ordinal);
     }
 }

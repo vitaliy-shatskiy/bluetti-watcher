@@ -150,8 +150,10 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
     /// <summary>
     /// The token and the station's serial for <see cref="CloudHistoryReader"/>: the same token, refreshed early as a read
     /// refreshes it; the serial is the one the last device list gave (one device-list read when none has yet).
+    /// <paramref name="refused"/>: the access token the history API answered msgCode 805 to; refreshed now unless a read
+    /// already replaced it. Holds the reader's lock for these calls: a cloud read waits for them (design.md §4a).
     /// </summary>
-    internal async Task<(string? Access, string? Serial, string Why)> HistorySessionAsync(CancellationToken ct)
+    internal async Task<(string? Access, string? Serial, string Why)> HistorySessionAsync(string? refused, CancellationToken ct)
     {
         await _gate.WaitAsync(ct);
         try
@@ -160,6 +162,14 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
             {
                 var (_, why) = await DevicesWithTokenAsync(ct);
                 if (_serial is null) return (null, null, why.Length > 0 ? why : $"no {config.Type} serial in the cloud answer");
+            }
+            if (refused is not null)
+            {
+                var (current, currentWhy) = CurrentToken();
+                if (current is null) return (null, null, currentWhy);
+                if (current.Access != refused) return (current.Access, _serial, "");
+                var (renewed, refreshWhy) = await RefreshAsync(current, ct);
+                return renewed is null ? (null, null, $"msgCode {Expired} (token expired) and {refreshWhy}") : (renewed.Access, _serial, "");
             }
             var (token, _, tokenWhy) = await FreshTokenAsync(ct);
             return token is null ? (null, null, tokenWhy) : (token.Access, _serial, "");
