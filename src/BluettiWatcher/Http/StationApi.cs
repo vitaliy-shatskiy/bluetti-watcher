@@ -136,7 +136,7 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             w.WriteBoolean("accepted", res.Status == 202);
             w.WriteString("manual", res.Manual.ToString().ToLowerInvariant());
             w.WriteString("message", res.Message);
-            w.WriteString("code", res.Message == StationService.MaxHeldBack ? PageCodes.MaxHeld : "");
+            w.WriteString("code", res.Ok ? "" : ModeErrorNote(res.Message)?.Code ?? "");
             w.WriteEndObject();
         }));
     }

@@ -447,6 +447,40 @@ public sealed class CloudHistoryTests : IDisposable
     }
 
     [Fact]
+    public async Task RunOnce_SavesTheSessionSerialForTheNextStart()
+    {
+        Fill(At("2026-10-17 12:00"), _clock.Now, 300, (At("2026-10-18 10:00"), At("2026-10-18 11:00")));
+        using var handler = new DayHandler(b => DayFor(b, "null"));
+        using var backfill = Backfill(handler);
+        Assert.Equal(1, await backfill.RunOnceAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("SERIAL-1", _store.GetMeta("cloudHistorySerial"));
+    }
+
+    // The device list the cloud left unanswered (service.log 26.10.2026): the pass is a logged failure, never "no gap" or a call.
+    [Fact]
+    public async Task RunOnce_SessionFails_IsALoggedFailedPassWithNoCall()
+    {
+        Fill(At("2026-10-17 12:00"), _clock.Now, 300, (At("2026-10-18 10:00"), At("2026-10-18 11:00")));
+        using var handler = new NoCallHandler();
+        using var backfill = Backfill(handler, session: (_, _) => Task.FromResult<(string?, string?, string)>((null, null, "devices: timed out after 15 s, again on retry")));
+        Assert.Equal(0, await backfill.RunOnceAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(0, handler.Calls);
+        Assert.Contains("cloud history: not run - devices: timed out after 15 s, again on retry", _log);
+        Assert.Null(_store.GetMeta(CloudBackfill.DoneKey));
+        Assert.Null(_store.GetMeta("cloudHistorySerial"));
+        Assert.DoesNotContain(Rows(), r => r.Reason == StationStore.CloudHistoryReason);
+    }
+
+    [Fact]
+    public async Task HistorySession_KnownSerial_ReadsNoDeviceList()
+    {
+        using var http = new NoCallHandler();
+        using var cloud = new BluettiCloudReader(Config(), http, _clock, _log.Add) { KnownSerial = "SERIAL-7" };
+        Assert.Equal(("ACCESS-1", "SERIAL-7", ""), await cloud.HistorySessionAsync(null, TestContext.Current.CancellationToken));
+        Assert.Equal(0, http.Calls);
+    }
+
+    [Fact]
     public async Task HistorySession_TakesTheSerialFromTheDeviceListOnce()
     {
         using var http = new CannedHandler();

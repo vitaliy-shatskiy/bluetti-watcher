@@ -54,7 +54,8 @@ if (config.MutexWarning is { } mutexWarning)
 var wake = new WakeKeeper(config, new ScheduledWakeTask(config, runner, Log), store, Log);
 // Bluetooth first; when it misses, the BLUETTI cloud (design.md §4 Cloud fallback), on whenever its token file exists (read at each poll, so a token made while running counts) unless cloudEnabled is false.
 using var cloudHttp = new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(10) };
-using var cloud = new BluettiCloudReader(config, cloudHttp, time, Log);
+// The serial saved by an earlier history run: the history session then skips the device list, which the cloud has left unanswered.
+using var cloud = new BluettiCloudReader(config, cloudHttp, time, Log) { KnownSerial = store.GetMeta(CloudBackfill.SerialKey) };
 // The cloud's own 5-minute history fills the database's gaps (design.md §4a): two read-only statistics calls, its own task, never on the poll path.
 // Its own pool: it never follows a redirect; the live reader's handler keeps its behaviour.
 using var historyHttp = CloudHistoryReader.NewHandler();

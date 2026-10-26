@@ -178,6 +178,8 @@ internal sealed class CloudBackfill(StationConfig config, CloudHistoryReader rea
     public const int LagMinutes = 10;
     internal const string CallsKey = "cloudHistoryCalls";
     internal const string DoneKey = "cloudHistoryDone";
+    /// <summary>The station's serial from the last session: the next start's history needs no device-list read.</summary>
+    internal const string SerialKey = "cloudHistorySerial";
     /// <summary>The cloud's msgCode for an expired token.</summary>
     private const int ExpiredToken = 805;
     private static readonly TimeSpan DoneAfterDayEnd = TimeSpan.FromHours(1);
@@ -268,6 +270,7 @@ internal sealed class CloudBackfill(StationConfig config, CloudHistoryReader rea
                 var (a, sn, why) = await session(null, ct);
                 if (a is null || sn is null) { log($"cloud history: not run - {why}"); return made; }
                 (access, serial) = (a, sn);
+                if (store.GetMeta(SerialKey) != sn) store.SetMeta(SerialKey, sn);
             }
             var answer = await CallAsync(day);
             string label = day.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);

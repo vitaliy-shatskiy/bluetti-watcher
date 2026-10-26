@@ -118,5 +118,5 @@ The page's Eco fires the `eco` action and Max (or Auto lifting the page's Eco) f
 them: an executable with arguments, no shell, logged only in a dry run ([configuration.md](configuration.md), "Power
 mode and actions"; the power-mode commands have their own limit, `powerModeTimeoutSec`).
 
-Answer: `{ "ok", "accepted", "manual", "message", "code" }`. 202 = saved; the service loop applies it. 409 = Max refused
-during a battery emergency (`code` names it). 400 = a body that is not JSON or a mode that is not one of the three.
+Answer: `{ "ok", "accepted", "manual", "message", "code" }`. 202 = saved; the service loop applies it. 409 = Max or Eco refused
+during a battery emergency (`code` names it: `max-held`, `eco-held`). 400 = a body that is not JSON or a mode that is not one of the three.

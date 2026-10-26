@@ -447,14 +447,32 @@ public sealed class ServiceTests : IAsyncLifetime, IDisposable
 
     // ---- page choices under an emergency, an unreadable flag; the kill switch
 
-    // power-mode.ps1 refuses eco under an emergency (exit 2); the page's Eco is dropped like Max, never retried.
+    // Eco pressed while the emergency already holds is refused at the press, like Max: nothing is saved as chosen or pending,
+    // so the page never shows Eco as switched.
     [Fact]
-    public async Task Eco_pressed_during_an_emergency_is_dropped_with_a_saved_error_never_retried()
+    public async Task SetMode_EcoDuringAnEmergency_IsRefused409AndNothingIsPending()
     {
         _flag.View = Flag("emergency", "station");
+        using var s = Service();
+        var r = await s.SetModeAsync(ManualMode.Eco, CancellationToken.None);
+        Assert.Equal((false, 409, StationService.EcoHeldBack), (r.Ok, r.Status, r.Message));
+        Assert.Equal(ManualMode.Auto, s.State.Manual);
+        Assert.Null(s.State.ModePending);
+        Assert.Equal(ManualMode.Auto, _store.LoadState().Manual);
+        await s.ApplyPendingAsync(CancellationToken.None);
+        Assert.Empty(_actions.Calls);
+        Assert.Single(_store.Events(0, long.MaxValue), e => e.Kind == "mode-refused" && e.Detail == StationService.EcoHeldBack);
+    }
+
+    // power-mode.ps1 refuses eco under an emergency (exit 2); a page Eco the emergency overtook before it ran is dropped like
+    // Max, never retried.
+    [Fact]
+    public async Task Eco_pressed_before_an_emergency_came_on_is_dropped_with_a_saved_error_never_retried()
+    {
         _actions.FailEco = true;
         using var s = Service();
         Assert.Equal(202, (await s.SetModeAsync(ManualMode.Eco, CancellationToken.None)).Status);
+        _flag.View = Flag("emergency", "station");
         for (int minute = 0; minute <= 20; minute++) { _clock.Now = T0.AddMinutes(minute); await s.ApplyPendingAsync(CancellationToken.None); }
         Assert.DoesNotContain("eco", _actions.Calls);
         Assert.Null(s.State.ModePending);

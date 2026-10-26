@@ -93,6 +93,16 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
     /// <summary>The cap on each request.</summary>
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(15);
 
+    /// <summary>
+    /// The serial a device list gave before this start (station.db, <see cref="CloudBackfill.SerialKey"/>): the history
+    /// session then needs no device-list read, which the cloud may leave unanswered. A device list read later replaces it.
+    /// </summary>
+    public string? KnownSerial
+    {
+        get => _serial;
+        init => _serial = value is { Length: > 0 } ? value : null;
+    }
+
     public void Dispose()
     {
         _http.Dispose();

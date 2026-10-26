@@ -292,10 +292,13 @@ internal sealed class StationService(StationConfig config, IStationReader reader
         {
             var now = time.GetLocalNow();
             // The battery levels apply always: Max overrides eco only, never a station emergency.
-            if (mode == ManualMode.Max && EmergencyHolds(flagReader.Read(now)))
+            // Eco is refused here too (power-mode.ps1 refuses it under an emergency): an accepted press would show Eco on the
+            // page until the loop dropped it, with the refusal seen only a poll later.
+            if (mode is ManualMode.Max or ManualMode.Eco && EmergencyHolds(flagReader.Read(now)))
             {
-                store.AddEvent(now, "mode-refused", MaxHeldBack);
-                return new ModeChange(false, 409, MaxHeldBack, _state.Manual);
+                string held = mode == ManualMode.Max ? MaxHeldBack : EcoHeldBack;
+                store.AddEvent(now, "mode-refused", held);
+                return new ModeChange(false, 409, held, _state.Manual);
             }
             bool liftEco = mode == ManualMode.Auto && _state.Manual == ManualMode.Eco && !_state.Cut;
             _state = StationDecision.SetManual(_state, mode, now);
