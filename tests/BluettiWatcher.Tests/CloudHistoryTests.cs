@@ -130,8 +130,8 @@ public sealed class CloudHistoryTests : IDisposable
     private StationConfig Config(bool? history = null) => new() { DataDir = _dir, CloudHistory = history };
 
     private CloudBackfill Backfill(HttpMessageHandler handler, StationConfig? config = null, int perRun = 4, int perDay = 40,
-        Func<string?, CancellationToken, Task<(string?, string?, string)>>? session = null) =>
-        new(config ?? Config(), Owned(new CloudHistoryReader(handler)), session ?? ((_, _) => Task.FromResult<(string?, string?, string)>(("ACCESS-1", "SERIAL-1", ""))), _store, _clock, _log.Add)
+        Func<string?, CancellationToken, Task<(string?, string?, string)>>? session = null, Action? forget = null) =>
+        new(config ?? Config(), Owned(new CloudHistoryReader(handler)), session ?? ((_, _) => Task.FromResult<(string?, string?, string)>(("ACCESS-1", "SERIAL-1", ""))), _store, _clock, _log.Add, forget)
         { CallsPerRun = perRun, CallsPerDay = perDay };
 
     private T Owned<T>(T d) where T : IDisposable
@@ -444,6 +444,93 @@ public sealed class CloudHistoryTests : IDisposable
         File.Delete(Path.Combine(_dir, "cloud-token.json"));
         using (var noToken = Backfill(handler)) Assert.Equal(0, await noToken.RunOnceAsync(TestContext.Current.CancellationToken));
         Assert.Equal(0, handler.Calls);
+    }
+
+    [Fact]
+    public async Task RunOnce_SavesTheSessionSerialForTheNextStart()
+    {
+        Fill(At("2026-10-17 12:00"), _clock.Now, 300, (At("2026-10-18 10:00"), At("2026-10-18 11:00")));
+        using var handler = new DayHandler(b => DayFor(b, "null"));
+        using var backfill = Backfill(handler);
+        Assert.Equal(1, await backfill.RunOnceAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("AC200PL;SERIAL-1", _store.GetMeta("cloudHistorySerial"));
+    }
+
+    // A refusal of the API (not an expired token) may mean the saved serial is another station's: it is dropped, so the next
+    // run reads the device list again.
+    [Fact]
+    public async Task RunOnce_ApiRefusal_DropsTheSavedSerial()
+    {
+        Fill(At("2026-10-17 12:00"), _clock.Now, 300, (At("2026-10-18 10:00"), At("2026-10-18 11:00")));
+        using var handler = new DayHandler(b => Answer(Labels(Day, 5, 288), _ => "50", msgCode: 1001));
+        int forgotten = 0;
+        using var backfill = Backfill(handler, forget: () => forgotten++);
+        Assert.Equal(1, await backfill.RunOnceAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("", _store.GetMeta("cloudHistorySerial"));
+        Assert.Null(CloudBackfill.SavedSerial(_store, "AC200PL"));
+        Assert.Equal(1, forgotten);
+        Assert.DoesNotContain(Rows(), r => r.Reason == StationStore.CloudHistoryReason);
+    }
+
+    [Fact]
+    public async Task RunOnce_TokenStillExpired_KeepsTheSavedSerial()
+    {
+        Fill(At("2026-10-17 12:00"), _clock.Now, 300, (At("2026-10-18 10:00"), At("2026-10-18 11:00")));
+        using var handler = new DayHandler(b => Answer(Labels(Day, 5, 288), _ => "50", msgCode: 805));
+        int forgotten = 0;
+        using var backfill = Backfill(handler, forget: () => forgotten++);
+        Assert.Equal(2, await backfill.RunOnceAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("AC200PL;SERIAL-1", _store.GetMeta("cloudHistorySerial"));
+        Assert.Equal(0, forgotten);
+    }
+
+    // The service's reader starts with the serial saved for its own station type (Program.cs): no device-list read.
+    [Fact]
+    public async Task ForService_SavedSerialOfThisType_ReadsNoDeviceList()
+    {
+        _store.SetMeta("cloudHistorySerial", "AC200PL;SERIAL-7");
+        using var http = new NoCallHandler();
+        using var cloud = BluettiCloudReader.ForService(Config(), http, _clock, _log.Add, _store);
+        Assert.Equal(("ACCESS-1", "SERIAL-7", ""), await cloud.HistorySessionAsync(null, TestContext.Current.CancellationToken));
+        Assert.Equal(0, http.Calls);
+    }
+
+    // A serial saved for another type (the station replaced, config.type changed), or with no type, is never used.
+    [Theory]
+    [InlineData("AC180;SERIAL-X")]
+    [InlineData("SERIAL-X")]
+    public async Task ForService_SavedSerialOfAnotherType_ReadsTheDeviceList(string saved)
+    {
+        _store.SetMeta("cloudHistorySerial", saved);
+        using var http = new CannedHandler();
+        http.Json("""{"msgCode":0,"message":"OK","data":[{"sn":"SERIAL-9","online":"0","model":"AC200PL","stateList":[]}]}""");
+        using var cloud = BluettiCloudReader.ForService(Config(), http, _clock, _log.Add, _store);
+        Assert.Equal(("ACCESS-1", "SERIAL-9", ""), await cloud.HistorySessionAsync(null, TestContext.Current.CancellationToken));
+        Assert.Single(http.Calls);
+    }
+
+    // The device list the cloud left unanswered (service.log 26.10.2026): the pass is a logged failure, never "no gap" or a call.
+    [Fact]
+    public async Task RunOnce_SessionFails_IsALoggedFailedPassWithNoCall()
+    {
+        Fill(At("2026-10-17 12:00"), _clock.Now, 300, (At("2026-10-18 10:00"), At("2026-10-18 11:00")));
+        using var handler = new NoCallHandler();
+        using var backfill = Backfill(handler, session: (_, _) => Task.FromResult<(string?, string?, string)>((null, null, "devices: timed out after 15 s, again on retry")));
+        Assert.Equal(0, await backfill.RunOnceAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(0, handler.Calls);
+        Assert.Contains("cloud history: not run - devices: timed out after 15 s, again on retry", _log);
+        Assert.Null(_store.GetMeta(CloudBackfill.DoneKey));
+        Assert.Null(_store.GetMeta("cloudHistorySerial"));
+        Assert.DoesNotContain(Rows(), r => r.Reason == StationStore.CloudHistoryReason);
+    }
+
+    [Fact]
+    public async Task HistorySession_KnownSerial_ReadsNoDeviceList()
+    {
+        using var http = new NoCallHandler();
+        using var cloud = new BluettiCloudReader(Config(), http, _clock, _log.Add) { KnownSerial = "SERIAL-7" };
+        Assert.Equal(("ACCESS-1", "SERIAL-7", ""), await cloud.HistorySessionAsync(null, TestContext.Current.CancellationToken));
+        Assert.Equal(0, http.Calls);
     }
 
     [Fact]

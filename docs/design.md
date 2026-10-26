@@ -189,7 +189,7 @@ fills the gaps of `station.db` from it (`cloudHistory` false = off).
 - msgCode 805 (expired token): the token is refreshed once a run (unless a cloud read already replaced it) and the
   same day asked once more, within the caps. A second refusal ends the run, the next run asks again.
 - Its own task: a failed call is a log line, never a poll's fault. It shares the cloud reader's lock for the token
-  and the serial: the first run (one device-list read) or a run that refreshes the token holds a cloud fallback read
+  and the serial: the first run (one device-list read; the serial it gives is kept in `station.db` (`cloudHistorySerial`), so later starts skip it) or a run that refreshes the token holds a cloud fallback read
   for those calls, at most about 75 s. A Bluetooth read never waits for it.
 
 ## 5. Mains, eco and manual control
@@ -209,7 +209,7 @@ fills the gaps of `station.db` from it (`cloudHistory` false = off).
   the command never runs after the change. A `mode-dropped` event is stored with the reason, which is also the saved
   `modeError` ("Eco dropped: mains came back before it ran"). A cut found again after a gap is no change and keeps it.
 - Max never lifts a station emergency. A hold = the flag says `emergency`, or the emergency level was reached in the
-  current cut. Max pressed during a hold is refused (409). A page choice waiting in the service loop (Max, Auto
+  current cut. Max or Eco pressed during a hold is refused (409). A page choice waiting in the service loop (Max, Auto
   lifting the page's Eco, and Eco, which `power-mode.ps1` refuses under an emergency) re-checks the hold on every
   attempt, retries after a failure and backoff included; when it holds, the command is dropped, never run and never
   retried, the choice falls back to Auto, a `mode-refused` event is stored and the page says why ("Max held back:

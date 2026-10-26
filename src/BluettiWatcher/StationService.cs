@@ -282,8 +282,8 @@ internal sealed class StationService(StationConfig config, IStationReader reader
     /// The page's Auto / Eco / Max: the choice is saved at once and its command left to the service loop
     /// (<see cref="ApplyPendingAsync"/>), never to the request. Eco = the station's eco (and the <c>eco</c> action);
     /// Max = every mode lifted; Auto = the decision takes over, and an Eco of the page is lifted while there is no cut.
-    /// The choice holds until the next observed mains change or Auto. Max during a station emergency is refused; a
-    /// command still waiting is dropped by an emergency hold (Eco included) and by an observed mains change.
+    /// The choice holds until the next observed mains change or Auto. Max or Eco pressed during a station emergency is
+    /// refused (409); a command still waiting is dropped by an emergency hold (Eco included) and by an observed mains change.
     /// </summary>
     public async Task<ModeChange> SetModeAsync(ManualMode mode, CancellationToken ct)
     {
@@ -292,10 +292,13 @@ internal sealed class StationService(StationConfig config, IStationReader reader
         {
             var now = time.GetLocalNow();
             // The battery levels apply always: Max overrides eco only, never a station emergency.
-            if (mode == ManualMode.Max && EmergencyHolds(flagReader.Read(now)))
+            // Eco is refused here too (power-mode.ps1 refuses it under an emergency): an accepted press would show Eco on the
+            // page until the loop dropped it, with the refusal seen only a poll later.
+            if (mode is ManualMode.Max or ManualMode.Eco && EmergencyHolds(flagReader.Read(now)))
             {
-                store.AddEvent(now, "mode-refused", MaxHeldBack);
-                return new ModeChange(false, 409, MaxHeldBack, _state.Manual);
+                string held = mode == ManualMode.Max ? MaxHeldBack : EcoHeldBack;
+                store.AddEvent(now, "mode-refused", held);
+                return new ModeChange(false, 409, held, _state.Manual);
             }
             bool liftEco = mode == ManualMode.Auto && _state.Manual == ManualMode.Eco && !_state.Cut;
             _state = StationDecision.SetManual(_state, mode, now);

@@ -54,12 +54,13 @@ if (config.MutexWarning is { } mutexWarning)
 var wake = new WakeKeeper(config, new ScheduledWakeTask(config, runner, Log), store, Log);
 // Bluetooth first; when it misses, the BLUETTI cloud (design.md §4 Cloud fallback), on whenever its token file exists (read at each poll, so a token made while running counts) unless cloudEnabled is false.
 using var cloudHttp = new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(10) };
-using var cloud = new BluettiCloudReader(config, cloudHttp, time, Log);
+// The serial an earlier history run saved for this station type: the history session then skips the device list, which the cloud has left unanswered.
+using var cloud = BluettiCloudReader.ForService(config, cloudHttp, time, Log, store);
 // The cloud's own 5-minute history fills the database's gaps (design.md §4a): two read-only statistics calls, its own task, never on the poll path.
 // Its own pool: it never follows a redirect; the live reader's handler keeps its behaviour.
 using var historyHttp = CloudHistoryReader.NewHandler();
 using var historyReader = new CloudHistoryReader(historyHttp);
-using var backfill = new CloudBackfill(config, historyReader, cloud.HistorySessionAsync, store, time, Log);
+using var backfill = new CloudBackfill(config, historyReader, cloud.HistorySessionAsync, store, time, Log, cloud.ForgetSerial);
 // Bluetooth: the built-in WinRT reader, IoT V1 and V2 models, read only (Io/Ble).
 var bluetooth = new NativeBleReader(config, new WinRtBleConnector(), Log);
 using var service = new StationService(config, new FallbackReader(bluetooth, cloud, () => config.CloudOn, r => StationDecision.Check(r, new StationState(), time.GetUtcNow(), config), Log), new PowerModeAdapter(config, runner, Log, new BluettiWatcher.PowerMode.InProcessPowerMode()),

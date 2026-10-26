@@ -59,6 +59,26 @@ public sealed class ApiTests : IDisposable
         Assert.Empty(_actions.Calls);
     }
 
+    // A press the emergency refuses answers 409 with the page code of its refusal, Eco as Max.
+    [Theory]
+    [InlineData("eco", "Eco held back: battery emergency", "eco-held")]
+    [InlineData("max", "Max held back: battery emergency", "max-held")]
+    public async Task PostMode_DuringAnEmergency_Answers409WithTheRefusalCode(string mode, string message, string code)
+    {
+        var cfg = new StationConfig { DataDir = _dir, Port = Port };
+        var clock = new ManualClock(T0);
+        using var service = new StationService(cfg, new QueueReader(), _actions, new FakeHibernator(true), new FixedFlag(Flag("emergency", "station")), _store, clock, _ => { });
+        var api = new StationApi(cfg, service, _store, clock, T0);
+        var r = await api.HandleAsync(Req("POST", "/api/mode", $$"""{ "mode": "{{mode}}" }""", Host, XStation), CancellationToken.None);
+        Assert.Equal(409, r.Status);
+        using var doc = JsonDocument.Parse(r.Body);
+        Assert.False(doc.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal("auto", doc.RootElement.GetProperty("manual").GetString());
+        Assert.Equal(message, doc.RootElement.GetProperty("message").GetString());
+        Assert.Equal(code, doc.RootElement.GetProperty("code").GetString());
+        Assert.Empty(_actions.Calls);
+    }
+
     // api.md Guard
     [Fact]
     public async Task Post_with_a_wrong_header_value_is_refused() => Assert.Equal(403, (await Post(Host, ("X-Station", "true"))).Status);

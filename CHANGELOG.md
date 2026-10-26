@@ -6,6 +6,27 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-26
+
+### Download
+
+| File | What it is |
+|---|---|
+| `bluetti-watcher-1.4.1-win-x64.zip` | The service, the power-mode scripts, the installer and the docs |
+| `bluetti-watcher-1.4.1-win-x64.zip.sha256` | Its SHA-256. Check with `(Get-FileHash bluetti-watcher-1.4.1-win-x64.zip).Hash` |
+
+Upgrade: extract the zip, then `pwsh -NoProfile -File install.ps1` (a dry run) and the same with `-Apply`. Your
+config, database and history stay.
+
+### Fixed
+
+- Eco or Max pressed during a battery emergency now shows why it was refused, right under the mode buttons, in
+  English and Ukrainian. Eco is refused at the press, as Max already was (409, code `eco-held`): before, the press was
+  accepted, dropped by the service a moment later, and its reason reached the page only at the next minute's refresh.
+- Cloud history: the station's serial from a history run is kept in `station.db`, so later runs need no cloud device
+  list. The BLUETTI device-list endpoint was seen leaving requests unanswered (the run logged `devices: timed out after
+  15 s, again on retry`). A failed device list is still a failed run, named in `service.log`.
+
 ## [1.4.0] - 2026-10-26
 
 ### Download
@@ -309,7 +330,8 @@ with `-Apply`. Requirements and details: [README](https://github.com/vitaliy-sha
 
 Source at this tag: [v1.0.0](https://github.com/vitaliy-shatskiy/bluetti-watcher/tree/v1.0.0)
 
-[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.3...v1.4.0
 [1.3.3]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.1...v1.3.2
