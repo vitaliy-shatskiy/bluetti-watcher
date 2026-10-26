@@ -1,5 +1,6 @@
 using System.Text.Json;
 using BluettiWatcher.Decision;
+using BluettiWatcher.Io;
 using Microsoft.Data.Sqlite;
 
 namespace BluettiWatcher.Storage;
@@ -366,6 +367,87 @@ internal sealed class StationStore : IDisposable
             using var r = cmd.ExecuteReader();
             while (r.Read()) times.Add(r.GetInt64(0));
             return times;
+        }
+    }
+
+    /// <summary>The reason of an accepted row back-filled from the cloud's history (design.md §4a): never a live reading.</summary>
+    public const string CloudHistoryReason = "cloud history";
+
+    /// <summary>The oldest row's time, raw or aggregate; null on an empty database.</summary>
+    public long? FirstAt()
+    {
+        lock (_gate)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = "SELECT MIN(m) FROM (SELECT MIN(at) AS m FROM reading UNION ALL SELECT MIN(at) FROM agg5)";
+            return cmd.ExecuteScalar() is long at ? at : null;
+        }
+    }
+
+    /// <summary>
+    /// The spans in [from, to) of at least <paramref name="minMinutes"/> whole minutes with no accepted reading: an
+    /// accepted raw row covers its minute, a 5-minute aggregate holding one its five. Oldest first, Unix seconds.
+    /// </summary>
+    public List<(long From, long To)> Gaps(long from, long to, int minMinutes)
+    {
+        lock (_gate)
+        {
+            using var cmd = _db.CreateCommand();
+            cmd.CommandText = """
+                SELECT at/60, 1 FROM reading WHERE status=0 AND at >= $f AND at < $t
+                UNION ALL
+                SELECT at/60, 5 FROM agg5 WHERE n > 0 AND at > $f - 300 AND at < $t
+                ORDER BY 1
+                """;
+            cmd.Parameters.AddWithValue("$f", from);
+            cmd.Parameters.AddWithValue("$t", to);
+            var gaps = new List<(long, long)>();
+            long cursor = (from + 59) / 60, end = to / 60;
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                long minute = r.GetInt64(0);
+                if (minute - cursor >= minMinutes) gaps.Add((cursor * 60, minute * 60));
+                cursor = Math.Max(cursor, minute + r.GetInt64(1));
+            }
+            if (end - cursor >= minMinutes) gaps.Add((cursor * 60, end * 60));
+            return gaps;
+        }
+    }
+
+    /// <summary>
+    /// Adds the cloud's points as accepted rows marked <see cref="CloudHistoryReason"/>, each only where no accepted row
+    /// (live, aggregated or added before) lies in its 5 minutes. Inserts only: no row is ever changed. Returns the rows added.
+    /// </summary>
+    public int AddCloudHistory(IEnumerable<HistoryPoint> points)
+    {
+        lock (_gate)
+        {
+            using var tx = _db.BeginTransaction();
+            using var cmd = _db.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = """
+                INSERT INTO reading(at,status,soc,in_ac,in_dc,out_ac,out_dc,reason)
+                SELECT $at,0,$soc,$ia,$id,$oa,$od,$why
+                WHERE NOT EXISTS (SELECT 1 FROM reading WHERE status=0 AND at >= $at AND at < $at + 300)
+                  AND NOT EXISTS (SELECT 1 FROM agg5 WHERE n > 0 AND at > $at - 300 AND at < $at + 300)
+                """;
+            foreach (var n in (string[])["$at", "$soc", "$ia", "$id", "$oa", "$od", "$why"])
+                cmd.Parameters.Add(new SqliteParameter { ParameterName = n });
+            cmd.Parameters[6].Value = CloudHistoryReason;
+            int added = 0;
+            foreach (var p in points)
+            {
+                cmd.Parameters[0].Value = p.At.ToUnixTimeSeconds();
+                cmd.Parameters[1].Value = p.Soc;
+                cmd.Parameters[2].Value = Db(p.InAc);
+                cmd.Parameters[3].Value = Db(p.InDc);
+                cmd.Parameters[4].Value = Db(p.OutAc);
+                cmd.Parameters[5].Value = Db(p.OutDc);
+                added += cmd.ExecuteNonQuery();
+            }
+            tx.Commit();
+            return added;
         }
     }
 

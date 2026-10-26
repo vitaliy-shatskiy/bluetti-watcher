@@ -18,7 +18,6 @@
     "to": "if (!r.Headers.TryGetValue(\"x-station\", out var x) && string.Equals(x, \"1\", StringComparison.Ordinal))"
   },
   {
-<<<<<<< HEAD
     "name": "dtek watcher matcher: a cut of another queue no longer starts the count over",
     "file": "src/BluettiWatcher/DtekWatcher/DtekMatcher.cs",
     "from": "int count = m.Candidate == only ? m.Count + 1 : 1;",

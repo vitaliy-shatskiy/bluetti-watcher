@@ -121,7 +121,8 @@ Bluetti Watcher is an independent project, not affiliated with or endorsed by BL
 - Kill switch: an empty file `no-hibernate` in `%LOCALAPPDATA%\bluetti-watcher` turns hibernation off, checked on
   every poll. A dry run (`--dry-run` or `"dryRun": true`) logs every power-mode command and hibernation instead.
 - Nothing leaves the PC unless you turn on one of two modules:
-  - Cloud fallback: the token refresh to `sso.bluettipower.com` and the device-list read from `gw.bluettipower.com`.
+  - Cloud fallback: the token refresh to `sso.bluettipower.com` and the device-list read from `gw.bluettipower.com`,
+    plus at most 40 reads a day of the station's power curve there to fill gaps in the history (`cloudHistory`).
     The token stays in the data directory and is never logged.
   - DTEK module: reads the public dataset on `raw.githubusercontent.com`. Only with `"site": true` it also reads the
     distributor's site (`www.dtek-krem.com.ua`) as a browser would, subject to the site's terms; your address goes

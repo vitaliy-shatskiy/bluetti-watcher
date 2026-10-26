@@ -72,8 +72,8 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
     // ClientSecret is base64("HomeAssistant"). Access comes only from the user's own token (cloud-token.json, never in the repo).
     private const string DevicesUrl = "https://gw.bluettipower.com/api/bluiotdata/ha/v2/devices";
     internal const string TokenUrl = "https://sso.bluettipower.com/oauth2/token";
-    private const string AppKey = "19974C15BCCBC91B21A8BA71BF5";
-    private const string AppVer = "1.0.5";
+    internal const string AppKey = "19974C15BCCBC91B21A8BA71BF5";
+    internal const string AppVer = "1.0.5";
     internal const string ClientId = "HomeAssistant";
     internal const string ClientSecret = "SG9tZUFzc2lzdGFudA==";
     private const int Expired = 805;
@@ -85,6 +85,8 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
     private DateTimeOffset? _earlyRefreshFailedAt;
     /// <summary>A token pair the server issued that could not be written yet: used, and saved again each poll until it is.</summary>
     private CloudToken? _unsaved;
+    /// <summary>The station's serial from the last device list: the history API's <c>deviceSn</c>, never logged.</summary>
+    private string? _serial;
     private double? _staleSoc;
     private DateTimeOffset _staleSocSince;
 
@@ -145,24 +147,55 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
         return (kept, "");
     }
 
-    private async Task<(Reading? Reading, string Why)> DevicesWithTokenAsync(CancellationToken ct)
+    /// <summary>
+    /// The token and the station's serial for <see cref="CloudHistoryReader"/>: the same token, refreshed early as a read
+    /// refreshes it; the serial is the one the last device list gave (one device-list read when none has yet).
+    /// <paramref name="refused"/>: the access token the history API answered msgCode 805 to; refreshed now unless a read
+    /// already replaced it. Holds the reader's lock for these calls: a cloud read waits for them (design.md §4a).
+    /// </summary>
+    internal async Task<(string? Access, string? Serial, string Why)> HistorySessionAsync(string? refused, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            if (_serial is null)
+            {
+                var (_, why) = await DevicesWithTokenAsync(ct);
+                if (_serial is null) return (null, null, why.Length > 0 ? why : $"no {config.Type} serial in the cloud answer");
+            }
+            if (refused is not null)
+            {
+                var (current, currentWhy) = CurrentToken();
+                if (current is null) return (null, null, currentWhy);
+                if (current.Access != refused) return (current.Access, _serial, "");
+                var (renewed, refreshWhy) = await RefreshAsync(current, ct);
+                return renewed is null ? (null, null, $"msgCode {Expired} (token expired) and {refreshWhy}") : (renewed.Access, _serial, "");
+            }
+            var (token, _, tokenWhy) = await FreshTokenAsync(ct);
+            return token is null ? (null, null, tokenWhy) : (token.Access, _serial, "");
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>The current token, refreshed first when it expires within <see cref="RefreshAhead"/>.</summary>
+    private async Task<(CloudToken? Token, bool Refreshed, string Why)> FreshTokenAsync(CancellationToken ct)
     {
         var (token, why) = CurrentToken();
-        if (token is null) return (null, why);
-        bool refreshed = false;
+        if (token is null) return (null, false, why);
         var now = time.GetUtcNow();
-        if (token.ExpiresAt - now < RefreshAhead && !(_earlyRefreshFailedAt is { } failedAt && now - failedAt < EarlyRefreshHold))
-        {
-            refreshed = true;
-            var (fresh, failed) = await RefreshAsync(token, ct);
-            if (fresh is not null) token = fresh;
-            else
-            {
-                // The token may still be good: read with it, and try the refresh again in an hour, not every poll.
-                _earlyRefreshFailedAt = now;
-                log($"cloud: the early token refresh failed - {failed}; reading with the current token");
-            }
-        }
+        if (token.ExpiresAt - now >= RefreshAhead || (_earlyRefreshFailedAt is { } failedAt && now - failedAt < EarlyRefreshHold)) return (token, false, "");
+        var (fresh, failed) = await RefreshAsync(token, ct);
+        if (fresh is not null) return (fresh, true, "");
+        // The token may still be good: read with it, and try the refresh again in an hour, not every poll.
+        _earlyRefreshFailedAt = now;
+        log($"cloud: the early token refresh failed - {failed}; reading with the current token");
+        return (token, true, "");
+    }
+
+    private async Task<(Reading? Reading, string Why)> DevicesWithTokenAsync(CancellationToken ct)
+    {
+        var (token, refreshed, why) = await FreshTokenAsync(ct);
+        if (token is null) return (null, why);
         var answer = await DevicesAsync(token.Access, ct);
         if (answer.MsgCode != Expired) return (answer.Reading, answer.Why);
         if (refreshed) return (null, $"msgCode {Expired} (token expired) after a token refresh");
@@ -187,9 +220,20 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
         try
         {
             using var doc = JsonDocument.Parse(body);
+            if (Serial(doc.RootElement, config.Type) is { } sn) _serial = sn;
             return Parse(doc.RootElement, config.Type);
         }
         catch (JsonException) { return (null, null, "the devices answer is not JSON"); }
+    }
+
+    /// <summary>The <c>sn</c> of the device <see cref="Parse"/> reads, online or not; null when there is none.</summary>
+    internal static string? Serial(JsonElement root, string type)
+    {
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array) return null;
+        foreach (var d in data.EnumerateArray())
+            if (d.ValueKind == JsonValueKind.Object && Str(d, "model") is { } model && model.StartsWith(type, StringComparison.OrdinalIgnoreCase))
+                return Str(d, "sn") is { Length: > 0 } sn ? sn : null;
+        return null;
     }
 
     private async Task<(HttpStatusCode Status, string? Body, string Why)> DevicesOnceAsync(string access, CancellationToken ct)

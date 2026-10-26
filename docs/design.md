@@ -17,7 +17,7 @@ This document states the rules the service follows. Every key named here is desc
   registers (Modbus function 0x03) under register 2000, and its only GATT writes are that request and the
   notification subscription.
 - The BLUETTI cloud fallback (section 4) is read only the same way: it reads the device list and refreshes its token,
-  nothing else.
+  and its history back-fill (section 4a) reads two statistics endpoints, nothing else.
 - Never blocks or harms the PC on bad data: unknown beats wrong.
 
 ## 2. Architecture
@@ -155,6 +155,42 @@ a localhost address, writes the token file and exits. It never prints the token.
 - AC9: when mains is off in the cloud answer (InAc 0), OutAc >= `staleLoadW` (100) and the cloud SOC has not changed
   for `staleAfterMin` (30; 0 = no check) since the cloud first gave that value, the reading is a miss logged as
   "cloud reading stale": the cloud may serve a frozen cache while the device shows online.
+
+### 4a. Cloud history back-fill
+
+The cloud keeps the station's own power curve. With the cloud fallback on and its token file present, the watcher
+fills the gaps of `station.db` from it (`cloudHistory` false = off).
+
+- Read only, enforced in code: `CloudHistoryReader` POSTs only to
+  `/api/bluiotdata/dashboard/v2/getDevicePowerStatistics` and `/api/bluiotdata/dashboard/v2/getDeviceEnergyStatistics`
+  on `gw.bluettipower.com`. Any other path throws before a request is built (a test proves nothing is sent). The
+  body holds only the read query fields (`deviceSn`, `startDate`, `remoteFlag` false, `installerFlag` false, and
+  `typeFlag` "pv" with `queryType` 1, or the energy `flag` 0 to 2). The token, headers and serial (`sn` of the device
+  list) are the cloud fallback's. Neither the token nor the serial is logged. Its connection pool is its own and
+  follows no redirect: a 3xx answer is a failed call.
+- A gap is at least 10 minutes with no accepted reading (a raw row covers its minute, a 5-minute aggregate its five)
+  in the last 30 days, from the oldest stored row on, up to 10 minutes ago. Each local day touched by a gap is asked
+  once, newest first.
+- Each 5-minute point (`chart_x` local labels, `chart_y` series soc, grid = AC in, ac = AC out, pv = DC in, dc = DC
+  out) becomes one accepted row with reason `cloud history`, only where no accepted row lies in its 5 minutes.
+  Rows are only inserted, a live row is never changed. Voltage, frequency and mode stay null. A point with no SOC
+  above 0 is skipped (later points of today, hours the station sent nothing). The mark lives on the raw row only:
+  after the raw retention (`rawRetentionDays`, 30) the row folds into its 5-minute aggregate like any accepted row, and the aggregate
+  does not say which of its readings came from the cloud. The history and the battery-model refit read the rows
+  without the reason either way.
+- A day the cloud keeps only hourly (24 points) is skipped: the first two adjacent readable labels are not 5 minutes
+  apart. On the fall-back day the repeated hour's labels are the
+  summer hour the first time and the winter hour the second. Labels in the skipped spring hour are dropped. No point is
+  invented.
+- A day asked an hour or more after it ended is not asked again (meta `cloudHistoryDone`). Today is asked again
+  while its gap stays.
+- Runs 2 minutes after start, then once a day, and after an accepted reading ends a gap of 10 minutes or more. At most
+  4 calls a run and 40 a local day (meta `cloudHistoryCalls`, counted before each call). One log line a call.
+- msgCode 805 (expired token): the token is refreshed once a run (unless a cloud read already replaced it) and the
+  same day asked once more, within the caps. A second refusal ends the run, the next run asks again.
+- Its own task: a failed call is a log line, never a poll's fault. It shares the cloud reader's lock for the token
+  and the serial: the first run (one device-list read) or a run that refreshes the token holds a cloud fallback read
+  for those calls, at most about 75 s. A Bluetooth read never waits for it.
 
 ## 5. Mains, eco and manual control
 
