@@ -55,6 +55,9 @@ var wake = new WakeKeeper(config, new ScheduledWakeTask(config, runner, Log), st
 // Bluetooth first; when it misses, the BLUETTI cloud (design.md §4 Cloud fallback), on whenever its token file exists (read at each poll, so a token made while running counts) unless cloudEnabled is false.
 using var cloudHttp = new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(10) };
 using var cloud = new BluettiCloudReader(config, cloudHttp, time, Log);
+// The cloud's own 5-minute history fills the database's gaps (design.md §4a): two read-only statistics calls, its own task, never on the poll path.
+using var historyReader = new CloudHistoryReader(cloudHttp);
+using var backfill = new CloudBackfill(config, historyReader, cloud.HistorySessionAsync, store, time, Log);
 // Bluetooth: the built-in WinRT reader, IoT V1 and V2 models, read only (Io/Ble).
 var bluetooth = new NativeBleReader(config, new WinRtBleConnector(), Log);
 using var service = new StationService(config, new FallbackReader(bluetooth, cloud, () => config.CloudOn, r => StationDecision.Check(r, new StationState(), time.GetUtcNow(), config), Log), new PowerModeAdapter(config, runner, Log, new BluettiWatcher.PowerMode.InProcessPowerMode()),
@@ -78,6 +81,7 @@ Log($"Bluetti Watcher started: http://127.0.0.1:{config.Port}/ · reader {(confi
 
 var serving = http.RunAsync(stop.Token);
 var scheduleReads = dtek.RunAsync(stop.Token);
+var historyRuns = backfill.RunAsync(stop.Token);
 long lastCompact = time.GetTimestamp();
 var memory = new ProcessMemory(config, new Win32MemoryCalls(), Log);
 try
@@ -99,6 +103,7 @@ try
             }
             schedule.Next(delay);
             dtek.AfterPoll(service.State);   // the finished cut goes to the queue search; nothing comes back
+            backfill.AfterPoll(service.LastAcceptedAt);   // a gap that just ended wakes the back-fill
             // Between polls the process keeps only what it holds: the garbage of the poll and of the page's requests goes back
             // to Windows (a workstation gen0 budget is sized from the CPU cache, tens of MB, and the exe takes no DOTNET_GC* variable).
             GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
@@ -118,5 +123,6 @@ catch (OperationCanceledException)
 }
 await serving;
 await scheduleReads;
+await historyRuns;
 Log("stopped");
 return 0;

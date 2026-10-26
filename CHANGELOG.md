@@ -6,6 +6,27 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-26
+
+### Download
+
+| File | What it is |
+|---|---|
+| `bluetti-watcher-1.4.0-win-x64.zip` | The service, the power-mode scripts, the installer and the docs |
+| `bluetti-watcher-1.4.0-win-x64.zip.sha256` | Its SHA-256. Check with `(Get-FileHash bluetti-watcher-1.4.0-win-x64.zip).Hash` |
+
+Upgrade: extract the zip, then `pwsh -NoProfile -File install.ps1` (a dry run) and the same with `-Apply`. Your
+config, database and history stay. Requirements and details: [README](https://github.com/vitaliy-shatskiy/bluetti-watcher#quick-start).
+
+### Added
+
+- Cloud history back-fill: with the cloud fallback on, gaps of 10 minutes or more in the last 30 days (the PC was off,
+  no source answered) are filled from the station's own 5-minute power curve in the BLUETTI cloud. The filled rows
+  carry the reason `cloud history`, and a live reading is never changed. It reads only two statistics endpoints, and
+  any other path is refused in code before a request exists. It runs after start, once a day and after a gap ends,
+  with at most 4 calls a run and 40 a day, each named in `service.log`. A day the cloud keeps only hourly is skipped.
+  `"cloudHistory": false` turns it off ([design.md §4a](docs/design.md#4a-cloud-history-back-fill)).
+
 ### Changed
 
 - `install.ps1` requires `-CapacityWh` for a new install and writes it to `config.json`: the battery time no longer
@@ -288,7 +309,8 @@ with `-Apply`. Requirements and details: [README](https://github.com/vitaliy-sha
 
 Source at this tag: [v1.0.0](https://github.com/vitaliy-shatskiy/bluetti-watcher/tree/v1.0.0)
 
-[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.3...HEAD
+[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.3...v1.4.0
 [1.3.3]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.0...v1.3.1

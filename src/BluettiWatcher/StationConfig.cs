@@ -113,6 +113,8 @@ internal sealed class StationConfig
     public double StaleLoadW { get; set; } = 100;
     /// <summary>Minutes an unchanged cloud SOC under load off mains takes to count as stale; 0 or less = no stale check.</summary>
     public int StaleAfterMin { get; set; } = 30;
+    /// <summary>Gaps in the history filled from the cloud's own 5-minute history (design.md §4a): not set = on with the cloud fallback; false = off.</summary>
+    public bool? CloudHistory { get; set; }
 
     public const string DefaultMutex = "Local\\BluettiWatcherPowerMode";
     public const string DefaultTaskPrefix = "BluettiWatcherEco";
@@ -234,6 +236,10 @@ internal sealed class StationConfig
 
     [JsonIgnore]
     public bool CloudOn => CloudEnabled ?? File.Exists(CloudTokenFile);
+
+    /// <summary>The cloud history back-fill (design.md §4a): with the cloud fallback on and its token file present, unless <see cref="CloudHistory"/> is false.</summary>
+    [JsonIgnore]
+    public bool CloudHistoryOn => CloudHistory != false && CloudOn && File.Exists(CloudTokenFile);
 
     /// <summary>The DTEK Watcher module (design.md §11 DTEK module); off until an address is given.</summary>
     public DtekConfig DtekWatcher { get; set => field = value ?? new DtekConfig(); } = new();

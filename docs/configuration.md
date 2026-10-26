@@ -78,6 +78,7 @@ Every key with its default, except `mac`, `actions` and the DTEK address, which 
   "cloudTokenPath": null,
   "staleLoadW": 100,
   "staleAfterMin": 30,
+  "cloudHistory": null,
 
   "port": 18940,
   "lockWaitSec": 30,
@@ -200,6 +201,7 @@ Hibernation off: create an empty file `no-hibernate` in the data directory. It i
 | `cloudTokenPath` | string or null | null | The token file; null = `cloud-token.json` in the data directory. `BluettiWatcher.exe --cloud-login` writes it. |
 | `staleLoadW` | number | 100 | A cloud reading off mains with at least this AC load whose SOC has not moved for `staleAfterMin` is stale (a miss). |
 | `staleAfterMin` | int | 30 | Minutes for the stale check; 0 or less = no check. |
+| `cloudHistory` | bool or null | null | Gaps in the history filled from the cloud's 5-minute power curve ([design.md §4a](design.md#4a-cloud-history-back-fill)): null or `true` = on while the cloud fallback is on and the token file exists; `false` off. |
 
 ## Service
 
