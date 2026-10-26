@@ -103,6 +103,13 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
         init => _serial = value is { Length: > 0 } ? value : null;
     }
 
+    /// <summary>The service's reader: it starts with the serial saved for its own station type (<see cref="CloudBackfill.SavedSerial"/>).</summary>
+    internal static BluettiCloudReader ForService(StationConfig config, HttpMessageHandler handler, TimeProvider time, Action<string> log, Storage.StationStore store) =>
+        new(config, handler, time, log) { KnownSerial = CloudBackfill.SavedSerial(store, config.Type) };
+
+    /// <summary>The history API refused the serial: the next history session reads the device list again.</summary>
+    internal void ForgetSerial() => _serial = null;
+
     public void Dispose()
     {
         _http.Dispose();

@@ -170,7 +170,7 @@ internal sealed class CloudHistoryReader(HttpMessageHandler handler) : IDisposab
 /// and after a gap in the live readings ends. Never in the poll path: a failed call is a log line and nothing else.
 /// </summary>
 internal sealed class CloudBackfill(StationConfig config, CloudHistoryReader reader, Func<string?, CancellationToken, Task<(string? Access, string? Serial, string Why)>> session,
-    StationStore store, TimeProvider time, Action<string> log) : IDisposable
+    StationStore store, TimeProvider time, Action<string> log, Action? forgetSerial = null) : IDisposable
 {
     public const int GapMinutes = 10;
     public const int WindowDays = 30;
@@ -178,8 +178,15 @@ internal sealed class CloudBackfill(StationConfig config, CloudHistoryReader rea
     public const int LagMinutes = 10;
     internal const string CallsKey = "cloudHistoryCalls";
     internal const string DoneKey = "cloudHistoryDone";
-    /// <summary>The station's serial from the last session: the next start's history needs no device-list read.</summary>
+    /// <summary>"type;serial" of the last session: the next start's history needs no device-list read (<see cref="SavedSerial"/>).</summary>
     internal const string SerialKey = "cloudHistorySerial";
+
+    /// <summary>The saved serial when it was saved for <paramref name="type"/>; another type's (or an untyped) one is never used.</summary>
+    internal static string? SavedSerial(StationStore store, string type)
+    {
+        string[] parts = (store.GetMeta(SerialKey) ?? "").Split(';');
+        return parts.Length == 2 && string.Equals(parts[0], type, StringComparison.OrdinalIgnoreCase) && parts[1].Length > 0 ? parts[1] : null;
+    }
     /// <summary>The cloud's msgCode for an expired token.</summary>
     private const int ExpiredToken = 805;
     private static readonly TimeSpan DoneAfterDayEnd = TimeSpan.FromHours(1);
@@ -270,7 +277,8 @@ internal sealed class CloudBackfill(StationConfig config, CloudHistoryReader rea
                 var (a, sn, why) = await session(null, ct);
                 if (a is null || sn is null) { log($"cloud history: not run - {why}"); return made; }
                 (access, serial) = (a, sn);
-                if (store.GetMeta(SerialKey) != sn) store.SetMeta(SerialKey, sn);
+                string saved = $"{config.Type};{sn}";
+                if (store.GetMeta(SerialKey) != saved) store.SetMeta(SerialKey, saved);
             }
             var answer = await CallAsync(day);
             string label = day.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
@@ -288,8 +296,15 @@ internal sealed class CloudBackfill(StationConfig config, CloudHistoryReader rea
             if (answer.Why.Length > 0)
             {
                 log(Invariant($"cloud history: {label} - {answer.Why} (calls today {callsToday}/{CallsPerDay})"));
-                if (answer.MsgCode is not null) break;   // the API refused (still an expired token, ...): the next run asks again
-                continue;
+                if (answer.MsgCode is null) continue;
+                if (answer.MsgCode is not (0 or ExpiredToken))
+                {
+                    // Not the token: the serial may be another station's. The next run reads the device list again.
+                    store.SetMeta(SerialKey, "");
+                    forgetSerial?.Invoke();
+                    log("cloud history: the API refused the station's serial; the device list is read again next run");
+                }
+                break;   // the API refused (still an expired token, ...): the next run asks again
             }
             int added = 0;
             if (answer.Hourly) log(Invariant($"cloud history: {label} - the cloud keeps only hourly points for this day: skipped (calls today {callsToday}/{CallsPerDay})"));

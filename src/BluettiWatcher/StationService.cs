@@ -282,8 +282,8 @@ internal sealed class StationService(StationConfig config, IStationReader reader
     /// The page's Auto / Eco / Max: the choice is saved at once and its command left to the service loop
     /// (<see cref="ApplyPendingAsync"/>), never to the request. Eco = the station's eco (and the <c>eco</c> action);
     /// Max = every mode lifted; Auto = the decision takes over, and an Eco of the page is lifted while there is no cut.
-    /// The choice holds until the next observed mains change or Auto. Max during a station emergency is refused; a
-    /// command still waiting is dropped by an emergency hold (Eco included) and by an observed mains change.
+    /// The choice holds until the next observed mains change or Auto. Max or Eco pressed during a station emergency is
+    /// refused (409); a command still waiting is dropped by an emergency hold (Eco included) and by an observed mains change.
     /// </summary>
     public async Task<ModeChange> SetModeAsync(ManualMode mode, CancellationToken ct)
     {
