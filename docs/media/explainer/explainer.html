@@ -1,0 +1,117 @@
+<!doctype html>
+<!-- What happens in a power cut: six steps, one card each, in the dashboard's palette (station.html :root).
+     Drawn frame by frame by render.mjs: window.render(t) paints the state at t seconds; ?lang=en|uk picks the text. -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+:root{--frame:#111214;--bg:#1a1b1e;--raised:#26282c;--line:#2c2e33;--edge:rgba(255,255,255,.06);--text:#e4e6ea;--dim:#8b8e95;--ok:#5fad65;--warn:#e0a53a;--bad:#db5c5c;--accent:#548af7}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--frame);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+#stage{width:1100px;height:620px;padding:34px 38px;display:flex;flex-direction:column;gap:22px;
+  background:radial-gradient(ellipse at 15% 0%,rgba(84,138,247,.10),transparent 55%),var(--frame)}
+header{display:flex;align-items:center;justify-content:space-between;gap:24px}
+h1{margin:0;white-space:nowrap;font-size:30px;font-weight:650;letter-spacing:-.01em}
+.sub{margin-top:6px;color:var(--dim);font-size:17px}
+.batt{display:flex;align-items:center;gap:14px;background:var(--bg);border:1px solid var(--edge);border-radius:14px;padding:12px 16px}
+.cell{width:140px;height:30px;border:2px solid #3a3d43;border-radius:7px;padding:3px;position:relative}
+.cell:after{content:"";position:absolute;right:-8px;top:8px;width:5px;height:10px;border-radius:0 3px 3px 0;background:#3a3d43}
+.fill{height:100%;border-radius:4px}
+.pct{font-size:30px;font-weight:700;min-width:84px;text-align:right;font-variant-numeric:tabular-nums}
+.chip{display:inline-flex;white-space:nowrap;align-items:center;gap:8px;font-size:17px;padding:6px 12px;border-radius:999px;background:var(--raised)}
+.chip i{width:10px;height:10px;border-radius:50%}
+.track{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.seg{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.seg b{display:block;height:100%}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr;gap:16px;flex:1}
+.card{background:var(--bg);border:1px solid var(--edge);border-radius:14px;padding:18px 20px;display:flex;gap:16px;align-items:flex-start;position:relative}
+.icon{flex:none;width:52px;height:52px;border-radius:14px;display:grid;place-items:center}
+.icon svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.title{font-size:22px;font-weight:650}
+.tag{font-size:16px;font-weight:600;padding:2px 9px;border-radius:999px;background:var(--raised)}
+.line{margin-top:8px;font-size:18px;line-height:1.35;color:var(--text)}
+</style>
+</head>
+<body>
+<div id="stage">
+  <header>
+    <div><h1 id="h1"></h1><div class="sub" id="sub"></div></div>
+    <div class="batt"><span class="chip" id="mains"><i></i><span></span></span><div class="cell"><div class="fill" id="fill"></div></div><div class="pct" id="pct"></div></div>
+  </header>
+  <div class="track" id="track"></div>
+  <div class="grid" id="grid"></div>
+</div>
+<script>
+const C = { ok: '#5fad65', warn: '#e0a53a', bad: '#db5c5c', accent: '#548af7', dim: '#8b8e95' };
+// Icons: 24x24 strokes.
+const I = {
+  plugOff: '<path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-6 6 6 6 0 0 1-6-6zM12 17v5"/><path d="M3 3l18 18"/>',
+  leaf: '<path d="M5 19c0-9 6-14 15-14 0 9-5 15-14 15"/><path d="M5 19l8-8"/>',
+  warn: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.01"/>',
+  stop: '<path d="M8 2h8l6 6v8l-6 6H8l-6-6V8z"/><path d="M9 9v6M15 9v6"/>',
+  moon: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/>',
+  bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+};
+const STEPS = [
+  { icon: 'plugOff', color: C.warn, soc: 100, mains: false },
+  { icon: 'leaf', color: C.accent, soc: 97, mains: false },
+  { icon: 'warn', color: C.warn, soc: 20, mains: false },
+  { icon: 'stop', color: C.bad, soc: 10, mains: false },
+  { icon: 'moon', color: C.bad, soc: 5, mains: false },
+  { icon: 'bolt', color: C.ok, soc: 5, mains: true },
+];
+const TEXT = {
+  en: { h1: 'What happens in a power cut', sub: 'Default thresholds · illustration', on: 'Mains on', off: 'Mains off', steps: [
+    ['Mains lost', '0 min', 'The station carries the PC. The watcher sees it within a minute.'],
+    ['Eco', 'after 3 min', 'Power saver plan and a GPU power cap.'],
+    ['Emergency', '20 %', 'The flag tells programs to wind down.'],
+    ['Stop', '10 %', 'Critical: time to save your work.'],
+    ['Hibernate', '5 %', 'The PC hibernates once a fresh reading agrees.'],
+    ['Mains back', 'after 3 min', 'The previous power plan and GPU limit come back.'],
+  ] },
+  uk: { h1: 'Що відбувається, коли зникає світло', sub: 'Пороги за замовчуванням · ілюстрація', on: 'Світло є', off: 'Світла немає', steps: [
+    ['Світла немає', '0 хв', 'Станція живить ПК. Сервіс помічає це за хвилину.'],
+    ['Еко', 'через 3 хв', 'Схема «Енергозбереження» й обмеження потужності GPU.'],
+    ['Аварія', '20 %', 'Прапорець каже програмам згортати роботу.'],
+    ['Стоп', '10 %', 'Критично: час зберегти роботу.'],
+    ['Глибокий сон', '5 %', 'ПК засинає, коли свіже зчитування це підтвердить.'],
+    ['Світло є', 'через 3 хв', 'Повертаються попередня схема живлення й ліміт GPU.'],
+  ] },
+};
+const lang = new URLSearchParams(location.search).get('lang') === 'uk' ? 'uk' : 'en';
+const T = TEXT[lang];
+document.documentElement.lang = lang;
+const $ = (id) => document.getElementById(id);
+$('h1').textContent = T.h1; $('sub').textContent = T.sub;
+$('track').innerHTML = STEPS.map(() => '<div class="seg"><b></b></div>').join('');
+$('grid').innerHTML = STEPS.map((s, i) => `<div class="card"><div class="icon" style="color:${s.color};background:${s.color}22"><svg viewBox="0 0 24 24">${I[s.icon]}</svg></div>
+  <div><div class="head"><span class="title">${T.steps[i][0]}</span><span class="tag" style="color:${s.color}">${T.steps[i][1]}</span></div><div class="line">${T.steps[i][2]}</div></div></div>`).join('');
+
+const STEP = 1.9, MOVE = 0.5, HOLD = 1.8;
+window.TOTAL = STEPS.length * STEP + HOLD;
+const ease = (p) => (p < 0 ? 0 : p > 1 ? 1 : p * p * (3 - 2 * p));
+const socColor = (v) => (v <= 10 ? C.bad : v <= 20 ? C.warn : C.ok);
+// Paints the state at t seconds. Every card is always drawn (the first frame is a complete picture); the active one lights up.
+window.render = (t) => {
+  const i = Math.min(STEPS.length - 1, Math.floor(t / STEP));
+  const p = ease((t - i * STEP) / MOVE);
+  const from = i === 0 ? STEPS[0].soc : STEPS[i - 1].soc, soc = Math.round(from + (STEPS[i].soc - from) * p);
+  const charging = STEPS[i].mains;
+  $('pct').textContent = `${soc} %`; $('pct').style.color = charging ? C.ok : socColor(soc);
+  $('fill').style.width = `${Math.max(3, soc)}%`; $('fill').style.background = charging ? C.ok : socColor(soc);
+  const m = $('mains'); m.lastChild.textContent = charging ? T.on : T.off; m.firstChild.style.background = charging ? C.ok : C.warn;
+  [...$('track').children].forEach((seg, k) => { const b = seg.firstChild; b.style.background = STEPS[k].color;
+    b.style.width = `${k < i ? 100 : k === i ? 100 * Math.min(1, (t - i * STEP) / STEP) : 0}%`; });
+  [...$('grid').children].forEach((card, k) => {
+    const on = k === i, done = k < i, s = STEPS[k];
+    card.style.opacity = on ? 1 : done ? 0.72 : 0.42;
+    card.style.borderColor = on ? s.color : 'rgba(255,255,255,.06)';
+    card.style.boxShadow = on ? `0 0 0 1px ${s.color}, 0 10px 34px ${s.color}33` : 'none';
+    card.style.transform = `translateY(${on ? -3 * p : 0}px)`;
+  });
+};
+window.render(0);
+</script>
+</body>
+</html>

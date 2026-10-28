@@ -1,18 +1,38 @@
-[English](README.md) · **Українська**
+<div align="center">
 
-# Bluetti Watcher
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero-dark.svg">
+  <img alt="Bluetti Watcher: світла немає, еко, 20 %, 10 %, 5 % глибокий сон, світло є" src="docs/media/hero-light.svg" width="100%">
+</picture>
 
-**Тримає ваш комп'ютер на Windows увімкненим під час відключень світла від зарядної станції BLUETTI - і вчасно
-переводить його в режим глибокого сну, поки батарея не сіла.**
+<h3>Тримає ваш комп'ютер на Windows увімкненим під час відключень світла від станції BLUETTI і переводить його в глибокий сон, поки батарея не сіла.</h3>
 
-[![CI](https://github.com/vitaliy-shatskiy/bluetti-watcher/actions/workflows/ci.yml/badge.svg)](https://github.com/vitaliy-shatskiy/bluetti-watcher/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/vitaliy-shatskiy/bluetti-watcher)](https://github.com/vitaliy-shatskiy/bluetti-watcher/releases/latest)
-![Windows 10/11 x64](https://img.shields.io/badge/Windows%2010%2F11-x64-0078D6)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+<p>
+  <a href="https://github.com/vitaliy-shatskiy/bluetti-watcher/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/vitaliy-shatskiy/bluetti-watcher/ci.yml?branch=main&label=CI"></a>
+  <a href="https://github.com/vitaliy-shatskiy/bluetti-watcher/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/vitaliy-shatskiy/bluetti-watcher"></a>
+  <img alt="Windows 10/11 x64" src="https://img.shields.io/badge/Windows%2010%2F11-x64-0078D6">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-3DA639"></a>
+</p>
+
+<p><a href="README.md">English</a> · <b>Українська</b></p>
+
+<p><a href="#швидкий-старт">Встановлення</a> · <a href="#як-це-працює">Як це працює</a> · <a href="#можливості">Можливості</a> · <a href="#підтримуване-обладнання">Обладнання</a> · <a href="#часті-запитання">Запитання</a> · <a href="docs/configuration.md">Налаштування</a></p>
+
+</div>
+
+```powershell
+pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048 -Apply   # у розпакованій теці релізу
+```
 
 <p align="center">
-  <img src="docs/screenshot-uk.png" alt="Панель Bluetti Watcher під час відключення: заряд 77 %, скільки залишилось і в яких межах, графік ДТЕК" width="760">
+  <a href="docs/media/demo.mp4"><img src="docs/media/demo.gif" alt="Панель під час змодельованого відключення: світла немає, еко, батарея розряджається" width="820"></a>
+  <br>
+  <sub>Справжня панель (station.html) на демонстраційних даних під час змодельованого відключення: близько семи годин за 28 секунд. Записано 28.10.2026 скриптом <code>docs/media/record-demo.mjs</code>. <a href="docs/media/demo.mp4">MP4</a>.</sub>
 </p>
+
+> [!IMPORTANT]
+> Незалежний проєкт, не пов'язаний з BLUETTI і не схвалений нею. Завантажуйте його лише з
+> [релізів цього репозиторію](https://github.com/vitaliy-shatskiy/bluetti-watcher/releases/latest).
 
 В Україні планові й аварійні відключення - буденність, а стаціонарний комп'ютер на зарядній станції просто тихо
 вимикається, коли батарея сідає. Bluetti Watcher щохвилини зчитує станцію через Bluetooth LE: коли зникає світло, він
@@ -20,7 +40,32 @@
 переводить комп'ютер у глибокий сон. Коли світло повертається, усе стає як було, а невелика панель на `127.0.0.1`
 показує заряд, навантаження, скільки ще вистачить і історію.
 
+## Як це працює
+
+```mermaid
+flowchart LR
+  S["Станція BLUETTI"] -- "Bluetooth LE, лише читання, щохвилини" --> W["BluettiWatcher.exe"]
+  C["Хмара BLUETTI (необов'язково)"] -.-> W
+  K["Графік ДТЕК (необов'язково)"] -.-> W
+  W --> P["Енергозбереження + обмеження GPU"]
+  W --> F["Прапорець для інших програм"]
+  W --> H["Глибокий сон до розряду"]
+  W --> D["Панель на 127.0.0.1"]
+```
+
+<p align="center">
+  <a href="docs/media/explainer/explainer-uk.mp4"><img src="docs/media/explainer/explainer-uk.gif" alt="Що відбувається, коли зникає світло: світла немає, еко через 3 хвилини, аварія на 20 %, стоп на 10 %, глибокий сон на 5 %, світло є" width="820"></a>
+  <br>
+  <sub>Ілюстрація, пороги за замовчуванням. Намальовано скриптом <code>docs/media/explainer/render.mjs</code>. <a href="docs/media/explainer/explainer-uk.mp4">MP4</a>.</sub>
+</p>
+
 ## Як він реагує
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/flow-dark.svg">
+  <img alt="Заряд батареї протягом одного відключення і що відбувається на кожному порозі за замовчуванням" src="docs/media/flow-light.svg" width="100%">
+</picture>
+<p align="center"><sub>Ілюстрація, пороги за замовчуванням: світла немає, еко, 20 %, 10 %, 5 % глибокий сон, світло є.</sub></p>
 
 | Коли | Що відбувається |
 |---|---|
@@ -76,6 +121,8 @@ pwsh -NoProfile -File "$env:LOCALAPPDATA\bluetti-watcher\power-mode\power-mode.p
 - Вбудоване зчитування Bluetooth, нічого більше встановлювати не треба: усі 29 моделей, IoT V1 (AC200L/M/PL, AC300, AC500, EB3A, EP500/P) і V2 (AC2A/P, AC50B, AC60/P, AC70/P, AC180/T/P, AP300, EL10, EL30V2, EL100V2, EP600, EP760, EP800, EP2000, Handsfree 1, PR30V2, PR100V2); станцію, що шифрує зв'язок Bluetooth, зчитує хмара.
 - Еко, аварійний режим, стоп, попередження й глибокий сон залежно від світла й заряду; усі пороги налаштовуються.
 - Захист від хибних даних: неправдоподібні стрибки відкидаються, після перекалібрування станції - довше підтвердження.
+- Вхідна напруга мережі AC200PL (регістр 77, [нотатки про протокол](docs/bluetti-protocol.md), англійською) зберігається
+  з кожним зчитуванням: понад 253 В - одне сповіщення й налаштована вами дія, тож перенапруга на вході не минає безслідно.
 - Панель українською та англійською: кільце заряду в кольорах ваших порогів, скільки залишилось, відключення, статистика
   батареї за 30 днів, графіки від 1 години до 30 днів. Підлаштовується під телефон, Full HD і 2K.
 - Час роботи від батареї вчиться на вашій станції: модель втрат (власне споживання плюс частка навантаження) за минулими
@@ -88,13 +135,11 @@ pwsh -NoProfile -File "$env:LOCALAPPDATA\bluetti-watcher\power-mode\power-mode.p
 
 ## Знімки екрана
 
-| English | Українська |
+| Українською, комп'ютер | Англійською, телефон |
 |---|---|
-| <img src="docs/screenshot-full.png" alt="Панель англійською" width="400"> | <img src="docs/screenshot-uk-full.png" alt="Панель українською" width="400"> |
+| <img src="docs/media/screen-uk.png" alt="Панель українською на комп'ютері, чотири години відключення" width="560"> | <img src="docs/media/screen-mobile.png" alt="Панель англійською на телефоні" width="220"> |
 
-<p align="center"><img src="docs/screenshot-mobile.png" alt="Панель на телефоні" width="260"></p>
-
-Усі знімки зроблено під час імітації відключення (синтетичні дані).
+<sub>Демонстраційні дані, чотири години змодельованого відключення. Знято скриптом <code>docs/media/capture-screens.mjs</code>.</sub>
 
 ## Підтримуване обладнання
 
@@ -147,6 +192,14 @@ Bluetti Watcher - незалежний проєкт, не пов'язаний з
 
 Налаштування: [docs/configuration.md](docs/configuration.md), HTTP API: [docs/api.md](docs/api.md), оновлення й
 видалення: [README.md](README.md#update-and-uninstall), зміни: [CHANGELOG.md](CHANGELOG.md) (усе англійською).
+
+Командний рядок: `--help`, `--version` і перемикач режиму живлення (`power-mode status` лише читає прапорець).
+
+<p align="center">
+  <a href="docs/demos/cli.mp4"><img src="docs/demos/cli.gif" alt="BluettiWatcher.exe --help, power-mode status і --version у PowerShell" width="820"></a>
+  <br>
+  <sub>Записано 28.10.2026 за допомогою VHS скриптом <code>docs/demos/cli.tape</code>: лише команди читання, демонстраційний прапорець. Вивід програми англійською. <a href="docs/demos/cli.mp4">MP4</a>.</sub>
+</p>
 
 ## Часті запитання
 
