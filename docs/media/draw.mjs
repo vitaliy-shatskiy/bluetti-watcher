@@ -74,6 +74,7 @@ ${chips}
 }
 
 // How it reacts: the battery level through one cut with the default thresholds (README "How it reacts").
+// Static on purpose: an <img> SVG whose animation has not run (offscreen, a theme swap) shows its first frame.
 function flow(c) {
   const W = 960, H = 330, L = 72, Rr = 930, T = 58, B = 290;
   const x = (f) => L + f * (Rr - L), y = (p) => B - (p / 100) * (B - T);
@@ -81,7 +82,6 @@ function flow(c) {
   const pts = [[0, 100], [0.08, 100], [0.18, 90], [0.55, 20], [0.66, 10], [0.76, 5], [0.9, 5], [1, 32]];
   const xy = pts.map(([f, p]) => [x(f), y(p)]);
   const path = xy.map(([px, py], i) => `${i ? 'L' : 'M'}${px.toFixed(1)} ${py.toFixed(1)}`).join(' ');
-  const len = Math.ceil(xy.slice(1).reduce((s, [px, py], i) => s + Math.hypot(px - xy[i][0], py - xy[i][1]), 0)) + 2;
   // Marker: dot on the curve, a dotted leader up (or down) to the label, a gap of 8 px on each end.
   const mark = (f, p, col, label, icon, below, lift = 0) => {
     const px = x(f), py = y(p);
@@ -105,15 +105,11 @@ function flow(c) {
   ].join('');
   const grid = [0, 25, 50, 75, 100].map((p) => `<line x1="${L}" x2="${Rr}" y1="${y(p)}" y2="${y(p)}" stroke="${c.line}"/><text x="${L - 12}" y="${y(p) + 5}" text-anchor="end" font-family='${MONO}' font-size="14" fill="${c.dim}">${p}%</text>`).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Battery level through one power cut and the default thresholds: mains lost, eco, 20 %, 10 %, 5 % hibernate, mains back">
-<style>
-.curve{stroke-dasharray:${len};stroke-dashoffset:0;animation:draw 3s ease-out backwards}
-@keyframes draw{from{stroke-dashoffset:${len}}to{stroke-dashoffset:0}}
-${STILL}
-</style>
+
 <rect width="${W}" height="${H}" rx="20" fill="${c.card}" stroke="${c.line}"/>
 <rect x="${x(0.08)}" y="${T - 34}" width="${x(0.9) - x(0.08)}" height="${B - T + 34}" fill="${c.warn}" fill-opacity=".08"/>
 ${grid}
-<path class="curve" d="${path}" fill="none" stroke="${c.accent}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="${path}" fill="none" stroke="${c.accent}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 ${marks}
 </svg>
 `;
