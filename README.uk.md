@@ -1,6 +1,9 @@
 [English](README.md) · **Українська**
 
-# Bluetti Watcher
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero-dark.svg">
+  <img alt="Bluetti Watcher: тримає комп'ютер на Windows увімкненим під час відключень від станції BLUETTI і переводить його в глибокий сон, поки батарея не сіла" src="docs/media/hero-light.svg" width="100%">
+</picture>
 
 **Тримає ваш комп'ютер на Windows увімкненим під час відключень світла від зарядної станції BLUETTI - і вчасно
 переводить його в режим глибокого сну, поки батарея не сіла.**
@@ -11,7 +14,9 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 <p align="center">
-  <img src="docs/screenshot-uk.png" alt="Панель Bluetti Watcher під час відключення: заряд 77 %, скільки залишилось і в яких межах, графік ДТЕК" width="760">
+  <a href="docs/media/demo.mp4"><img src="docs/media/demo.gif" alt="Панель під час змодельованого відключення: світла немає, еко, батарея розряджається" width="820"></a>
+  <br>
+  <sub>Справжня панель (station.html) на демонстраційних даних під час змодельованого відключення: близько 80 хвилин за 20 секунд. Записано 28.10.2026 скриптом <code>docs/media/record-demo.mjs</code>. <a href="docs/media/demo.mp4">MP4</a>.</sub>
 </p>
 
 В Україні планові й аварійні відключення - буденність, а стаціонарний комп'ютер на зарядній станції просто тихо
@@ -20,7 +25,25 @@
 переводить комп'ютер у глибокий сон. Коли світло повертається, усе стає як було, а невелика панель на `127.0.0.1`
 показує заряд, навантаження, скільки ще вистачить і історію.
 
+## Як це працює
+
+```mermaid
+flowchart LR
+  S["Станція BLUETTI"] -- "Bluetooth LE, лише читання, щохвилини" --> W["BluettiWatcher.exe"]
+  C["Хмара BLUETTI (необов'язково)"] -.-> W
+  K["Графік ДТЕК (необов'язково)"] -.-> W
+  W --> P["Енергозбереження + обмеження GPU"]
+  W --> F["Прапорець для інших програм"]
+  W --> H["Глибокий сон до розряду"]
+  W --> D["Панель на 127.0.0.1"]
+```
+
 ## Як він реагує
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/flow-dark.svg">
+  <img alt="Заряд батареї протягом одного відключення і що відбувається на кожному порозі за замовчуванням" src="docs/media/flow-light.svg" width="100%">
+</picture>
 
 | Коли | Що відбувається |
 |---|---|

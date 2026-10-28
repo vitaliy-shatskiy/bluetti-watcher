@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-label="Bluetti Watcher: keeps a Windows PC running through power cuts on a BLUETTI station">
+<style>
+.ring{stroke-dasharray:741.4;animation:drain 10s ease-in-out infinite;transform:rotate(-90deg);transform-origin:1010px 200px}
+@keyframes drain{0%{stroke-dashoffset:0;stroke:#5fad65}45%{stroke:#e0a53a}75%{stroke-dashoffset:704.3;stroke:#db5c5c}88%{stroke-dashoffset:704.3;stroke:#db5c5c}100%{stroke-dashoffset:0;stroke:#5fad65}}
+.step{opacity:.35;animation:lit 9.6s infinite}
+@keyframes lit{0%,4%{opacity:.35}8%,22%{opacity:1}30%,100%{opacity:.35}}
+.s0{animation-delay:0.0s}.s1{animation-delay:1.6s}.s2{animation-delay:3.2s}.s3{animation-delay:4.8s}.s4{animation-delay:6.4s}.s5{animation-delay:8.0s}
+.bolt{animation:blink 10s infinite}
+@keyframes blink{0%,10%{opacity:1}14%,86%{opacity:.15}92%,100%{opacity:1}}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+</style>
+<rect width="1280" height="400" rx="24" fill="#111214"/>
+<rect x="16" y="16" width="1248" height="368" rx="20" fill="#1a1b1e" stroke="#2c2e33"/>
+<text x="64" y="118" font-family='system-ui, -apple-system, "Segoe UI", sans-serif' font-size="60" font-weight="700" fill="#e4e6ea">Bluetti Watcher</text>
+<text x="64" y="168" font-family='system-ui, -apple-system, "Segoe UI", sans-serif' font-size="23" fill="#8b8e95">Keeps your Windows PC running through power cuts on a</text>
+<text x="64" y="200" font-family='system-ui, -apple-system, "Segoe UI", sans-serif' font-size="23" fill="#8b8e95">BLUETTI station - and hibernates it before the battery is empty.</text>
+<text x="64" y="244" font-family='ui-monospace, SFMono-Regular, Consolas, monospace' font-size="14" fill="#548af7">Bluetooth LE · read only · one NativeAOT exe · dashboard on 127.0.0.1</text>
+<g class="step s0"><rect x="64" y="268" width="184" height="36" rx="18" fill="#26282c" stroke="#e0a53a" stroke-opacity=".7"/><circle cx="84" cy="286" r="5" fill="#e0a53a"/><text x="98" y="291" font-family='system-ui, -apple-system, "Segoe UI", sans-serif' font-size="15" fill="#e4e6ea">Mains lost</text></g><g class="step s1"><rect x="260" y="268" width="184" height="36" rx="18" fill="#26282c" stroke="#548af7" stroke-opacity=".7"/><circle cx="280" cy="286" r="5" fill="#548af7"/><text x="294" y="291" font-family='system-ui, -apple-system, "Segoe UI", sans-serif' font-size="15" fill="#e4e6ea">Eco</text></g><g class="step s2"><rect x="456" y="268" width="184" height="36" rx="18" fill="#26282c" stroke="#e0a53a" stroke-opacity=".7"/><circle cx="476" cy="286" r="5" fill="#e0a53a"/><text x="490" y="291" font-family='system-ui, -apple-system, "Segoe UI", sans-serif' font-size="15" fill="#e4e6ea">20 % emergency</text></g><g class="step s3"><rect x="64" y="316" width="184" height="36" rx="18" fill="#26282c" stroke="#db5c5c" stroke-opacity=".7"/><circle cx="84" cy="334" r="5" fill="#db5c5c"/><text x="98" y="339" font-family='system-ui, -apple-system, "Segoe UI", sans-serif' font-size="15" fill="#e4e6ea">10 % stop</text></g><g class="step s4"><rect x="260" y="316" width="184" height="36" rx="18" fill="#26282c" stroke="#db5c5c" stroke-opacity=".7"/><circle cx="280" cy="334" r="5" fill="#db5c5c"/><text x="294" y="339" font-family='system-ui, -apple-system, "Segoe UI", sans-serif' font-size="15" fill="#e4e6ea">5 % hibernate</text></g><g class="step s5"><rect x="456" y="316" width="184" height="36" rx="18" fill="#26282c" stroke="#5fad65" stroke-opacity=".7"/><circle cx="476" cy="334" r="5" fill="#5fad65"/><text x="490" y="339" font-family='system-ui, -apple-system, "Segoe UI", sans-serif' font-size="15" fill="#e4e6ea">Mains back</text></g>
+<circle cx="1010" cy="200" r="118" fill="none" stroke="#26282c" stroke-width="22"/>
+<circle class="ring" cx="1010" cy="200" r="118" fill="none" stroke="#5fad65" stroke-width="22" stroke-linecap="round"/>
+<g class="bolt" transform="translate(988 138)"><path d="M26 0 L4 36 H20 L14 64 L40 24 H24 Z" fill="#e0a53a"/></g>
+<text x="1010" y="238" text-anchor="middle" font-family='system-ui, -apple-system, "Segoe UI", sans-serif' font-size="18" fill="#8b8e95">battery</text>
+<text x="1010" y="264" text-anchor="middle" font-family='ui-monospace, SFMono-Regular, Consolas, monospace' font-size="15" fill="#8b8e95">read every minute</text>
+</svg>

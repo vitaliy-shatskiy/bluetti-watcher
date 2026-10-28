@@ -1,9 +1,9 @@
 **English** · [Українська](README.uk.md)
 
-# Bluetti Watcher
-
-**Keeps your Windows PC running through power cuts on a BLUETTI power station - and hibernates it safely before the
-battery runs out.**
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero-dark.svg">
+  <img alt="Bluetti Watcher: keeps a Windows PC running through power cuts on a BLUETTI station and hibernates it before the battery is empty" src="docs/media/hero-light.svg" width="100%">
+</picture>
 
 [![CI](https://github.com/vitaliy-shatskiy/bluetti-watcher/actions/workflows/ci.yml/badge.svg)](https://github.com/vitaliy-shatskiy/bluetti-watcher/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/vitaliy-shatskiy/bluetti-watcher)](https://github.com/vitaliy-shatskiy/bluetti-watcher/releases/latest)
@@ -11,7 +11,9 @@ battery runs out.**
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="The Bluetti Watcher dashboard during a power cut: battery 77 %, time left with its range, the DTEK schedule" width="760">
+  <a href="docs/media/demo.mp4"><img src="docs/media/demo.gif" alt="The dashboard through a simulated power cut: mains lost, eco, the battery draining" width="820"></a>
+  <br>
+  <sub>The real dashboard (station.html) on demo readings through a simulated cut: about 80 minutes shown in 20 seconds. Recorded 28.10.2026 by <code>docs/media/record-demo.mjs</code>. <a href="docs/media/demo.mp4">MP4</a>.</sub>
 </p>
 
 In Ukraine scheduled and emergency outages are routine, and a desktop on a power station dies quietly when the battery
@@ -20,7 +22,25 @@ to an energy-saving mode, raises an emergency at low battery and hibernates the 
 mains comes back it puts everything back, and a small dashboard on `127.0.0.1` shows the battery, the load, the time
 left and the history.
 
+## How it works
+
+```mermaid
+flowchart LR
+  S["BLUETTI station"] -- "Bluetooth LE, read only, every minute" --> W["BluettiWatcher.exe"]
+  C["BLUETTI cloud (optional)"] -.-> W
+  K["DTEK schedule (optional)"] -.-> W
+  W --> P["Power saver plan + GPU cap"]
+  W --> F["Flag file for other programs"]
+  W --> H["Hibernate before empty"]
+  W --> D["Dashboard on 127.0.0.1"]
+```
+
 ## How it reacts
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/flow-dark.svg">
+  <img alt="Battery level through one power cut and what happens at each default threshold" src="docs/media/flow-light.svg" width="100%">
+</picture>
 
 | When | What happens |
 |---|---|
