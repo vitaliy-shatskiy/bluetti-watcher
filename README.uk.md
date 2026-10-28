@@ -25,7 +25,7 @@ pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048 -Apply
 ```
 
 <p align="center">
-  <a href="docs/media/demo.mp4"><img src="docs/media/demo.gif" alt="Панель під час змодельованого відключення: світла немає, еко, батарея розряджається" width="820"></a>
+  <a href="docs/media/demo.mp4"><img src="docs/media/demo.webp" alt="Панель під час змодельованого відключення: світла немає, еко, батарея розряджається" width="820"></a>
   <br>
   <sub>Справжня панель (station.html) на демонстраційних даних під час змодельованого відключення: близько семи годин за 28 секунд. Записано 28.10.2026 скриптом <code>docs/media/record-demo.mjs</code>. <a href="docs/media/demo.mp4">MP4</a>.</sub>
 </p>
@@ -54,7 +54,7 @@ flowchart LR
 ```
 
 <p align="center">
-  <a href="docs/media/explainer/explainer-uk.mp4"><img src="docs/media/explainer/explainer-uk.gif" alt="Що відбувається, коли зникає світло: світла немає, еко через 3 хвилини, аварія на 20 %, стоп на 10 %, глибокий сон на 5 %, світло є" width="820"></a>
+  <a href="docs/media/explainer/explainer-uk.mp4"><img src="docs/media/explainer/explainer-uk.webp" alt="Що відбувається, коли зникає світло: світла немає, еко через 3 хвилини, аварія на 20 %, стоп на 10 %, глибокий сон на 5 %, світло є" width="820"></a>
   <br>
   <sub>Ілюстрація, пороги за замовчуванням. Намальовано скриптом <code>docs/media/explainer/render.mjs</code>. <a href="docs/media/explainer/explainer-uk.mp4">MP4</a>.</sub>
 </p>
@@ -196,7 +196,7 @@ Bluetti Watcher - незалежний проєкт, не пов'язаний з
 Командний рядок: `--help`, `--version` і перемикач режиму живлення (`power-mode status` лише читає прапорець).
 
 <p align="center">
-  <a href="docs/demos/cli.mp4"><img src="docs/demos/cli.gif" alt="BluettiWatcher.exe --help, power-mode status і --version у PowerShell" width="820"></a>
+  <a href="docs/demos/cli.mp4"><img src="docs/demos/cli.webp" alt="BluettiWatcher.exe --help, power-mode status і --version у PowerShell" width="820"></a>
   <br>
   <sub>Записано 28.10.2026 за допомогою VHS скриптом <code>docs/demos/cli.tape</code>: лише команди читання, демонстраційний прапорець. Вивід програми англійською. <a href="docs/demos/cli.mp4">MP4</a>.</sub>
 </p>

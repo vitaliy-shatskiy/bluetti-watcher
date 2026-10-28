@@ -25,7 +25,7 @@ pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048 -Apply
 ```
 
 <p align="center">
-  <a href="docs/media/demo.mp4"><img src="docs/media/demo.gif" alt="The dashboard through a simulated power cut: mains lost, eco, the battery draining" width="820"></a>
+  <a href="docs/media/demo.mp4"><img src="docs/media/demo.webp" alt="The dashboard through a simulated power cut: mains lost, eco, the battery draining" width="820"></a>
   <br>
   <sub>The real dashboard (station.html) on demo readings through a simulated cut: about seven hours shown in 28 seconds. Recorded 28.10.2026 by <code>docs/media/record-demo.mjs</code>. <a href="docs/media/demo.mp4">MP4</a>.</sub>
 </p>
@@ -54,7 +54,7 @@ flowchart LR
 ```
 
 <p align="center">
-  <a href="docs/media/explainer/explainer.mp4"><img src="docs/media/explainer/explainer.gif" alt="What happens in a power cut: mains lost, eco after 3 minutes, emergency at 20 %, stop at 10 %, hibernate at 5 %, mains back" width="820"></a>
+  <a href="docs/media/explainer/explainer.mp4"><img src="docs/media/explainer/explainer.webp" alt="What happens in a power cut: mains lost, eco after 3 minutes, emergency at 20 %, stop at 10 %, hibernate at 5 %, mains back" width="820"></a>
   <br>
   <sub>Illustration, default thresholds. Drawn by <code>docs/media/explainer/render.mjs</code>. <a href="docs/media/explainer/explainer.mp4">MP4</a>.</sub>
 </p>
@@ -266,7 +266,7 @@ Stop-ScheduledTask BluettiWatcher; Start-ScheduledTask BluettiWatcher
 The command line: `--help`, `--version` and the power-mode switch (`power-mode status` only reads the flag).
 
 <p align="center">
-  <a href="docs/demos/cli.mp4"><img src="docs/demos/cli.gif" alt="BluettiWatcher.exe --help, power-mode status and --version in PowerShell" width="820"></a>
+  <a href="docs/demos/cli.mp4"><img src="docs/demos/cli.webp" alt="BluettiWatcher.exe --help, power-mode status and --version in PowerShell" width="820"></a>
   <br>
   <sub>Recorded 28.10.2026 with VHS by <code>docs/demos/cli.tape</code>: read-only commands, a demo flag file. <a href="docs/demos/cli.mp4">MP4</a>.</sub>
 </p>
