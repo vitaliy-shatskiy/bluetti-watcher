@@ -75,6 +75,31 @@ public sealed partial class PageI18nTests
     }
 
     [Fact]
+    public void A_refused_mode_or_after_eco_press_writes_nothing_to_the_note_chip()
+    {
+        string page = Page();
+        string script = $$"""
+            var modeError = '', modeErrorCode = '', modePress = null, planPress = null, writeSeq = 0, lastNow = null;
+            function fetch() { return Promise.resolve({ ok: false, status: 409, json: () => Promise.resolve({ code: 'eco-held', message: 'Eco held back' }) }); }
+            function load() { return Promise.resolve(); } async function settle() {}
+            function t(k) { return k; } function noteText(n) { return 'note:' + n.code; }
+            const els = {}; function $(id) { return els[id] || (els[id] = { hidden: true, lastChild: {} }); }
+            const painted = []; function paintMode(D) { painted.push(modeError); }
+            const mk = (k, v) => ({ dataset: { [k]: v }, disabled: false, textContent: v, setAttribute() {}, removeAttribute() {} });
+            eval({{Js(FunctionText(page, "pressMode"))}});
+            eval({{Js(FunctionText(page, "pressPlan"))}});
+            pressMode(mk('m', 'eco'), [mk('m', 'eco')])
+              .then(() => pressPlan(mk('p', 'high'), [mk('p', 'high')]))
+              .then(() => console.log(JSON.stringify({ chipShown: !!els.noteChip && !els.noteChip.hidden, chipText: els.noteChip ? els.noteChip.lastChild.textContent || '' : '', painted })));
+            """;
+        using var doc = JsonDocument.Parse(RunScript(script));
+        var r = doc.RootElement;
+        Assert.False(r.GetProperty("chipShown").GetBoolean());   // the refusal has one place: the line under the buttons
+        Assert.Equal("", r.GetProperty("chipText").GetString());
+        Assert.Equal("[\"note:eco-held\",\"afterEco: high: Eco held back\"]", r.GetProperty("painted").GetRawText());   // painted with no /api/now answer yet
+    }
+
+    [Fact]
     public void The_line_under_the_buttons_says_applying_held_failed_or_what_is_in_force()
     {
         string page = Page();
