@@ -196,7 +196,7 @@ Bluetti Watcher - незалежний проєкт, не пов'язаний з
 Командний рядок: `--help`, `--version` і перемикач режиму живлення (`power-mode status` лише читає прапорець).
 
 <p align="center">
-  <a href="docs/demos/cli.mp4"><img src="docs/demos/cli.gif" alt="BluettiWatcher.exe --version, --help і power-mode status у PowerShell" width="820"></a>
+  <a href="docs/demos/cli.mp4"><img src="docs/demos/cli.gif" alt="BluettiWatcher.exe --help, power-mode status і --version у PowerShell" width="820"></a>
   <br>
   <sub>Записано 28.10.2026 за допомогою VHS скриптом <code>docs/demos/cli.tape</code>: лише команди читання, демонстраційний прапорець. Вивід програми англійською. <a href="docs/demos/cli.mp4">MP4</a>.</sub>
 </p>

@@ -266,7 +266,7 @@ Stop-ScheduledTask BluettiWatcher; Start-ScheduledTask BluettiWatcher
 The command line: `--help`, `--version` and the power-mode switch (`power-mode status` only reads the flag).
 
 <p align="center">
-  <a href="docs/demos/cli.mp4"><img src="docs/demos/cli.gif" alt="BluettiWatcher.exe --version, --help and power-mode status in PowerShell" width="820"></a>
+  <a href="docs/demos/cli.mp4"><img src="docs/demos/cli.gif" alt="BluettiWatcher.exe --help, power-mode status and --version in PowerShell" width="820"></a>
   <br>
   <sub>Recorded 28.10.2026 with VHS by <code>docs/demos/cli.tape</code>: read-only commands, a demo flag file. <a href="docs/demos/cli.mp4">MP4</a>.</sub>
 </p>
