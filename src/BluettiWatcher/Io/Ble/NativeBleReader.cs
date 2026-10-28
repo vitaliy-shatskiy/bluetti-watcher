@@ -313,12 +313,15 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
             {
                 while (answer.Feed(await link.Notifications.ReadAsync(wait.Token)) == AssemblyState.NeedMore) { }
                 if (answer.State == AssemblyState.Invalid) break;
-                int from = Sender(unanswered, answer.State == AssemblyState.Exception ? null : request.Quantity);
+                int? size = answer.State == AssemblyState.Exception ? null : request.Quantity;
+                int from = Sender(unanswered, size);
                 var sender = unanswered[from];
+                // Their own value only when every request that could have sent it (this one, or earlier ones for the same registers,
+                // whose answer then leaves this one expected) reads these registers: one for others between them may be the sender.
+                bool own = unanswered.Skip(from).All(u => (size is { } q && u.Quantity != q) || (u.Start == request.Start && u.Quantity == request.Quantity));
                 // In order: every request before the sender is lost; its own answer is in.
                 unanswered.RemoveRange(0, from + 1);
-                // This request, or an earlier one for the same registers (this one's answer then stays expected): their own value either way.
-                if (sender.Start == request.Start && sender.Quantity == request.Quantity) break;
+                if (own) break;
                 setAside = sender;
                 answer = new ResponseAssembler(request);
                 if (asks++ < MaxReasks)

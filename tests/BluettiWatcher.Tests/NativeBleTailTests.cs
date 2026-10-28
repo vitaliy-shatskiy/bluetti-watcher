@@ -320,4 +320,38 @@ public class NativeBleLateAnswerTests
         Assert.Equal(77, r.InAc);
         Assert.Equal(345, r.OutAc);
     }
+
+    /// <summary>
+    /// An earlier request for 102 (battery %) stays expected while a one-register request for 140 (DC output W) is lost
+    /// after it; 102 is asked again on the next poll and 140's late answer arrives right after that request is written.
+    /// The earliest request of that size is for the same registers, but 140's sits between them: the answer is set aside,
+    /// never taken as the battery percent.
+    /// </summary>
+    [Fact]
+    public async Task A_late_answer_is_never_credited_to_a_register_asked_both_before_and_after_it()
+    {
+        var values = new Dictionary<int, ushort> { [102] = 64, [140] = 10, [142] = 345, [144] = 20, [146] = 77 };
+        byte[] Of(int start, int quantity) => ModbusFrameTests.Answer([.. Enumerable.Range(start, quantity).Select(a => values.GetValueOrDefault(a))]);
+        var radio = Channel.CreateUnbounded<byte[]>();
+        int poll = 1;
+        bool lateSent = false;
+        void Script(ReadRequest r, ChannelWriter<byte[]> w)
+        {
+            if (poll == 1) return;   // nothing answered: 102 (twice) and 140+7 stay expected
+            if (poll == 2 && r.Start == 140 && r.Quantity > 1) { w.TryWrite(ModbusFrameTests.ExceptionAnswer(0x02)); return; }
+            if (poll == 2 && r.Start != 102) return;   // the fields of 140+7 one by one: none answered in time
+            if (poll == 3 && r.Start == 102 && !lateSent) { lateSent = true; w.TryWrite(Of(140, 1)); }   // 140's late answer
+            w.TryWrite(Of(r.Start, r.Quantity));
+        }
+        var conn = new TaskConnector(_ => Task.FromResult(new BleOpen(new SharedRadioLink(radio, Script), null)));
+        var reader = new NativeBleReader(new StationConfig { Mac = "AA:BB:CC:DD:EE:FF", Type = "AC180", ReaderTimeoutSec = 10 }, conn, _ => { }, TimeSpan.FromMilliseconds(300));
+        var ct = TestContext.Current.CancellationToken;
+        Assert.Null(await reader.ReadAsync(ct));
+        poll = 2;
+        Assert.Equal(64, (await reader.ReadAsync(ct))?.Soc);
+        poll = 3;
+        var r = await reader.ReadAsync(ct);
+        Assert.NotNull(r);
+        Assert.Equal(64, r.Soc);   // never 10, register 140's value
+    }
 }

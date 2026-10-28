@@ -6,6 +6,25 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-10-28
+
+### Download
+
+| File | What it is |
+|---|---|
+| `bluetti-watcher-1.4.2-win-x64.zip` | The service, the power-mode scripts, the installer and the docs |
+| `bluetti-watcher-1.4.2-win-x64.zip.sha256` | Its SHA-256. Check with `(Get-FileHash bluetti-watcher-1.4.2-win-x64.zip).Hash` |
+
+Upgrade: extract the zip, then `pwsh -NoProfile -File install.ps1` (a dry run) and the same with `-Apply`. Your
+config, database and history stay.
+
+### Fixed
+
+- Bluetooth: a late answer is no longer taken for the battery percent (or another field) when a request for the same
+  registers was still expected from an earlier poll and a request for other registers of the same size was lost after
+  it. Such an answer is now set aside and the registers asked again. Before, after a run of lost answers a field read
+  one register at a time (a station refusing a batch) could fill the battery percent, which decides hibernation.
+
 ## [1.4.1] - 2026-10-26
 
 ### Download
@@ -330,7 +349,8 @@ with `-Apply`. Requirements and details: [README](https://github.com/vitaliy-sha
 
 Source at this tag: [v1.0.0](https://github.com/vitaliy-shatskiy/bluetti-watcher/tree/v1.0.0)
 
-[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.4.2...HEAD
+[1.4.2]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.3...v1.4.0
 [1.3.3]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.2...v1.3.3
