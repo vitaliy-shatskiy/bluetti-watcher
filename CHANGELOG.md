@@ -6,6 +6,14 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+### Added
+
+- AC200PL over Bluetooth: the grid input voltage and frequency, V1 registers 77 and 80 (both / 10), read in the same
+  request as the output voltage (70-80, one read), stored with each reading and shown in `/api/now` `last`
+  (`gridVolt`, `gridHz`; `gridAmp` and `gridW` stay null, no register is known for them).
+- An alert when the grid voltage goes above 253 V (230 V + 10 %): an event `grid-voltage-high` and the action of the
+  same name; it fires again only after the voltage was under 250 V.
+
 ## [1.4.2] - 2026-10-28
 
 ### Download

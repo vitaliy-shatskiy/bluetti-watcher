@@ -52,13 +52,34 @@ internal sealed class StationStore : IDisposable
         }
         ddl.CommandText = """
             CREATE TABLE IF NOT EXISTS reading(at INTEGER NOT NULL, status INTEGER NOT NULL, soc REAL, in_ac REAL, in_dc REAL,
-              out_ac REAL, out_dc REAL, volt REAL, hz REAL, mode TEXT, reason TEXT);
+              out_ac REAL, out_dc REAL, volt REAL, hz REAL, mode TEXT, reason TEXT,
+              grid_volt REAL, grid_hz REAL, grid_amp REAL, grid_w REAL);
             CREATE INDEX IF NOT EXISTS reading_at ON reading(at);
             CREATE TABLE IF NOT EXISTS agg5(at INTEGER PRIMARY KEY, n INTEGER NOT NULL, soc REAL, soc_min REAL, soc_max REAL,
               in_ac REAL, in_dc REAL, out_ac REAL, out_dc REAL, volt REAL, hz REAL, mains REAL, missed INTEGER NOT NULL, rejected INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS event(at INTEGER NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS event_at ON event(at);
             CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            """;
+        ddl.ExecuteNonQuery();
+        AddGridColumns(ddl);
+    }
+
+    /// <summary>
+    /// Adds the grid input columns to a reading table made before them, in one transaction, so a file has all four or none;
+    /// nullable, so the rows already there keep NULL. Raw rows only: they are not folded into agg5.
+    /// </summary>
+    private static void AddGridColumns(SqliteCommand ddl)
+    {
+        ddl.CommandText = "SELECT COUNT(*) FROM pragma_table_info('reading') WHERE name = 'grid_volt'";
+        if ((long)ddl.ExecuteScalar()! > 0) return;
+        ddl.CommandText = """
+            BEGIN;
+            ALTER TABLE reading ADD COLUMN grid_volt REAL;
+            ALTER TABLE reading ADD COLUMN grid_hz REAL;
+            ALTER TABLE reading ADD COLUMN grid_amp REAL;
+            ALTER TABLE reading ADD COLUMN grid_w REAL;
+            COMMIT;
             """;
         ddl.ExecuteNonQuery();
     }
@@ -106,8 +127,9 @@ internal sealed class StationStore : IDisposable
             if (_insertReading is null)
             {
                 _insertReading = _db.CreateCommand();
-                _insertReading.CommandText = "INSERT INTO reading(at,status,soc,in_ac,in_dc,out_ac,out_dc,volt,hz,mode,reason) VALUES($at,$st,$soc,$ia,$id,$oa,$od,$v,$hz,$m,$why)";
-                foreach (var n in (string[])["$at", "$st", "$soc", "$ia", "$id", "$oa", "$od", "$v", "$hz", "$m", "$why"])
+                _insertReading.CommandText = "INSERT INTO reading(at,status,soc,in_ac,in_dc,out_ac,out_dc,volt,hz,mode,reason,grid_volt,grid_hz,grid_amp,grid_w) "
+                    + "VALUES($at,$st,$soc,$ia,$id,$oa,$od,$v,$hz,$m,$why,$gv,$ghz,$ga,$gw)";
+                foreach (var n in (string[])["$at", "$st", "$soc", "$ia", "$id", "$oa", "$od", "$v", "$hz", "$m", "$why", "$gv", "$ghz", "$ga", "$gw"])
                     _insertReading.Parameters.Add(new SqliteParameter { ParameterName = n });
             }
             var p = _insertReading.Parameters;
@@ -122,6 +144,10 @@ internal sealed class StationStore : IDisposable
             p[8].Value = Db(r?.Hz);
             p[9].Value = Db(r?.Mode);
             p[10].Value = reason.Length == 0 ? DBNull.Value : reason;
+            p[11].Value = Db(r?.GridVolt);
+            p[12].Value = Db(r?.GridHz);
+            p[13].Value = Db(r?.GridAmp);
+            p[14].Value = Db(r?.GridW);
             _insertReading.ExecuteNonQuery();
         }
     }

@@ -57,6 +57,8 @@ internal sealed class StationState
     public ManualMode? ModePending { get; set; }
     /// <summary>The last failure or refusal of a page choice, "" when none; shown until the next mode change.</summary>
     public string ModeError { get; set; } = "";
+    /// <summary>The grid voltage alert fired and has not re-armed (<see cref="GridVoltageAlarm"/>).</summary>
+    public bool GridVoltHigh { get; set; }
 
     public StationState Clone()
     {

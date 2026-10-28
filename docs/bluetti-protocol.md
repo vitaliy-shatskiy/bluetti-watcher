@@ -26,7 +26,7 @@ Read on a live station. These facts override the app-derived claims below.
 - A Bluetooth HCI capture of the official app talking to this station: the app reads **V1 only**, in three pages,
   start 10 count 59, start 70 count 87 and start 3000 count 91. It also writes a settings range.
 
-Values from the app's 70+87 answer, station in bypass. The app showed 224.0 V grid voltage at the time.
+Values from the app's 70+87 answer, station in bypass. The app showed 224.0 V grid voltage a few minutes later.
 
 | Reg | Value seen | Scale | Meaning | Confidence |
 |---|---|---|---|---|

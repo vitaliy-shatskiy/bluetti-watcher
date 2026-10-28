@@ -380,6 +380,10 @@ internal sealed class StationApi(StationConfig config, StationService service, S
                 Num(w, "outDc", last.OutDc);
                 Num(w, "volt", last.Volt);
                 Num(w, "hz", last.Hz, 2);
+                Num(w, "gridVolt", last.GridVolt);
+                Num(w, "gridHz", last.GridHz);
+                Num(w, "gridAmp", last.GridAmp);
+                Num(w, "gridW", last.GridW);
                 w.WriteBoolean("mains", last.InAc > 0);
                 w.WriteEndObject();
             }

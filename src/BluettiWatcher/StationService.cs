@@ -95,7 +95,12 @@ internal sealed class StationService(StationConfig config, IStationReader reader
             if (status == ReadingStatus.Accepted) { _last = reading; _lastAt = now; }
             bool cutBefore = _state.Cut || _state.CutBeforeGap;
             bool silentBefore = _state.Silent;
+            // Taken from the state before the decision: a gap that resets the decision's state does not re-fire the alert.
+            // An accepted reading only, as for everything else the decision trusts (accepted = not null, a null one is missed).
+            var (gridHigh, gridAlert) = GridVoltageAlarm.Step(_state.GridVoltHigh, status == ReadingStatus.Accepted ? reading!.GridVolt : null);
+            bool gridRearmed = _state.GridVoltHigh && !gridHigh;
             _state = d.State;
+            _state.GridVoltHigh = gridHigh;
             store.SaveState(_state);
             // Mains back confirmed: the cut is over, so the next cut's entries start their commands again.
             if (cutBefore && !_state.Cut && !_state.CutBeforeGap) onState?.CutEnded();
@@ -106,6 +111,15 @@ internal sealed class StationService(StationConfig config, IStationReader reader
                 log($"reading accepted{From(reading)}: battery {Fmt(reading.Soc!.Value)} %");
             // A miss is logged at the first, at the turn to silent and every 15th after; each one is a row (an event) all the same.
             else if (status == ReadingStatus.Missed && (_state.Misses <= 1 || _state.Silent != silentBefore || _state.Misses % MissLogEvery == 0)) log($"no answer from the station (miss {_state.Misses}){(_state.Silent ? " - station silent" : "")}");
+
+            if (gridAlert)
+            {
+                string high = $"grid input {Fmt(reading!.GridVolt!.Value)} V, above {Fmt(GridVoltageAlarm.HighAt)} V";
+                store.AddEvent(now, StateActions.GridHigh, high);
+                log(high);
+                onState?.Fire(StateActions.GridHigh);
+            }
+            else if (gridRearmed) log($"grid input {Fmt(reading!.GridVolt!.Value)} V, under {Fmt(GridVoltageAlarm.RearmBelow)} V: the high-voltage alert re-armed");
 
             foreach (var a in d.Actions)
             {

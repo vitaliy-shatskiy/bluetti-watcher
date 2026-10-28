@@ -78,7 +78,7 @@ internal sealed class StationConfig
     public const int MaxTimeoutSec = 600;
     /// <summary>
     /// Optional commands run when the watcher enters a state: keys <c>eco</c>, <c>emergency</c>, <c>stop</c>,
-    /// <c>hibernate-warn</c>, <c>normal</c>; each value is an executable and its arguments, run without a shell.
+    /// <c>hibernate-warn</c>, <c>normal</c>, and the alert <c>grid-voltage-high</c>; each value is an executable and its arguments, run without a shell.
     /// </summary>
     public Dictionary<string, string>? Actions { get; set; }
     public int RawRetentionDays { get; set; } = 30;
