@@ -84,8 +84,9 @@ answer: unit | 0x03 | byteCount = 2 x count | data | CRC
   smali]. `VER_1022` is taken as 1022 [inferred: same naming]. Gates such as `protocolVer >= 2001` then depend on the
   version the station reports, not on this default.
 
-Column "Watcher": **today** = read by the watcher's V2 path (`V2Models.cs`, the reading fields), **map** = in the
-watcher's map but not read in a poll, **no** = not yet.
+Column "Watcher": **today** = read in a poll (the reading fields of `V2Models.cs`, the values an AC200PL poll reads at
+its V1 registers), **map** = declared in `V2Models.All` for the models named but not read in a poll, **no** = not
+declared.
 
 ### 2.3 Page 100 - home data [code: ProtocolParserV2.parseHomeData]
 
@@ -97,7 +98,7 @@ Length 56 registers (version 2000 and lower) up to 116 (version 2023 and up) [co
 | 101 | pack total current | u16 /10 A | no |
 | 102 | SOC | u16 %, capped at 100 | today |
 | 103 | pack charging status | u16 code | no |
-| 104 | time to full (`packChgFullTime`) | u16, unit not read | no (lib: TIME_REMAINING on some models) |
+| 104 | time to full (`packChgFullTime`) | u16, unit not read | map (TIME_REMAINING: AC50B, AC70, EL10, EL30V2, EL100V2, Handsfree 1) |
 | 105 | time to empty (`packDsgEmptyTime`) | u16, unit not read | no |
 | 106 | pack aging status, progress, fault | 4-bit fields | no |
 | 107 low | pack count (max 16) | u8 | no |
@@ -116,7 +117,7 @@ Length 56 registers (version 2000 and lower) up to 116 (version 2023 and up) [co
 | 144-145 | total PV (DC input) power | u32 W | today (low word) |
 | 146-147 | total grid (AC input) power | s32 W | today (low word, as u16) |
 | 148-149 | total inverter power | s32 W | no |
-| 150-159 | lifetime energy: DC out, AC out, PV charge, grid charge, feed-back | 5 x u32 /10 kWh | no (lib: 154 on AC2A) |
+| 150-159 | lifetime energy: DC out, AC out, PV charge, grid charge, feed-back | 5 x u32 /10 kWh | map (154 POWER_GENERATION: AC2A, AC2P), else no |
 | 160 low | charging mode | u8 | no |
 | 161 low | inverter working status | u8 | no |
 | 162-163, 164 low | PV-to-AC energy /10, self-sufficiency % | u32, u8 | no |
@@ -152,9 +153,9 @@ Length 90 registers (42 at version 2000) [code: getReadRegLen].
 | Reg | Field | Type, scale | Watcher |
 |---|---|---|---|
 | 1200-1201 | total PV power | u32 W | no |
-| 1202-1203 | total PV energy | u32 /10 kWh | no (lib: EP600) |
+| 1202-1203 | total PV energy | u32 /10 kWh | map (1202 POWER_GENERATION: EP600) |
 | 1209 low | AC PV count (high nibble), DC PV count (low nibble) | u4, u4 | no |
-| 1210 + 8n | input n: working status (low), type (1211 low), power 1212, voltage 1213 /10 V, current 1214 /10 A | | no (lib: PV_S1 1212-1214) |
+| 1210 + 8n | input n: working status (low), type (1211 low), power 1212, voltage 1213 /10 V, current 1214 /10 A | | map (PV_S1 1212-1214, PV_S2 1220-1222: EP600, EP760, EP2000. 1213-1214 DC_INPUT_VOLTAGE, DC_INPUT_CURRENT: AC70, AC70P, AC180, AC180T, Handsfree 1. 1228-1230, 1236-1238, 1244-1246 as SM_P1-3: EP600, SM_P1: EP760) |
 
 ### 2.6 Page 1300 - grid (AC input) [code: ProtocolParserV2.parseInvGridInfo]
 
@@ -162,14 +163,14 @@ Length 31 registers (43 at version 2022+) [code: getReadRegLen].
 
 | Reg | Field | Type, scale | Watcher |
 |---|---|---|---|
-| 1300 | grid frequency | u16 /10 Hz | no (lib: AC_INPUT_FREQUENCY) |
+| 1300 | grid frequency | u16 /10 Hz | map (AC_INPUT_FREQUENCY: AC70, AC70P, AC180, AC180T, Handsfree 1. GRID_FREQUENCY: EP600, EP760, EP2000) |
 | 1301-1302 | total charge power | s32 W | no |
 | 1303-1304 | charge energy | u32 /10 kWh | no |
 | 1305-1306 | feed-back energy, high word first (`listJoinString`, no swap) | u32 /10 kWh | no |
 | 1312 low | phase count (min with the configured count) | u8 | no |
-| 1313 + 6n | phase power | s16, abs, W | no |
-| 1314 + 6n | **grid voltage** | u16 /10 V | no (lib: AC_INPUT_VOLTAGE) |
-| 1315 + 6n | grid current | s16, abs, /10 A | no (lib: AC_INPUT_CURRENT) |
+| 1313 + 6n | phase power | s16, abs, W | map (GRID_P1-3_POWER: EP600, P1: EP760) |
+| 1314 + 6n | **grid voltage** | u16 /10 V | map (1314 AC_INPUT_VOLTAGE: AC60, AC60P, AC70, AC70P, AC180, AC180T, AC180P, AP300, EL10, EL30V2, EL100V2, Handsfree 1, PR30V2, PR100V2. GRID_P1-3_VOLTAGE: EP600, EP2000, P1: EP760) |
+| 1315 + 6n | grid current | s16, abs, /10 A | map (1315 AC_INPUT_CURRENT: AC70, AC70P, AC180, AC180T, Handsfree 1, EL10, EL100V2. GRID_P1-3_CURRENT: EP600, P1: EP760) |
 | 1316 + 6n | apparent power | s16, abs | no |
 
 32-bit phase powers at 1331 and 1337 are used only for `HOME_POWER` at version 2022+ [code: same, condition `z`].
@@ -193,11 +194,11 @@ Length 30 registers (36 at version 2023+) [code: getReadRegLen].
 
 | Reg | Field | Type, scale | Watcher |
 |---|---|---|---|
-| 1500 | output frequency | u16 /10 Hz | no (lib: AC_OUTPUT_FREQUENCY) |
+| 1500 | output frequency | u16 /10 Hz | map (AC_OUTPUT_FREQUENCY: AC70, AC70P, AC180, AC180T, Handsfree 1, EP600, EP760, EP2000) |
 | 1501-1502 | total inverter energy | u32 /10 kWh | no |
 | 1508 low | phase count | u8 | no |
-| 1509 + 6n | phase work status (low byte) | u8 | no (lib: AC_OUTPUT_ON on AC2A) |
-| 1510, 1511, 1512 (+ 6n) | phase power W, voltage /10 V, current /10 A | u16 | no (lib: AC_OUTPUT_VOLTAGE 1511) |
+| 1509 + 6n | phase work status (low byte) | u8 | map (1509 AC_OUTPUT_ON: AC2A) |
+| 1510, 1511, 1512 (+ 6n) | phase power W, voltage /10 V, current /10 A | u16 | map (1511 AC_OUTPUT_VOLTAGE: AC70, AC70P, AC180, AC180T, Handsfree 1, EL10, EL100V2. AC_P1 1510-1512: EP600, EP760. AC_P1-3_VOLTAGE 1511, 1518, 1525: EP2000. AC_P2, AC_P3 at 1517, 1524: EP600, a stride of 7) |
 
 ## 3. Warning and fault codes
 
