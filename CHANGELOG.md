@@ -6,6 +6,18 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-28
+
+### Download
+
+| File | What it is |
+|---|---|
+| `bluetti-watcher-1.5.0-win-x64.zip` | The service, the power-mode scripts, the installer and the docs |
+| `bluetti-watcher-1.5.0-win-x64.zip.sha256` | Its SHA-256. Check with `(Get-FileHash bluetti-watcher-1.5.0-win-x64.zip).Hash` |
+
+Upgrade: extract the zip, then `pwsh -NoProfile -File install.ps1` (a dry run) and the same with `-Apply`. Your
+config, database and history stay.
+
 ### Added
 
 - AC200PL over Bluetooth: the grid input voltage and frequency, V1 registers 77 and 80 (both / 10), read in the same
@@ -13,18 +25,6 @@ The release notes on GitHub are this file's section for the tag.
   (`gridVolt`, `gridHz`).
 - An alert when the grid voltage goes above 253 V (230 V + 10 %): an event `grid-voltage-high` and the action of the
   same name; it fires again only after the voltage was under 250 V.
-
-## [1.4.2] - 2026-10-28
-
-### Download
-
-| File | What it is |
-|---|---|
-| `bluetti-watcher-1.4.2-win-x64.zip` | The service, the power-mode scripts, the installer and the docs |
-| `bluetti-watcher-1.4.2-win-x64.zip.sha256` | Its SHA-256. Check with `(Get-FileHash bluetti-watcher-1.4.2-win-x64.zip).Hash` |
-
-Upgrade: extract the zip, then `pwsh -NoProfile -File install.ps1` (a dry run) and the same with `-Apply`. Your
-config, database and history stay.
 
 ### Fixed
 
