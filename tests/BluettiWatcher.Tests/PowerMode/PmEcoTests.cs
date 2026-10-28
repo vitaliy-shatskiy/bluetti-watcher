@@ -393,6 +393,83 @@ public sealed class PowerModeStationTests
         Eq("manual", (string?)m.Json().V("by"));
     }
 
+    [Fact(DisplayName = "an eco whose plan and GPU cap failed: the failures are said, and the next station eco repairs both, keeping since")]
+    public async Task A_station_eco_over_an_eco_repairs_what_was_not_applied()
+    {
+        await using Cleanup t = new();
+        Machine m = NewMachine(t, gpu: [250, 100, 250]);
+        Res first = await m.Run(["eco", "-Source", "station"], Env(("FAKE_PM_LISTFAIL", "1"), ("FAKE_GPU_QUERYFAIL", "1")));
+        Eq(0, first.Status, first.Out);
+        Ok(Lines(first.Out).Contains("warn: powercfg did not list the power plans: the power plan is unchanged"), first.Out);
+        Ok(Lines(first.Out).Any(l => l.StartsWith("note: gpu cap not set (", StringComparison.Ordinal)), first.Out);
+        Eq(Obj(("prevPlan", null), ("prevGpuLimitW", null)), Pick(m.Json(), "prevPlan", "prevGpuLimitW"));
+        Eq(Balanced, m.Active());
+        string since = (string)m.Json().V("since")!;
+        // The page's Eco and the station's both send `eco -Source station`.
+        Res again = await m.Run(["eco", "-Source", "station"]);
+        Eq(0, again.Status, again.Out);
+        Eq(Obj(("mode", "eco"), ("source", "station"), ("since", since), ("until", null), ("prevPlan", Balanced)), Pick(m.Json(), "mode", "source", "since", "until", "prevPlan"));
+        Eq(Saver, m.Active());
+        Eq("gpu=100 prev=250 cap=100", Obj(("gpu", m.Gpu()), ("prev", m.Json().V("prevGpuLimitW")), ("cap", m.Json().V("gpuCapW"))));
+        Assert.Null(m.TaskXml());
+        // Repaired: a third call changes nothing and says it kept the eco.
+        string before = ReadText(m.Flag);
+        Res third = await m.Run(["eco", "-Source", "station"]);
+        Match(@"\(already on, kept\)\z", third.Out);
+        Eq(before, ReadText(m.Flag));
+    }
+
+    [Fact(DisplayName = "the station repairs a manual eco's missing plan without touching its end time; the end task is registered")]
+    public async Task A_station_eco_repairs_a_manual_eco_and_keeps_its_end_time()
+    {
+        await using Cleanup t = new();
+        Machine m = NewMachine(t);
+        Eq(0, await m.Code(["eco", "-For", "90"], Env(("FAKE_PM_LISTFAIL", "1"))));
+        Eq(Obj(("prevPlan", null)), Pick(m.Json(), "prevPlan"));
+        Assert.Null(m.TaskXml());
+        var j = m.Json();
+        Res r = await m.Run(["eco", "-Source", "station"]);
+        Eq(0, r.Status, r.Out);
+        Eq(Obj(("source", null), ("since", (string?)j.V("since")), ("until", (string?)j.V("until")), ("prevPlan", Balanced)),
+            Pick(m.Json(), "source", "since", "until", "prevPlan"));
+        Eq(Saver, m.Active());
+        Ok(m.TaskXml() is not null, "the end task of the manual eco");
+    }
+
+    [Fact(DisplayName = "a kept eco that owes a plan sets Power saver again when it is not active; prevPlan stays; a list failure is a warn")]
+    public async Task A_station_eco_sets_Power_saver_again_when_a_plan_is_owed()
+    {
+        await using Cleanup t = new();
+        foreach (string[] first in new[] { new[] { "eco", "-Source", "station" }, new[] { "eco", "-For", "90" } })
+        {
+            Machine m = NewMachine(t);
+            Res failed = await m.Run(first, Env(("FAKE_PM_SETFAIL", "1")));
+            Ok(Lines(failed.Out).Any(l => l.StartsWith("warn: the Power saver plan could not be set", StringComparison.Ordinal)), failed.Out);
+            Eq(Balanced, (string?)m.Json().V("prevPlan"));
+            Eq(Balanced, m.Active());
+            string before = ReadText(m.Flag);
+            Res listFail = await m.Run(["eco", "-Source", "station"], Env(("FAKE_PM_LISTFAIL", "1")));
+            Ok(Lines(listFail.Out).Contains("warn: powercfg did not list the power plans: the power plan is unchanged"), listFail.Out);
+            Res again = await m.Run(["eco", "-Source", "station"]);
+            Eq(0, again.Status, again.Out);
+            Eq(Saver, m.Active());
+            Ok(Lines(again.Out).Contains($"plan: Power saver on; returns to {Balanced}"), again.Out);
+            Eq(before, ReadText(m.Flag));
+        }
+    }
+
+    [Fact(DisplayName = "a station eco over an eco never records Power saver: Power saver on by hand records the return plan")]
+    public async Task A_station_eco_repair_never_records_Power_saver()
+    {
+        await using Cleanup t = new();
+        Machine m = NewMachine(t);
+        Eq(0, await m.Code(["eco", "-Source", "station"], Env(("FAKE_PM_LISTFAIL", "1"))));
+        WriteText(Path.Combine(m.Sim, "active.txt"), Saver);
+        Eq(0, await m.Code(["eco", "-Source", "station"]));
+        Eq(Balanced, (string?)m.Json().V("prevPlan"));
+        Eq(Saver, m.Active());
+    }
+
     [Fact(DisplayName = "on -Source station marks the emergency as the station's; a manual on does not")]
     public async Task On_Source_station_marks_the_emergency()
     {

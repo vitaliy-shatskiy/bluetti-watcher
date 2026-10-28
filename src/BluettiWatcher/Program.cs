@@ -72,7 +72,12 @@ var started = time.GetLocalNow();
 // The outage schedule: its own task and cadence, never on the poll path; off (no source, no request) unless dtekWatcher.enabled.
 // The guard is the module's whole boundary: no call into it ever throws into this loop or into /api/now.
 using var dtek = DtekWatcherGuard.Create(config, store, time, Log);
-var api = new StationApi(config, service, store, time, started, dtek, Log, () => bluetooth.StationEncrypted, () => bluetooth.BluetoothStalled);
+var api = new StationApi(config, service, store, time, started, dtek, Log, () => bluetooth.StationEncrypted, () => bluetooth.BluetoothStalled,
+        () =>
+        {
+            using var planSwitch = new BluettiWatcher.PowerMode.PowerModeSwitch([.. BluettiWatcher.PowerMode.PowerModeSwitch.ProcessEnvironment(), .. config.PowerModeEnvironment], TextWriter.Null);
+            return planSwitch.ActivePlan();
+        });
 using var http = new MiniHttpServer(IPAddress.Loopback, config.Port, api.HandleAsync, Log);
 try { http.Start(); }
 catch (SocketException e) { Log($"DID NOT RUN - 127.0.0.1:{config.Port} is taken ({e.SocketErrorCode})"); return 2; }
@@ -85,6 +90,8 @@ Log($"Bluetti Watcher started: http://127.0.0.1:{config.Port}/ · reader {(confi
 var serving = http.RunAsync(stop.Token);
 var scheduleReads = dtek.RunAsync(stop.Token);
 var historyRuns = backfill.RunAsync(stop.Token);
+// A page choice applies when it is saved, never after a station read that is still running.
+var presses = service.RunPressesAsync(stop.Token);
 long lastCompact = time.GetTimestamp();
 var memory = new ProcessMemory(config, new Win32MemoryCalls(), Log);
 try
@@ -127,5 +134,7 @@ catch (OperationCanceledException)
 await serving;
 await scheduleReads;
 await historyRuns;
+try { await presses; }
+catch (OperationCanceledException) { /* the press loop ends with the stop */ }
 Log("stopped");
 return 0;

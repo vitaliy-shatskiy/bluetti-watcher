@@ -482,8 +482,8 @@ internal sealed partial class PowerModeSwitch
     {
         var notes = new List<string>(cfg.Warn);
         bool station = a.Source == "station";
-        bool activate = false;
-        string prev, ret;
+        bool activate = false, keep = false;
+        string prev, ret, keptPlan = "";
         PmFlag written;
         try
         {
@@ -507,23 +507,21 @@ internal sealed partial class PowerModeSwitch
             }
             var flag = ReadFlag(path);
             if (flag is not null && flag.Mode == "emergency") { Say($"{StatusLine(flag)} (eco not set: emergency is stricter; run off first)"); return 2; }
-            // The station never replaces an eco that is on: a manual one keeps its end time, its own keeps its since.
-            if (station && flag is not null && flag.Mode == "eco")
-            {
-                GpuRecap(flag, cfg, notes);
-                SayAll(StatusLines(flag, " (already on, kept)"));
-                SayAll(notes);
-                return 0;
-            }
+            // The station never replaces an eco that is on: a manual one keeps its end time, its own keeps its since. It only
+            // applies what that eco left unapplied (a plan or a GPU cap whose step failed), so the page's Eco repairs it.
+            keep = station && flag is not null && flag.Mode == "eco";
             // A plan already recorded (eco on, or ended and not restored yet) stays the plan to return to.
-            prev = flag?.PrevPlan ?? "";
+            prev = keptPlan = flag?.PrevPlan ?? "";
+            // A kept eco that owes a plan: Power saver is set again when it is not the active plan (its switch failed or
+            // something switched it off); the plan recorded stays the plan to return to.
+            bool planOwed = keep && prev.Length > 0;
             var plans = Plans();
             if (plans is null) notes.Add("warn: powercfg did not list the power plans: the power plan is unchanged");
             else if (!plans.All.Contains(SaverPlan)) notes.Add($"warn: the Power saver plan ({SaverPlan}) is not on this machine: the power plan is unchanged");
             else if (plans.Active == SaverPlan)
             {
                 // Power saver is never recorded: switched on by hand before eco, the plan off returns to is recorded instead.
-                if (prev.Length > 0) notes.Add($"plan: Power saver stays on; returns to {ResolveReturnPlan(prev, cfg, plans).Target}");
+                if (prev.Length > 0) { if (!planOwed) notes.Add($"plan: Power saver stays on; returns to {ResolveReturnPlan(prev, cfg, plans).Target}"); }
                 else
                 {
                     prev = ResolveReturnPlan("", cfg, plans).Target;
@@ -542,7 +540,7 @@ internal sealed partial class PowerModeSwitch
             double? gpuPrev = flag?.PrevGpuLimitW, gpuCapW = flag?.GpuCapW, gpuSet = null;
             if (Truthy(gpuPrev))
             {
-                notes.Add($"gpu cap: stays on (returns to {Watts(gpuPrev!.Value)} W)");
+                if (!keep) notes.Add($"gpu cap: stays on (returns to {Watts(gpuPrev!.Value)} W)");
                 GpuRecap(flag!, cfg, notes);
             }
             else if (cfg.GpuCap && GpuSeam)
@@ -552,8 +550,15 @@ internal sealed partial class PowerModeSwitch
                 else if (q.Limit <= q.Min) notes.Add($"gpu cap: the power limit is already the minimum ({Watts(q.Min)} W)");
                 else { gpuPrev = q.Limit; gpuCapW = q.Min; gpuSet = q.Min; }
             }
-            var ecoFlag = new PmWrite { Mode = "eco", UntilAt = untilAt, Source = a.Source, PrevPlan = prev, Battery = flag?.Battery, PrevGpuLimitW = gpuPrev, GpuCapW = gpuCapW };
-            written = WriteFlag(path, ecoFlag);
+            var ecoFlag = keep
+                ? new PmWrite
+                {
+                    Mode = "eco", Since = flag!.RawSince, Until = flag.Until, UntilAt = flag.UntilAt, Source = flag.Source, By = flag.By,
+                    Replaced = flag.Replaced, PrevPlan = prev, Battery = flag.Battery, PrevGpuLimitW = gpuPrev, GpuCapW = gpuCapW,
+                }
+                : new PmWrite { Mode = "eco", UntilAt = untilAt, Source = a.Source, PrevPlan = prev, Battery = flag?.Battery, PrevGpuLimitW = gpuPrev, GpuCapW = gpuCapW };
+            // A kept eco with nothing to repair is not rewritten. A debt goes into the flag before its setting changes.
+            written = keep && prev == flag!.PrevPlan && gpuSet is null ? flag : WriteFlag(path, ecoFlag);
             if (gpuSet is { } cap)
             {
                 var r = SetGpuLimit(cap, "cap");
@@ -583,14 +588,24 @@ internal sealed partial class PowerModeSwitch
             var r = PowerCfg("/setactive", SaverPlan);
             notes.Add(r.Code == 0 ? $"plan: Power saver on; returns to {ret}" : $"warn: the Power saver plan could not be set ({r.LastLine}): the power plan is unchanged");
         }
-        if (prev.Length > 0 && station) RemoveEndTask();   // no end time, so no end task; one a manual eco left behind goes
+        if (keep)
+        {
+            // A kept manual eco that now owes a plan gets the end task it could not register without one.
+            if (prev.Length > 0 && prev != keptPlan && written.UntilAt is { } keptUntil && !EndTaskPresent())
+            {
+                var r = RegisterEndTask(path, keptUntil, written.Until);
+                notes.Add(r.Code == 0 ? $"end task: {EndTask} registered"
+                    : $"warn: the end task {EndTask} could not be registered ({r.LastLine}): the power plan {ret} will not come back at the end time, only on power-mode.ps1 off");
+            }
+        }
+        else if (prev.Length > 0 && station) RemoveEndTask();   // no end time, so no end task; one a manual eco left behind goes
         else if (prev.Length > 0)
         {
             var r = written.UntilAt is { } untilAt ? RegisterEndTask(path, untilAt, written.Until) : new PmToolResult(-1, ["no end time"]);
             notes.Add(r.Code == 0 ? $"end task: {EndTask} registered"
                 : $"warn: the end task {EndTask} could not be registered ({r.LastLine}): the power plan {ret} will not come back at the end time, only on power-mode.ps1 off");
         }
-        SayAll(StatusLines(written));
+        SayAll(StatusLines(written, keep ? " (already on, kept)" : ""));
         SayAll(notes);
         return 0;
     }

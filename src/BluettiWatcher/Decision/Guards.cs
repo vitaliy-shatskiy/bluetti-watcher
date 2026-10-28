@@ -80,4 +80,7 @@ internal sealed class Backoff
     }
 
     public void Succeeded(string key) => _keys.Remove(key);
+
+    /// <summary>When a key that failed may run again; null = it may now (never failed or succeeded since).</summary>
+    public DateTimeOffset? NextAt(string key) => _keys.TryGetValue(key, out var k) ? k.NextAt : null;
 }
