@@ -63,5 +63,9 @@
     "from": "if (TryWait(mutex, wait)) {", "to": "if (TryWait(mutex, TimeSpan.Zero)) {" },
   { "name": "late answer: credited by its earliest same-size request alone, another register's request between them ignored",
     "file": "src/BluettiWatcher/Io/Ble/NativeBleReader.cs",
-    "from": "bool own = unanswered.Skip(from).All(", "to": "bool own = unanswered.Skip(from).Take(1).All(" }
+    "from": "bool own = unanswered.Skip(from).All(", "to": "bool own = unanswered.Skip(from).Take(1).All(" },
+  { "name": "grid voltage alert: a reading exactly at 253 V fires", "file": "src/BluettiWatcher/Decision/GridVoltageAlarm.cs",
+    "from": "> HighAt when !high", "to": ">= HighAt when !high" },
+  { "name": "grid input voltage: register 78 read instead of 77", "file": "src/BluettiWatcher/Io/Ble/V1Models.cs", "group": "grid-register",
+    "from": "new(\"GRID_INPUT_VOLTAGE\", 77,", "to": "new(\"GRID_INPUT_VOLTAGE\", 78," }
 ]

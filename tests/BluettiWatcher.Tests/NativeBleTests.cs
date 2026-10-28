@@ -263,7 +263,7 @@ public class V1ModelTests
     public void The_ac200pl_poll_is_two_batched_reads_of_the_reading_fields()
     {
         var plan = V1Models.Plan(V1Models.ReadingFields(V1Models.All["AC200PL"]));
-        Assert.Equal([(36, 8), (70, 5)], plan.Select(r => (r.Start, r.Quantity)));
+        Assert.Equal([(36, 8), (70, 11)], plan.Select(r => (r.Start, r.Quantity)));
     }
 
     [Fact]
@@ -271,7 +271,7 @@ public class V1ModelTests
     {
         var all = V1Models.All["AC200PL"];
         var plan = V1Models.Plan(all.Where(f => f.Address >= 36).ToList());
-        Assert.Equal([(36, 8), (70, 5), (86, 3)], plan.Select(r => (r.Start, r.Quantity)));
+        Assert.Equal([(36, 8), (70, 11), (86, 3)], plan.Select(r => (r.Start, r.Quantity)));
     }
 
     /// <summary>Registers 10..88 with the AC200PL values at their addresses; every other register is 0.</summary>
@@ -283,7 +283,7 @@ public class V1ModelTests
         for (int i = 0; i < 6; i++) Set(10 + i, (ushort)((type[2 * i] << 8) | type[2 * i + 1]));
         Set(17, 0x5678); Set(18, 0x1234); Set(19, 0x0001); Set(20, 0x0000);
         Set(36, 120); Set(37, 0); Set(38, 345); Set(39, 12); Set(43, 85);
-        Set(70, 1); Set(71, 2301); Set(74, 500);
+        Set(70, 1); Set(71, 2301); Set(74, 500); Set(77, 2246); Set(80, 500);
         Set(86, 523); Set(87, 118); Set(88, 225);
         return [.. regs.SelectMany(r => new[] { (byte)(r >> 8), (byte)r })];
     }
@@ -305,7 +305,9 @@ public class V1ModelTests
         Assert.Equal(52.3, v["INTERNAL_DC_INPUT_VOLTAGE"].Number);  // scale 1: raw / 10
         Assert.Equal(118, v["INTERNAL_DC_INPUT_POWER"].Number);     // scale 1, multiplier 10: raw
         Assert.Equal(2.25, v["INTERNAL_DC_INPUT_CURRENT"].Number);  // scale 2: raw / 100
-        Assert.Equal(13, v.Count);   // the library's 17 AC200PL fields less its 4 control fields (3007, 3008, 3060, 3061)
+        Assert.Equal(224.6, v["GRID_INPUT_VOLTAGE"].Number);        // scale 1: raw / 10 (not in the library)
+        Assert.Equal(50, v["GRID_INPUT_FREQUENCY"].Number);         // scale 1: raw / 10 (not in the library)
+        Assert.Equal(15, v.Count);   // the library's 17 AC200PL fields less its 4 control fields (3007, 3008, 3060, 3061), and the grid input
     }
 
     [Fact]
@@ -335,10 +337,10 @@ public class V1ModelTests
         Assert.Equal(expected, V1Models.Decode(V1Models.All["AC200PL"], 70, [0, (byte)raw])["AC_OUTPUT_MODE"].Text);
 
     [Fact]
-    public void The_reading_takes_its_eight_fields()
+    public void The_reading_takes_its_ten_fields()
     {
         var v = V1Models.Decode(V1Models.All["AC200PL"], 10, Ac200plBody());
-        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50), V1Models.ToReading(v));
+        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50, GridVolt: 224.6, GridHz: 50), V1Models.ToReading(v));
     }
 
     [Fact]
@@ -566,7 +568,7 @@ public class NativeBleReaderTests
 
     private static ushort[] Regs(int start, int quantity)
     {
-        var values = new Dictionary<int, ushort> { [36] = 120, [37] = 0, [38] = 345, [39] = 12, [43] = 85, [70] = 1, [71] = 2301, [74] = 500 };
+        var values = new Dictionary<int, ushort> { [36] = 120, [37] = 0, [38] = 345, [39] = 12, [43] = 85, [70] = 1, [71] = 2301, [74] = 500, [77] = 2246, [80] = 500 };
         return [.. Enumerable.Range(start, quantity).Select(a => values.GetValueOrDefault(a))];
     }
 
@@ -583,10 +585,10 @@ public class NativeBleReaderTests
         var conn = new ScriptedConnector(() => new BleOpen(link, null));
         var log = new List<string>();
         var r = await Reader(conn, log).ReadAsync(CancellationToken.None);
-        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50), r);
+        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50, GridVolt: 224.6, GridHz: 50), r);
         Assert.Equal(1, conn.Opens);
         Assert.Equal(0xAABBCCDDEEFFUL, conn.Address);
-        Assert.Equal(["0103002400080000", "0103004600050000"], link.Written.Select(w => Convert.ToHexString(w[..6]) + "0000"));
+        Assert.Equal(["0103002400080000", "01030046000B0000"], link.Written.Select(w => Convert.ToHexString(w[..6]) + "0000"));
         Assert.All(link.Written, w => Assert.Equal(0x03, w[1]));
         Assert.True(link.Disposed);
         Assert.Empty(log);
@@ -635,7 +637,7 @@ public class NativeBleReaderTests
         await using var link = new ScriptedLink(_ => []);
         var log = new List<string>();
         Assert.Null(await Reader(new ScriptedConnector(() => new BleOpen(link, null)), log).ReadAsync(CancellationToken.None));
-        Assert.Equal(3, link.Written.Count);   // 36+8, asked again over a new connection, then 70+5; its re-ask exceeds MaxReconnects
+        Assert.Equal(3, link.Written.Count);   // 36+8, asked again over a new connection, then 70+11; its re-ask exceeds MaxReconnects
         Assert.Contains("no complete answer", log[0], StringComparison.Ordinal);
         Assert.True(link.Disposed);
     }
@@ -646,8 +648,8 @@ public class NativeBleReaderTests
         await using var link = new ScriptedLink(r => r.Quantity > 1 ? [ModbusFrameTests.ExceptionAnswer(0x02)] : Mtu20(r));
         var log = new List<string>();
         var r = await Reader(new ScriptedConnector(() => new BleOpen(link, null)), log).ReadAsync(CancellationToken.None);
-        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50), r);
-        Assert.Equal(2 + 8, link.Written.Count);
+        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50, GridVolt: 224.6, GridHz: 50), r);
+        Assert.Equal(2 + 10, link.Written.Count);   // the batches, then 36, 37, 38, 39, 43, 70, 71, 74, 77, 80 one by one
     }
 
     [Fact]
@@ -692,7 +694,7 @@ public class NativeBleReaderTests
         var log = new List<string>();
         var r = await Reader(conn, log).ReadAsync(CancellationToken.None);
         // DC_INPUT_POWER (36) timed out and was asked again over the new connection: its own value, never another field's.
-        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50), r);
+        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50, GridVolt: 224.6, GridHz: 50), r);
         Assert.Equal(2, conn.Opens);
         Assert.True(first.Disposed);
         Assert.Equal(36, first.Written[^1].Start);
@@ -709,7 +711,7 @@ public class NativeBleReaderTests
         var conn = new ScriptedConnector(() => new BleOpen(links.Dequeue(), null));
         var r = await Reader(conn, []).ReadAsync(CancellationToken.None);
         // 36+8 is asked again over the new connection, which answers it whole.
-        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50), r);
+        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50, GridVolt: 224.6, GridHz: 50), r);
         Assert.Equal(2, conn.Opens);
         Assert.True(first.Disposed);
         Assert.Single(first.Written);
@@ -739,12 +741,12 @@ public class NativeBleReaderTests
         var conn = new ScriptedConnector(() => new BleOpen(links.Dequeue(), null));
         var log = new List<string>();
         var r = await Reader(conn, log).ReadAsync(CancellationToken.None);
-        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50), r);
+        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50, GridVolt: 224.6, GridHz: 50), r);
         Assert.Contains("native BLE: registers 36+8 asked again over a new connection (first: the link dropped", Assert.Single(log), StringComparison.Ordinal);
         Assert.Equal(2, conn.Opens);
         Assert.True(ended.Disposed);
         Assert.Equal([36], ended.Written.Select(w => w.Start));
-        Assert.Equal(["0103002400080000", "0103004600050000"], second.Written.Select(w => Convert.ToHexString(w[..6]) + "0000"));
+        Assert.Equal(["0103002400080000", "01030046000B0000"], second.Written.Select(w => Convert.ToHexString(w[..6]) + "0000"));
     }
 
     [Fact]
@@ -768,7 +770,7 @@ public class NativeBleReaderTests
         var conn = new ScriptedConnector(() => new BleOpen(links.Dequeue(), null));
         var log = new List<string>();
         var r = await Reader(conn, log).ReadAsync(CancellationToken.None);
-        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50), r);
+        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50, GridVolt: 224.6, GridHz: 50), r);
         Assert.Equal("native BLE: registers 36+8 asked again over a new connection (first: no complete answer to registers 36+8 within 0.3 s (0 of 21 bytes))", Assert.Single(log));
         Assert.Equal(2, conn.Opens);
         Assert.Single(first.Written);

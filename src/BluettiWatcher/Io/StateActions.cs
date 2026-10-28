@@ -16,6 +16,7 @@ internal sealed class StateActions(StationConfig config, ICommandLineRunner runn
     public const string Stop = "stop";
     public const string HibernateWarn = "hibernate-warn";
     public const string Normal = "normal";
+    public const string GridHigh = "grid-voltage-high";
     public const int OutputChars = 300;
 
     private readonly Lock _lock = new();
@@ -36,6 +37,15 @@ internal sealed class StateActions(StationConfig config, ICommandLineRunner runn
             if (_entered == state) return;
             _entered = state;
         }
+        Fire(state);
+    }
+
+    /// <summary>
+    /// An alert outside the battery states (<see cref="GridHigh"/>): its command starts now, the caller deciding when it
+    /// fires; the memory of the last state entered is left as it is.
+    /// </summary>
+    public void Fire(string state)
+    {
         if (config.Actions is not { } actions || !actions.TryGetValue(state, out var line) || string.IsNullOrWhiteSpace(line)) return;
         var run = Task.Run(() => RunAsync(state, line));
         lock (_lock)

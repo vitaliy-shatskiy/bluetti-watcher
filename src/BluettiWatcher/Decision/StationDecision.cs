@@ -21,9 +21,10 @@ internal enum StationAction { EcoOn, EmergencyOn, Stop, HibernateWarning, Hibern
 /// <summary>The user's choice on the page; it holds until the next mains change or Auto.</summary>
 internal enum ManualMode { Auto, Eco, Max }
 
-/// <summary>One answer of the station. A missing or unparseable field is null.</summary>
+/// <summary>One answer of the station. A missing or unparseable field is null. Grid* = the grid input (AC200PL over Bluetooth only).</summary>
 internal sealed record Reading(double? Soc, double? InAc, double? OutAc, string? Mode,
-    double? InDc = null, double? OutDc = null, double? Volt = null, double? Hz = null, string? Source = null);
+    double? InDc = null, double? OutDc = null, double? Volt = null, double? Hz = null, string? Source = null,
+    double? GridVolt = null, double? GridHz = null);
 
 /// <summary>The power-mode flag as the decision sees it; mode <c>unreadable</c> when it cannot be trusted.</summary>
 internal sealed record FlagView(string Mode, string Source, string By, DateTimeOffset? SinceAt)
