@@ -444,21 +444,34 @@ public sealed class ApiTests : IDisposable
     [Fact]
     public async Task Ten_idle_sockets_do_not_delay_a_real_request()
     {
+        // A server that served one connection at a time would hold the request behind an idle socket for its whole header
+        // timeout. The bound is the same request without idle sockets plus half that timeout: no absolute time.
+        var headTimeout = TimeSpan.FromSeconds(5);
         int port = FreePort();
         var api = new StationApi(new StationConfig { DataDir = _dir, Port = port }, _service, _store, TimeProvider.System, T0);
-        using var server = new MiniHttpServer(IPAddress.Loopback, port, api.HandleAsync, _ => { });
+        using var server = new MiniHttpServer(IPAddress.Loopback, port, api.HandleAsync, _ => { }, headTimeout);
         server.Start();
         using var cts = new CancellationTokenSource();
         var run = server.RunAsync(cts.Token);
-        var idle = Enumerable.Range(0, 10).Select(_ => { var c = new TcpClient(); c.Connect(IPAddress.Loopback, port); return c; }).ToList();
-        try
+        TimeSpan Health()
         {
-            await Task.Delay(200, TestContext.Current.CancellationToken);
             var sw = System.Diagnostics.Stopwatch.StartNew();
             string answer = Get(port, "/api/health");
             sw.Stop();
             Assert.StartsWith("HTTP/1.1 200", answer, StringComparison.Ordinal);
-            Assert.True(sw.Elapsed < TimeSpan.FromSeconds(1), $"took {sw.Elapsed}");
+            return sw.Elapsed;
+        }
+        Health();   // the first request pays the JIT
+        var baseline = Health();
+        var idle = Enumerable.Range(0, 10).Select(_ => { var c = new TcpClient(); c.Connect(IPAddress.Loopback, port); return c; }).ToList();
+        try
+        {
+            await Task.Delay(200, TestContext.Current.CancellationToken);
+            var bound = baseline + headTimeout / 2;
+            var loaded = Task.Run(Health, TestContext.Current.CancellationToken);
+            bool answered = await Task.WhenAny(loaded, Task.Delay(bound, TestContext.Current.CancellationToken)) == loaded;
+            Assert.True(answered, $"no answer within {bound} beside 10 idle sockets, {baseline} without them");
+            await loaded;
         }
         finally
         {
