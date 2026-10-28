@@ -19,6 +19,8 @@ The release notes on GitHub are this file's section for the tag.
   yet is recorded first, never Power saver), the GPU cap when none is recorded. The eco keeps its start, its end time
   and its end task.
 - The page no longer answers every request with an error after one failed read of the active power plan.
+- A refused Eco or Max stays under the buttons when After eco is pressed, until the next mode press. A failed After eco
+  press shows beside it.
 - `service.log` names every `warn:` and `note:` line of an eco, on or off call after its exit line, so a plan or GPU
   step that failed is no longer silent behind `exit 0`.
 

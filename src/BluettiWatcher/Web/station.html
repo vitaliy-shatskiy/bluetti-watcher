@@ -1195,11 +1195,12 @@ document.querySelectorAll('#langSeg button').forEach((b) => { b.onclick = () => 
   try { localStorage.setItem('station.lang', lang); } catch (e) { /* private window */ }
   applyStatic(); show();
 }; });
-// The last mode button's refusal or failure stays under the buttons across refreshes until the next press.
+// The last mode button's refusal or failure stays under the buttons across refreshes until the next mode press.
 var modeError = '';
 var modePress = null; // the mode a press is sending, until its reply
 var modeErrorCode = ''; // the code of the press's own refusal (max-held), '' for a failure without one
 var planPress = null; // the After-eco option a press is sending, until its reply
+var planError = ''; // the After-eco press's own failure, kept apart so it never wipes a mode refusal
 var settling = false; // a settle read is out
 const MODE_KEY = { auto: 'modeAuto', eco: 'modeEco', max: 'modeMax' };
 const ACTIVE_PLAN_KEY = { high: 'activeHigh', balanced: 'activeBalanced', saver: 'activeSaver' };
@@ -1210,25 +1211,26 @@ async function pressPlan(b, all) {
   if (planPress) return;
   planPress = b.dataset.p;
   all.forEach((x) => { x.disabled = true; x.setAttribute('aria-pressed', String(x === b)); if (x === b) x.setAttribute('data-pending', ''); else x.removeAttribute('data-pending'); });
-  modeError = ''; modeErrorCode = ''; writeSeq++;
+  planError = ''; writeSeq++;
   const what = `${t('afterEco')}: ${b.textContent}`;
   try {
     const r = await fetch('/api/return-plan', { method: 'POST', headers: { 'X-Station': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ returnPlan: b.dataset.p }) });
     const j = await r.json().catch(() => ({ message: `HTTP ${r.status}` }));
-    if (!r.ok) modeError = `${what}: ${j.message || r.status}`;
+    if (!r.ok) planError = `${what}: ${j.message || r.status}`;
   } catch (e) {
-    modeError = `${what}: ${t('serviceDown', { e: e.message })}`;
+    planError = `${what}: ${t('serviceDown', { e: e.message })}`;
   } finally {
     planPress = null; writeSeq++;
     all.forEach((x) => { x.disabled = false; x.removeAttribute('data-pending'); });
     paintMode(lastNow || {});   // a failure on the line at once, before any /api/now answer too
   }
   await load(true);
-}// A mode press: one at a time (a second click while one is out is ignored), the pressed option marked pending at once and
+}
+// A mode press: one at a time (a second click while one is out is ignored), the pressed option marked pending at once and
 // the group disabled until the reply; then the service's own state, followed until the choice is applied.
 async function pressMode(b, all) {
   if (modePress) return;
-  modePress = b.dataset.m; modeError = ''; modeErrorCode = ''; writeSeq++;
+  modePress = b.dataset.m; modeError = ''; modeErrorCode = ''; planError = ''; writeSeq++;
   all.forEach((x) => { x.disabled = true; });
   if (lastNow) paintMode(lastNow);
   let accepted = false;
@@ -1285,8 +1287,10 @@ function paintMode(D) {
     if (b.dataset.m === applying) b.setAttribute('data-pending', ''); else b.removeAttribute('data-pending');
   });
   // a coded refusal is worded again on each paint, so a language switch rewords it; an uncoded failure stays as said
-  const own = modeErrorCode ? noteText({ code: modeErrorCode, text: modeError, args: [] }) : modeError;
-  const l = modeLine(D, modePress, own, modeErrorCode), el = $('modeLine');
+  const mine = modeErrorCode ? noteText({ code: modeErrorCode, text: modeError, args: [] }) : modeError;
+  // an After-eco failure beside a mode refusal: both are said, and the line reads as a failure
+  const own = [mine, planError].filter(Boolean).join(' · ');
+  const l = modeLine(D, modePress, own, planError ? '' : modeErrorCode), el = $('modeLine');
   // what is in force is state, not a control: the plan goes to a chip, the line stays for a press applying, held back or failed
   el.textContent = l.text; el.className = `hint ${l.kind}`.trim(); el.hidden = !l.kind;
   const p = D.powerPlan || {}, plan = ACTIVE_PLAN_KEY[p.id] ? t(ACTIVE_PLAN_KEY[p.id]) : p.name, pc = $('planChip');

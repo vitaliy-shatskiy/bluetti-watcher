@@ -74,29 +74,122 @@ public sealed partial class PageI18nTests
         Assert.Equal(0, doc.RootElement.GetProperty("settles").GetInt32());
     }
 
+    /// <summary>
+    /// The whole page script, booted in Jint over a stub DOM (every element a recording node), with the page's own start
+    /// (the first load) cut off: the test sets the state and calls the page's functions itself.
+    /// </summary>
+    private static string WholePage(string page, string test)
+    {
+        string p = page.Replace("\r\n", "\n", StringComparison.Ordinal);
+        var m = Regex.Match(p, @"<script>\n(.*)</script></body></html>", RegexOptions.Singleline);
+        Assert.True(m.Success, "the page script is not where the test reads it");
+        const string boot = "load().then(() => { settle(); schedule(); });";
+        Assert.Contains(boot, m.Groups[1].Value, StringComparison.Ordinal);
+        return """
+            var __els = {};
+            function __node(name) {
+              const store = {};
+              return new Proxy(function () {}, {
+                get(t, k) {
+                  if (Object.prototype.hasOwnProperty.call(store, k)) return store[k];
+                  if (k === Symbol.toPrimitive) return () => '';
+                  if (k === 'querySelectorAll' || k === 'getElementsByTagName') return () => [];
+                  if (k === 'getBoundingClientRect') return () => ({ left: 0, top: 0, width: 1140, height: 300 });
+                  if (typeof k === 'symbol') return undefined;
+                  return (store[k] = __node(name + '.' + k));
+                },
+                set(t, k, v) { store[k] = v; return true; },
+                apply() { return __node(name + '()'); },
+              });
+            }
+            var document = { getElementById: (id) => __els[id] || (__els[id] = __node(id)), querySelectorAll: () => [], querySelector: (s) => __node(s),
+              createElement: (n) => __node(n), addEventListener() {}, title: '', hidden: false, documentElement: __node('html'), body: __node('body') };
+            var window = { addEventListener() {}, devicePixelRatio: 1 };
+            var navigator = { language: 'en-US', languages: ['en-US'] };
+            var localStorage = { getItem: () => null, setItem() {} };
+            function setTimeout() { return 0; } function clearTimeout() {} function setInterval() { return 0; } function clearInterval() {}
+            function fetch() { return new Promise(() => {}); }
+            function getComputedStyle(e) { return __node('style'); }
+            """ + "\n" + m.Groups[1].Value.Replace(boot, "", StringComparison.Ordinal) + "\n" + test;
+    }
+
     [Fact]
-    public void A_refused_mode_or_after_eco_press_writes_nothing_to_the_note_chip()
+    public void A_refused_mode_press_is_shown_under_the_buttons_and_never_on_the_note_chip()
+    {
+        // show() is the note chip's only writer: a state carrying a mode refusal (the service's and the press's own) leaves it empty
+        string test = """
+            const at = new Date(Date.now() - 30000).toISOString();
+            lastRows = [{ at, soc: 40, outAc: 100, outDc: 0, inAc: 0, inDc: 0, mains: false, volt: 230, hz: 50 }];
+            lastNow = { type: 'AC200PL', capacityWh: 2048, efficiency: 0.85, mode: '', modeCode: '', manual: 'auto', modePending: null,
+              modeError: 'Max held back: battery emergency', modeErrorNote: { code: 'max-held', text: 'Max held back: battery emergency', args: [] },
+              returnPlan: 'balanced', powerMode: 'normal', powerPlan: { id: 'balanced', name: 'Balanced' }, level: 'emergency', cut: true,
+              grid: 'off', silent: false, note: '', notes: [], dryRun: false, hoursLeft: 2, ratePerHour: 10, thresholds: { stopAt: 10, emergencyAt: 20 },
+              dtekWatcher: { state: 'off', notes: [] } };
+            modeError = 'Max held back: battery emergency'; modeErrorCode = 'max-held';
+            show();
+            const nc = $('noteChip'), line = $('modeLine');
+            console.log(JSON.stringify({ chipHidden: nc.hidden, chipText: nc.lastChild.textContent, line: line.textContent, lineHidden: line.hidden }));
+            """;
+        using var doc = JsonDocument.Parse(RunScript(WholePage(Page(), test)));
+        var r = doc.RootElement;
+        Assert.True(r.GetProperty("chipHidden").GetBoolean());   // the refusal has one place: the line under the buttons
+        Assert.Equal("", r.GetProperty("chipText").GetString());
+        Assert.False(r.GetProperty("lineHidden").GetBoolean());
+        Assert.Equal("Max held back: battery emergency", r.GetProperty("line").GetString());
+    }
+
+    [Fact]
+    public void A_mode_refusal_outlives_an_after_eco_press_and_goes_at_the_next_mode_press()
     {
         string page = Page();
         string script = $$"""
-            var modeError = '', modeErrorCode = '', modePress = null, planPress = null, writeSeq = 0, lastNow = null;
-            function fetch() { return Promise.resolve({ ok: false, status: 409, json: () => Promise.resolve({ code: 'eco-held', message: 'Eco held back' }) }); }
+            var modeError = '', modeErrorCode = '', modePress = null, planPress = null, planError = '', writeSeq = 0, lastNow = null;
+            let answers = [];
+            function fetch() { const a = answers.shift(); return Promise.resolve({ ok: a.status < 300, status: a.status, json: () => Promise.resolve(a.body) }); }
             function load() { return Promise.resolve(); } async function settle() {}
             function t(k) { return k; } function noteText(n) { return 'note:' + n.code; }
-            const els = {}; function $(id) { return els[id] || (els[id] = { hidden: true, lastChild: {} }); }
-            const painted = []; function paintMode(D) { painted.push(modeError); }
+            const lines = []; function paintMode() { lines.push([modeError, modeErrorCode, planError]); }
             const mk = (k, v) => ({ dataset: { [k]: v }, disabled: false, textContent: v, setAttribute() {}, removeAttribute() {} });
             eval({{Js(FunctionText(page, "pressMode"))}});
             eval({{Js(FunctionText(page, "pressPlan"))}});
-            pressMode(mk('m', 'eco'), [mk('m', 'eco')])
+            answers = [{ status: 409, body: { code: 'max-held', message: 'Max held back' } }, { status: 200, body: { ok: true } },
+              { status: 500, body: { message: 'disk full' } }, { status: 202, body: { ok: true } }];
+            pressMode(mk('m', 'max'), [mk('m', 'max')])
               .then(() => pressPlan(mk('p', 'high'), [mk('p', 'high')]))
-              .then(() => console.log(JSON.stringify({ chipShown: !!els.noteChip && !els.noteChip.hidden, chipText: els.noteChip ? els.noteChip.lastChild.textContent || '' : '', painted })));
+              .then(() => pressPlan(mk('p', 'balanced'), [mk('p', 'balanced')]))
+              .then(() => pressMode(mk('m', 'auto'), [mk('m', 'auto')]))
+              .then(() => console.log(JSON.stringify(lines)));
             """;
         using var doc = JsonDocument.Parse(RunScript(script));
-        var r = doc.RootElement;
-        Assert.False(r.GetProperty("chipShown").GetBoolean());   // the refusal has one place: the line under the buttons
-        Assert.Equal("", r.GetProperty("chipText").GetString());
-        Assert.Equal("[\"note:eco-held\",\"afterEco: high: Eco held back\"]", r.GetProperty("painted").GetRawText());   // painted with no /api/now answer yet
+        var got = doc.RootElement.EnumerateArray().Select(e => e.GetRawText()).ToArray();
+        // one paint per reply (no /api/now answer yet, so a mode press paints nothing at its start)
+        Assert.Equal(4, got.Length);
+        Assert.Equal("[\"note:max-held\",\"max-held\",\"\"]", got[0]);                       // 409 on Max
+        Assert.Equal("[\"note:max-held\",\"max-held\",\"\"]", got[1]);                       // After eco saved: the refusal stays
+        Assert.Equal("[\"note:max-held\",\"max-held\",\"afterEco: balanced: disk full\"]", got[2]);   // its own failure beside it
+        Assert.Equal("[\"\",\"\",\"\"]", got[3]);                                            // the next mode press clears both
+    }
+
+    [Fact]
+    public void The_line_shows_a_mode_refusal_and_an_after_eco_failure_together()
+    {
+        string page = Page();
+        string script = $$"""
+            var modeError = 'Max held back', modeErrorCode = 'max-held', modePress = null, planError = '';
+            function t(k, p) { return p ? k + JSON.stringify(p) : k; } function noteText(n) { return 'note:' + n.code; }
+            {{Const(page, "MODE_KEY")}}
+            {{Const(page, "ACTIVE_PLAN_KEY")}}
+            {{Const(page, "HELD_CODES")}}
+            const els = {}; function $(id) { return els[id] || (els[id] = { hidden: true, lastChild: {} }); }
+            var document = { querySelectorAll: () => [] };
+            eval({{Js(FunctionText(page, "modeLine"))}});
+            eval({{Js(FunctionText(page, "paintMode"))}});
+            const D = { modeError: '', modePending: null, powerMode: 'normal', powerPlan: { id: 'balanced', name: 'Balanced' } };
+            paintMode(D); const a = [els.modeLine.textContent, els.modeLine.className];
+            planError = 'afterEco: high: disk full'; paintMode(D); const b = [els.modeLine.textContent, els.modeLine.className];
+            console.log(JSON.stringify([a, b]));
+            """;
+        Assert.Equal("[[\"note:max-held\",\"hint warn\"],[\"note:max-held · afterEco: high: disk full\",\"hint bad\"]]", RunScript(script));
     }
 
     [Fact]
