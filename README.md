@@ -1,20 +1,38 @@
-**English** · [Українська](README.uk.md)
+<div align="center">
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero-dark.svg">
-  <img alt="Bluetti Watcher: keeps a Windows PC running through power cuts on a BLUETTI station and hibernates it before the battery is empty" src="docs/media/hero-light.svg" width="100%">
+  <img alt="Bluetti Watcher: mains lost, eco, 20 %, 10 %, 5 % hibernate, mains back" src="docs/media/hero-light.svg" width="100%">
 </picture>
 
-[![CI](https://github.com/vitaliy-shatskiy/bluetti-watcher/actions/workflows/ci.yml/badge.svg)](https://github.com/vitaliy-shatskiy/bluetti-watcher/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/vitaliy-shatskiy/bluetti-watcher)](https://github.com/vitaliy-shatskiy/bluetti-watcher/releases/latest)
-![Windows 10/11 x64](https://img.shields.io/badge/Windows%2010%2F11-x64-0078D6)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+<h3>Keeps your Windows PC running through power cuts on a BLUETTI station, and hibernates it before the battery is empty.</h3>
+
+<p>
+  <a href="https://github.com/vitaliy-shatskiy/bluetti-watcher/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/vitaliy-shatskiy/bluetti-watcher/ci.yml?branch=main&label=CI"></a>
+  <a href="https://github.com/vitaliy-shatskiy/bluetti-watcher/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/vitaliy-shatskiy/bluetti-watcher"></a>
+  <img alt="Windows 10/11 x64" src="https://img.shields.io/badge/Windows%2010%2F11-x64-0078D6">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-3DA639"></a>
+</p>
+
+<p><b>English</b> · <a href="README.uk.md">Українська</a></p>
+
+<p><a href="#quick-start">Install</a> · <a href="#how-it-works">How it works</a> · <a href="#features">Features</a> · <a href="#supported-hardware">Hardware</a> · <a href="#faq">FAQ</a> · <a href="docs/configuration.md">Configuration</a></p>
+
+</div>
+
+```powershell
+pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048 -Apply   # in the extracted release folder
+```
 
 <p align="center">
   <a href="docs/media/demo.mp4"><img src="docs/media/demo.gif" alt="The dashboard through a simulated power cut: mains lost, eco, the battery draining" width="820"></a>
   <br>
   <sub>The real dashboard (station.html) on demo readings through a simulated cut: about 80 minutes shown in 20 seconds. Recorded 28.10.2026 by <code>docs/media/record-demo.mjs</code>. <a href="docs/media/demo.mp4">MP4</a>.</sub>
 </p>
+
+> [!IMPORTANT]
+> An independent project, not affiliated with or endorsed by BLUETTI. Download it only from
+> [this repository's releases](https://github.com/vitaliy-shatskiy/bluetti-watcher/releases/latest).
 
 In Ukraine scheduled and emergency outages are routine, and a desktop on a power station dies quietly when the battery
 runs out. Bluetti Watcher reads the station once a minute over Bluetooth LE and, when mains is lost, switches the PC
@@ -41,6 +59,7 @@ flowchart LR
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/flow-dark.svg">
   <img alt="Battery level through one power cut and what happens at each default threshold" src="docs/media/flow-light.svg" width="100%">
 </picture>
+<p align="center"><sub>Illustration, default thresholds: mains lost, eco, 20 %, 10 %, 5 % hibernate, mains back.</sub></p>
 
 | When | What happens |
 |---|---|
@@ -95,6 +114,8 @@ pwsh -NoProfile -File "$env:LOCALAPPDATA\bluetti-watcher\power-mode\power-mode.p
 - Built-in Bluetooth reader, nothing else to install: all 29 supported models, IoT V1 (AC200L/M/PL, AC300, AC500, EB3A, EP500/P) and V2 (AC2A/P, AC50B, AC60/P, AC70/P, AC180/T/P, AP300, EL10, EL30V2, EL100V2, EP600, EP760, EP800, EP2000, Handsfree 1, PR30V2, PR100V2); a station that encrypts its Bluetooth link is read through the cloud fallback.
 - Eco, emergency, stop, hibernate warning and hibernation by mains state and battery level, all thresholds configurable.
 - Guards against bad readings: implausible jumps rejected, a longer confirmation after the station recalibrates.
+- AC200PL grid input voltage (register 77, [protocol notes](docs/bluetti-protocol.md)) stored with every reading: above
+  253 V one alert and your configured action, so an over-voltage on the input leaves a trace.
 - Dashboard in English and Ukrainian: battery ring coloured by your levels, time left, power cuts, battery stats for 30 days,
   charts from 1 hour to 30 days. Fits a phone, a Full HD and a 2K screen.
 - Battery time learned from your own station: a loss model (idle draw plus a share of the load) fitted to past cuts, the
@@ -106,13 +127,11 @@ pwsh -NoProfile -File "$env:LOCALAPPDATA\bluetti-watcher\power-mode\power-mode.p
 
 ## Screenshots
 
-| English | Українська |
+| Ukrainian, desktop | English, phone |
 |---|---|
-| <img src="docs/screenshot-full.png" alt="Dashboard in English" width="400"> | <img src="docs/screenshot-uk-full.png" alt="Dashboard in Ukrainian" width="400"> |
+| <img src="docs/media/screen-uk.png" alt="The dashboard in Ukrainian on a desktop, 45 minutes into a cut" width="560"> | <img src="docs/media/screen-mobile.png" alt="The dashboard in English on a phone" width="220"> |
 
-<p align="center"><img src="docs/screenshot-mobile.png" alt="Dashboard on a phone" width="260"></p>
-
-All were taken during a simulated cut (synthetic readings).
+<sub>Demo readings, 45 minutes into a simulated cut. Captured by <code>docs/media/capture-screens.mjs</code>.</sub>
 
 ## Supported hardware
 

@@ -1,5 +1,7 @@
 // Draws the README's SVGs in a light and a dark variant: node docs/media/draw.mjs
 // Palette = the dashboard's own (src/BluettiWatcher/Web/station.html :root). No dependencies.
+// The images carry no words to translate (the product name, numbers and icons only), so README.md and
+// README.uk.md show the same files. Sizes: viewBox 960 wide, shown at about 880 px, every text 14 px or more.
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,84 +16,105 @@ const THEMES = {
 };
 
 const STILL = '@media (prefers-reduced-motion: reduce) { * { animation: none !important; } }';
-const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 
-// Hero: name, one-line pitch, and a battery ring that drains through the default levels while the steps light up.
+// Icons, centred on (x, y), about 22 px tall.
+const bolt = (x, y, col) => `<path transform="translate(${x - 7} ${y - 11}) scale(.35)" d="M26 0 L4 36 H20 L14 64 L40 24 H24 Z" fill="${col}"/>`;
+const boltOff = (x, y, col, c) => bolt(x, y, col) +
+  `<line x1="${x - 11}" y1="${y - 11}" x2="${x + 11}" y2="${y + 11}" stroke="${c.card}" stroke-width="5" stroke-linecap="round"/>` +
+  `<line x1="${x - 11}" y1="${y - 11}" x2="${x + 11}" y2="${y + 11}" stroke="${c.bad}" stroke-width="2.5" stroke-linecap="round"/>`;
+const leaf = (x, y, col) => `<g transform="translate(${x - 11} ${y - 11})"><path d="M1 21 C1 7 9 1 22 1 C22 14 15 21 1 21 Z" fill="${col}"/>` +
+  `<path d="M3 19 L15 7" stroke="${'#00000055'}" stroke-width="1.6" stroke-linecap="round"/></g>`;
+const moon = (x, y, col) => `<path transform="translate(${x - 9} ${y - 10})" d="M8 0 A10 10 0 1 0 18 14 A8 8 0 0 1 8 0 Z" fill="${col}"/>`;
+
+// Hero: the name, the reaction steps as icons and levels, and a battery ring that drains while the steps light up.
 function hero(c) {
-  const R = 118, C = 2 * Math.PI * R, cx = 1010, cy = 200;
+  const W = 960, H = 300, R = 96, CIRC = 2 * Math.PI * R, cx = 800, cy = 150;
   const steps = [
-    ['Mains lost', c.warn], ['Eco', c.accent], ['20 % emergency', c.warn], ['10 % stop', c.bad], ['5 % hibernate', c.bad], ['Mains back', c.ok],
+    { w: 64, icon: (x, y) => boltOff(x, y, c.warn, c), col: c.warn },
+    { w: 64, icon: (x, y) => leaf(x, y, c.ok), col: c.ok },
+    { w: 86, label: '20 %', col: c.warn },
+    { w: 86, label: '10 %', col: c.bad },
+    { w: 108, label: '5 %', icon: (x, y) => moon(x, y, c.bad), col: c.bad },
+    { w: 64, icon: (x, y) => bolt(x, y, c.ok), col: c.ok },
   ];
-  const chips = steps.map(([label, col], i) => {
-    const x = 64 + (i % 3) * 196, y = 268 + Math.floor(i / 3) * 48;
-    return `<g class="step s${i}"><rect x="${x}" y="${y}" width="184" height="36" rx="18" fill="${c.raised}" stroke="${col}" stroke-opacity=".7"/>` +
-      `<circle cx="${x + 20}" cy="${y + 18}" r="5" fill="${col}"/>` +
-      `<text x="${x + 34}" y="${y + 23}" font-family='${SANS}' font-size="15" fill="${c.text}">${esc(label)}</text></g>`;
+  let x = 48;
+  const chips = steps.map((s, i) => {
+    const y = 176, h = 52, mid = x + s.w / 2;
+    let inner = '';
+    if (s.label && s.icon) inner = `<text x="${x + 20}" y="${y + 33}" font-family='${SANS}' font-size="21" font-weight="700" fill="${c.text}">${s.label}</text>` + s.icon(x + s.w - 26, y + h / 2);
+    else if (s.label) inner = `<text x="${mid}" y="${y + 33}" text-anchor="middle" font-family='${SANS}' font-size="21" font-weight="700" fill="${c.text}">${s.label}</text>`;
+    else inner = s.icon(mid, y + h / 2);
+    const g = `<g class="step s${i}"><rect x="${x}" y="${y}" width="${s.w}" height="${h}" rx="26" fill="${c.raised}" stroke="${s.col}" stroke-width="2"/>${inner}</g>`;
+    const arrow = i < steps.length - 1 ? `<path d="M${x + s.w + 5} ${y + 20} l6 6 l-6 6" fill="none" stroke="${c.dim}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>` : '';
+    x += s.w + 18;
+    return g + arrow;
   }).join('');
   const delays = steps.map((_, i) => `.s${i}{animation-delay:${(i * 1.6).toFixed(1)}s}`).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-label="Bluetti Watcher: keeps a Windows PC running through power cuts on a BLUETTI station">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Bluetti Watcher: mains lost, eco, 20 %, 10 %, 5 % hibernate, mains back">
 <style>
-.ring{stroke-dasharray:${C.toFixed(1)};animation:drain 10s ease-in-out infinite;transform:rotate(-90deg);transform-origin:${cx}px ${cy}px}
-@keyframes drain{0%{stroke-dashoffset:0;stroke:${c.ok}}45%{stroke:${c.warn}}75%{stroke-dashoffset:${(C * 0.95).toFixed(1)};stroke:${c.bad}}88%{stroke-dashoffset:${(C * 0.95).toFixed(1)};stroke:${c.bad}}100%{stroke-dashoffset:0;stroke:${c.ok}}}
-.step{opacity:.35;animation:lit 9.6s infinite}
-@keyframes lit{0%,4%{opacity:.35}8%,22%{opacity:1}30%,100%{opacity:.35}}
+.ring{stroke-dasharray:${CIRC.toFixed(1)};animation:drain 10s ease-in-out infinite;transform:rotate(-90deg);transform-origin:${cx}px ${cy}px}
+@keyframes drain{0%{stroke-dashoffset:0;stroke:${c.ok}}45%{stroke:${c.warn}}75%{stroke-dashoffset:${(CIRC * 0.95).toFixed(1)};stroke:${c.bad}}88%{stroke-dashoffset:${(CIRC * 0.95).toFixed(1)};stroke:${c.bad}}100%{stroke-dashoffset:0;stroke:${c.ok}}}
+.step{animation:lit 9.6s infinite backwards}
+@keyframes lit{0%,4%{opacity:.7}8%,22%{opacity:1}30%,100%{opacity:.7}}
 ${delays}
 .bolt{animation:blink 10s infinite}
 @keyframes blink{0%,10%{opacity:1}14%,86%{opacity:.15}92%,100%{opacity:1}}
 ${STILL}
 </style>
-<rect width="1280" height="400" rx="24" fill="${c.bg}"/>
-<rect x="16" y="16" width="1248" height="368" rx="20" fill="${c.card}" stroke="${c.line}"/>
-<text x="64" y="118" font-family='${SANS}' font-size="60" font-weight="700" fill="${c.text}">Bluetti Watcher</text>
-<text x="64" y="168" font-family='${SANS}' font-size="23" fill="${c.dim}">Keeps your Windows PC running through power cuts on a</text>
-<text x="64" y="200" font-family='${SANS}' font-size="23" fill="${c.dim}">BLUETTI station - and hibernates it before the battery is empty.</text>
-<text x="64" y="244" font-family='${MONO}' font-size="14" fill="${c.accent}">Bluetooth LE · read only · one NativeAOT exe · dashboard on 127.0.0.1</text>
+<rect width="${W}" height="${H}" rx="22" fill="${c.bg}"/>
+<rect x="12" y="12" width="${W - 24}" height="${H - 24}" rx="18" fill="${c.card}" stroke="${c.line}"/>
+<text x="46" y="122" font-family='${SANS}' font-size="58" font-weight="700" fill="${c.text}">Bluetti Watcher</text>
+<rect x="48" y="142" width="72" height="5" rx="2.5" fill="${c.accent}"/>
 ${chips}
-<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${c.raised}" stroke-width="22"/>
-<circle class="ring" cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${c.ok}" stroke-width="22" stroke-linecap="round"/>
-<g class="bolt" transform="translate(${cx - 22} ${cy - 62})"><path d="M26 0 L4 36 H20 L14 64 L40 24 H24 Z" fill="${c.warn}"/></g>
-<text x="${cx}" y="${cy + 38}" text-anchor="middle" font-family='${SANS}' font-size="18" fill="${c.dim}">battery</text>
-<text x="${cx}" y="${cy + 64}" text-anchor="middle" font-family='${MONO}' font-size="15" fill="${c.dim}">read every minute</text>
+<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${c.raised}" stroke-width="20"/>
+<circle class="ring" cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${c.ok}" stroke-width="20" stroke-linecap="round"/>
+<g class="bolt" transform="translate(${cx - 26} ${cy - 40}) scale(1.25)"><path d="M26 0 L4 36 H20 L14 64 L40 24 H24 Z" fill="${c.warn}"/></g>
 </svg>
 `;
 }
 
 // How it reacts: the battery level through one cut with the default thresholds (README "How it reacts").
 function flow(c) {
-  const W = 1280, H = 360, L = 90, Rr = 1220, T = 60, B = 290;
+  const W = 960, H = 330, L = 72, Rr = 930, T = 58, B = 290;
   const x = (f) => L + f * (Rr - L), y = (p) => B - (p / 100) * (B - T);
-  // Illustration of one cut: mains lost at 8 %, drain to 5 %, hibernated, mains back at 92 %.
-  const pts = [[0, 100], [0.08, 100], [0.18, 92], [0.45, 52], [0.62, 20], [0.7, 10], [0.73, 7], [0.76, 5], [0.92, 5], [1, 30]];
-  const path = pts.map(([f, p], i) => `${i ? 'L' : 'M'}${x(f).toFixed(1)} ${y(p).toFixed(1)}`).join(' ');
+  // Illustration of one cut: mains lost, drain to 5 %, hibernated, mains back and charging.
+  const pts = [[0, 100], [0.08, 100], [0.18, 90], [0.55, 20], [0.66, 10], [0.76, 5], [0.9, 5], [1, 32]];
+  const xy = pts.map(([f, p]) => [x(f), y(p)]);
+  const path = xy.map(([px, py], i) => `${i ? 'L' : 'M'}${px.toFixed(1)} ${py.toFixed(1)}`).join(' ');
+  const len = Math.ceil(xy.slice(1).reduce((s, [px, py], i) => s + Math.hypot(px - xy[i][0], py - xy[i][1]), 0)) + 2;
+  // Marker: dot on the curve, a dotted leader up (or down) to the label, a gap of 8 px on each end.
+  const mark = (f, p, col, label, icon, below, lift = 0) => {
+    const px = x(f), py = y(p);
+    const ly = below ? py + 52 : py - 46 - lift; // label centre line
+    const top = ly - 14, bottom = ly + 14;
+    const [y1, y2] = below ? [py + 8, top - 8] : [py - 8, bottom + 8];
+    let body;
+    if (label && icon) body = `<text x="${px - 6}" y="${ly + 7}" text-anchor="end" font-family='${SANS}' font-size="20" font-weight="700" fill="${c.text}">${label}</text>` + icon(px + 10, ly);
+    else if (label) body = `<text x="${px}" y="${ly + 7}" text-anchor="middle" font-family='${SANS}' font-size="20" font-weight="700" fill="${c.text}">${label}</text>`;
+    else body = `<g transform="translate(${px} ${ly}) scale(1.3) translate(${-px} ${-ly})">${icon(px, ly)}</g>`;
+    return `<line x1="${px}" y1="${y1}" x2="${px}" y2="${y2}" stroke="${col}" stroke-width="1.5" stroke-dasharray="3 4"/>` +
+      `<circle cx="${px}" cy="${py}" r="7" fill="${c.card}" stroke="${col}" stroke-width="3"/>` + body;
+  };
   const marks = [
-    [0.08, 100, 'Mains lost', '3 min: eco', c.warn],
-    [0.62, 20, '20 %', 'emergency', c.warn],
-    [0.7, 10, '10 %', 'stop', c.bad],
-    [0.76, 5, '5 %', 'hibernate', c.bad],
-    [0.92, 5, 'Mains back', '3 min: normal', c.ok],
-  ].map(([f, p, a, b, col], i) => {
-    const up = i % 2 === 0 ? -1 : 1;
-    const ty = p > 50 ? y(p) + 44 : y(p) - 52 + (up > 0 ? 0 : -20);
-    return `<line x1="${x(f)}" y1="${y(p)}" x2="${x(f)}" y2="${ty - 16}" stroke="${col}" stroke-dasharray="3 4"/>` +
-      `<circle cx="${x(f)}" cy="${y(p)}" r="7" fill="${c.card}" stroke="${col}" stroke-width="3"/>` +
-      `<text x="${x(f)}" y="${ty}" text-anchor="middle" font-family='${SANS}' font-size="17" font-weight="600" fill="${c.text}">${a}</text>` +
-      `<text x="${x(f)}" y="${ty + 20}" text-anchor="middle" font-family='${SANS}' font-size="14" fill="${c.dim}">${b}</text>`;
-  }).join('');
-  const grid = [0, 25, 50, 75, 100].map((p) => `<line x1="${L}" x2="${Rr}" y1="${y(p)}" y2="${y(p)}" stroke="${c.line}"/><text x="${L - 14}" y="${y(p) + 5}" text-anchor="end" font-family='${MONO}' font-size="13" fill="${c.dim}">${p}%</text>`).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Battery level through one power cut and what Bluetti Watcher does at each default threshold">
+    mark(0.08, 100, c.warn, null, (ix, iy) => boltOff(ix, iy, c.warn, c), true),
+    mark(0.13, 95, c.ok, null, (ix, iy) => leaf(ix, iy, c.ok), true, 0),
+    mark(0.55, 20, c.warn, '20 %', null, false),
+    mark(0.66, 10, c.bad, '10 %', null, false, 26),
+    mark(0.76, 5, c.bad, '5 %', (ix, iy) => moon(ix, iy, c.bad), false),
+    mark(0.9, 5, c.ok, null, (ix, iy) => bolt(ix, iy, c.ok), false),
+  ].join('');
+  const grid = [0, 25, 50, 75, 100].map((p) => `<line x1="${L}" x2="${Rr}" y1="${y(p)}" y2="${y(p)}" stroke="${c.line}"/><text x="${L - 12}" y="${y(p) + 5}" text-anchor="end" font-family='${MONO}' font-size="14" fill="${c.dim}">${p}%</text>`).join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Battery level through one power cut and the default thresholds: mains lost, eco, 20 %, 10 %, 5 % hibernate, mains back">
 <style>
-.curve{stroke-dasharray:1;stroke-dashoffset:1;animation:draw 3s ease-out forwards}
-@keyframes draw{to{stroke-dashoffset:0}}
+.curve{stroke-dasharray:${len};stroke-dashoffset:0;animation:draw 3s ease-out backwards}
+@keyframes draw{from{stroke-dashoffset:${len}}to{stroke-dashoffset:0}}
 ${STILL}
-@media (prefers-reduced-motion: reduce) { .curve { stroke-dashoffset: 0; } }
 </style>
 <rect width="${W}" height="${H}" rx="20" fill="${c.card}" stroke="${c.line}"/>
-<rect x="${x(0.08)}" y="${T - 20}" width="${x(0.92) - x(0.08)}" height="${B - T + 20}" fill="${c.warn}" fill-opacity=".08"/>
-<text x="${x(0.5)}" y="${T - 28}" text-anchor="middle" font-family='${SANS}' font-size="14" fill="${c.dim}">power cut</text>
+<rect x="${x(0.08)}" y="${T - 34}" width="${x(0.9) - x(0.08)}" height="${B - T + 34}" fill="${c.warn}" fill-opacity=".08"/>
 ${grid}
-<path class="curve" pathLength="1" d="${path}" fill="none" stroke="${c.accent}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+<path class="curve" d="${path}" fill="none" stroke="${c.accent}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
 ${marks}
-<text x="${Rr}" y="${H - 18}" text-anchor="end" font-family='${SANS}' font-size="13" fill="${c.dim}">illustration, default thresholds · each level acts after two agreeing readings</text>
 </svg>
 `;
 }
