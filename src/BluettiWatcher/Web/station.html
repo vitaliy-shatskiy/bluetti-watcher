@@ -52,6 +52,7 @@ h2{font-size:11px;line-height:16px;margin:0 0 12px;font-weight:600;color:var(--d
 .seg{display:flex;background:var(--frame);border:1px solid var(--edge);border-radius:8px;padding:3px;gap:2px}
 .seg button{all:unset;cursor:pointer;height:24px;padding:0 11px;border-radius:5px;font-size:12px;color:var(--dim);transition:background .15s,color .15s}
 .seg button:hover{color:var(--text)}
+.seg button:not([aria-pressed=true]):not(:disabled):hover{background:rgba(255,255,255,.06)}
 .seg button[aria-pressed=true]{background:var(--raised);color:var(--text)}
 .seg button:focus-visible{outline:1px solid var(--accent)}
 #modeSeg button{font-weight:600}
@@ -212,6 +213,8 @@ en: {
   planHigh: "High",
   planHighTip: "High performance plan",
   planPrevious: "As before",
+  planNotSaved: "After eco «{p}» was not saved",
+  planDown: "After eco «{p}» was not saved, the service is not answering ({e})",
   planPreviousTip: "The plan that was on before eco (High performance when unknown)",
   modeApplying: "Applying {m}…",
   modeNow: "Now: {m}",
@@ -471,6 +474,8 @@ uk: {
   planHigh: "Висока",
   planHighTip: "Схема «Висока продуктивність»",
   planPrevious: "Як було",
+  planNotSaved: "Після еко «{p}» не збережено",
+  planDown: "Після еко «{p}» не збережено, сервіс не відповідає ({e})",
   planPreviousTip: "Схема, що була до еко (висока продуктивність, коли невідомо)",
   modeApplying: "Застосовую: {m}…",
   modeNow: "Зараз: {m}",
@@ -1200,9 +1205,10 @@ var modeError = '';
 var modePress = null; // the mode a press is sending, until its reply
 var modeErrorCode = ''; // the code of the press's own refusal (max-held), '' for a failure without one
 var planPress = null; // the After-eco option a press is sending, until its reply
-var planError = ''; // the After-eco press's own failure, kept apart so it never wipes a mode refusal
+var planError = null; // the After-eco press's own failure as data ({ p, code, e }), worded on each paint; apart from a mode refusal
 var settling = false; // a settle read is out
 const MODE_KEY = { auto: 'modeAuto', eco: 'modeEco', max: 'modeMax' };
+const PLAN_KEY = { balanced: 'planBalanced', high: 'planHigh', previous: 'planPrevious' };
 const ACTIVE_PLAN_KEY = { high: 'activeHigh', balanced: 'activeBalanced', saver: 'activeSaver' };
 const HELD_CODES = ['max-held', 'eco-held', 'auto-held'];
 // The plan after eco: the pressed option shown at once, a second click while the POST is out ignored; a failure goes to the
@@ -1211,14 +1217,13 @@ async function pressPlan(b, all) {
   if (planPress) return;
   planPress = b.dataset.p;
   all.forEach((x) => { x.disabled = true; x.setAttribute('aria-pressed', String(x === b)); if (x === b) x.setAttribute('data-pending', ''); else x.removeAttribute('data-pending'); });
-  planError = ''; writeSeq++;
-  const what = `${t('afterEco')}: ${b.textContent}`;
+  planError = null; writeSeq++;
   try {
     const r = await fetch('/api/return-plan', { method: 'POST', headers: { 'X-Station': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ returnPlan: b.dataset.p }) });
-    const j = await r.json().catch(() => ({ message: `HTTP ${r.status}` }));
-    if (!r.ok) planError = `${what}: ${j.message || r.status}`;
+    // the service's reason is English and goes to service.log: the page says it in its own language
+    if (!r.ok) planError = { p: b.dataset.p, code: 'unsaved' };
   } catch (e) {
-    planError = `${what}: ${t('serviceDown', { e: e.message })}`;
+    planError = { p: b.dataset.p, code: 'down', e: e.message };
   } finally {
     planPress = null; writeSeq++;
     all.forEach((x) => { x.disabled = false; x.removeAttribute('data-pending'); });
@@ -1230,7 +1235,7 @@ async function pressPlan(b, all) {
 // the group disabled until the reply; then the service's own state, followed until the choice is applied.
 async function pressMode(b, all) {
   if (modePress) return;
-  modePress = b.dataset.m; modeError = ''; modeErrorCode = ''; planError = ''; writeSeq++;
+  modePress = b.dataset.m; modeError = ''; modeErrorCode = ''; planError = null; writeSeq++;
   all.forEach((x) => { x.disabled = true; });
   if (lastNow) paintMode(lastNow);
   let accepted = false;
@@ -1289,8 +1294,10 @@ function paintMode(D) {
   // a coded refusal is worded again on each paint, so a language switch rewords it; an uncoded failure stays as said
   const mine = modeErrorCode ? noteText({ code: modeErrorCode, text: modeError, args: [] }) : modeError;
   // an After-eco failure beside a mode refusal: both are said, and the line reads as a failure
-  const own = [mine, planError].filter(Boolean).join(' · ');
-  const l = modeLine(D, modePress, own, planError ? '' : modeErrorCode), el = $('modeLine');
+  const pick = planError && t(PLAN_KEY[planError.p] || 'afterEco');
+  const planFail = !planError ? '' : planError.code === 'down' ? t('planDown', { p: pick, e: planError.e }) : t('planNotSaved', { p: pick });
+  const own = [mine, planFail].filter(Boolean).join(' · ');
+  const l = modeLine(D, modePress, own, planFail ? '' : modeErrorCode), el = $('modeLine');
   // what is in force is state, not a control: the plan goes to a chip, the line stays for a press applying, held back or failed
   el.textContent = l.text; el.className = `hint ${l.kind}`.trim(); el.hidden = !l.kind;
   const p = D.powerPlan || {}, plan = ACTIVE_PLAN_KEY[p.id] ? t(ACTIVE_PLAN_KEY[p.id]) : p.name, pc = $('planChip');

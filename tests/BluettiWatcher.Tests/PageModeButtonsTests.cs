@@ -143,7 +143,7 @@ public sealed partial class PageI18nTests
     {
         string page = Page();
         string script = $$"""
-            var modeError = '', modeErrorCode = '', modePress = null, planPress = null, planError = '', writeSeq = 0, lastNow = null;
+            var modeError = '', modeErrorCode = '', modePress = null, planPress = null, planError = null, writeSeq = 0, lastNow = null;
             let answers = [];
             function fetch() { const a = answers.shift(); return Promise.resolve({ ok: a.status < 300, status: a.status, json: () => Promise.resolve(a.body) }); }
             function load() { return Promise.resolve(); } async function settle() {}
@@ -164,32 +164,42 @@ public sealed partial class PageI18nTests
         var got = doc.RootElement.EnumerateArray().Select(e => e.GetRawText()).ToArray();
         // one paint per reply (no /api/now answer yet, so a mode press paints nothing at its start)
         Assert.Equal(4, got.Length);
-        Assert.Equal("[\"note:max-held\",\"max-held\",\"\"]", got[0]);                       // 409 on Max
-        Assert.Equal("[\"note:max-held\",\"max-held\",\"\"]", got[1]);                       // After eco saved: the refusal stays
-        Assert.Equal("[\"note:max-held\",\"max-held\",\"afterEco: balanced: disk full\"]", got[2]);   // its own failure beside it
-        Assert.Equal("[\"\",\"\",\"\"]", got[3]);                                            // the next mode press clears both
+        Assert.Equal("[\"note:max-held\",\"max-held\",null]", got[0]);                       // 409 on Max
+        Assert.Equal("[\"note:max-held\",\"max-held\",null]", got[1]);                      // After eco saved: the refusal stays
+        Assert.Equal("[\"note:max-held\",\"max-held\",{\"p\":\"balanced\",\"code\":\"unsaved\"}]", got[2]);   // its own failure beside it, as data
+        Assert.Equal("[\"\",\"\",null]", got[3]);                                            // the next mode press clears both
     }
 
     [Fact]
-    public void The_line_shows_a_mode_refusal_and_an_after_eco_failure_together()
+    public void The_line_shows_a_mode_refusal_and_an_after_eco_failure_together_in_the_language_of_each_paint()
     {
         string page = Page();
         string script = $$"""
-            var modeError = 'Max held back', modeErrorCode = 'max-held', modePress = null, planError = '';
-            function t(k, p) { return p ? k + JSON.stringify(p) : k; } function noteText(n) { return 'note:' + n.code; }
+            var modeError = 'Max held back', modeErrorCode = 'max-held', modePress = null, planError = null, lang = 'en';
+            function t(k, p) { return lang + ':' + k + (p ? JSON.stringify(p) : ''); } function noteText(n) { return t('n_' + n.code); }
             {{Const(page, "MODE_KEY")}}
             {{Const(page, "ACTIVE_PLAN_KEY")}}
             {{Const(page, "HELD_CODES")}}
+            {{Const(page, "PLAN_KEY")}}
             const els = {}; function $(id) { return els[id] || (els[id] = { hidden: true, lastChild: {} }); }
             var document = { querySelectorAll: () => [] };
             eval({{Js(FunctionText(page, "modeLine"))}});
             eval({{Js(FunctionText(page, "paintMode"))}});
             const D = { modeError: '', modePending: null, powerMode: 'normal', powerPlan: { id: 'balanced', name: 'Balanced' } };
             paintMode(D); const a = [els.modeLine.textContent, els.modeLine.className];
-            planError = 'afterEco: high: disk full'; paintMode(D); const b = [els.modeLine.textContent, els.modeLine.className];
-            console.log(JSON.stringify([a, b]));
+            planError = { p: 'high', code: 'unsaved' }; paintMode(D); const b = [els.modeLine.textContent, els.modeLine.className];
+            lang = 'uk'; paintMode(D); const c = els.modeLine.textContent;
+            planError = { p: 'previous', code: 'down', e: 'Failed to fetch' }; paintMode(D); const d = els.modeLine.textContent;
+            console.log(JSON.stringify([a, b, c, d]));
             """;
-        Assert.Equal("[[\"note:max-held\",\"hint warn\"],[\"note:max-held · afterEco: high: disk full\",\"hint bad\"]]", RunScript(script));
+        using var doc = JsonDocument.Parse(RunScript(script));
+        var r = doc.RootElement;
+        Assert.Equal("en:n_max-held", r[0][0].GetString());
+        Assert.Equal("hint warn", r[0][1].GetString());
+        Assert.Equal("en:n_max-held · en:planNotSaved{\"p\":\"en:planHigh\"}", r[1][0].GetString());   // one phrase, no server text
+        Assert.Equal("hint bad", r[1][1].GetString());
+        Assert.Equal("uk:n_max-held · uk:planNotSaved{\"p\":\"uk:planHigh\"}", r[2].GetString());   // a language switch rewords both
+        Assert.Equal("uk:n_max-held · uk:planDown{\"p\":\"uk:planPrevious\",\"e\":\"Failed to fetch\"}", r[3].GetString());
     }
 
     [Fact]
@@ -230,6 +240,13 @@ public sealed partial class PageI18nTests
     }
 
     [Fact]
+    public void A_segment_button_not_pressed_lights_up_under_the_pointer()
+    {
+        // the mode, After eco and range groups share .seg: hover gives a background, the pressed and a disabled button keep theirs
+        Assert.Matches(@"\.seg button:not\(\[aria-pressed=true\]\):not\(:disabled\):hover\{background:[^;}]+", Page());
+    }
+
+    [Fact]
     public void An_answer_older_than_the_shown_one_or_sent_before_a_write_is_dropped()
     {
         string page = Page();
@@ -248,7 +265,7 @@ public sealed partial class PageI18nTests
     public void Every_mode_line_key_exists_in_both_languages()
     {
         var (en, uk) = Dictionaries(Page().Replace("\r\n", "\n", StringComparison.Ordinal));
-        string[] keys = ["modeApplying", "modeNow", "modeNowPlan", "pmNormal", "pmEco", "pmEmergency", "pmUnknown", "activeHigh", "activeBalanced", "activeSaver"];
+        string[] keys = ["modeApplying", "modeNow", "modeNowPlan", "planNotSaved", "planDown", "pmNormal", "pmEco", "pmEmergency", "pmUnknown", "activeHigh", "activeBalanced", "activeSaver"];
         Assert.DoesNotContain(keys, k => !en.Contains(k) || !uk.Contains(k));
     }
     [Fact]
