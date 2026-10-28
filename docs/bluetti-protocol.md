@@ -5,8 +5,10 @@ the station already reports. The watcher stays read only (see [design.md](design
 (2000 and up) exist, the watcher never writes.
 
 Source: the app `net.poweroak.bluetticloud`, `base.apk` sha256
-`2d4df0c9146cb93cd8f0cd4eb491300f113260fc685cb9b4bea472e3258a6a59`, decompiled with JADX. Static analysis only: no
-device, no network, nothing executed. Each fact names its evidence:
+`2d4df0c9146cb93cd8f0cd4eb491300f113260fc685cb9b4bea472e3258a6a59`, decompiled with JADX. The app-derived sections (1 and
+up) are static analysis only: no device, no network, nothing executed. The "Verified on a live AC200PL" section comes
+from one read-only Modbus read and a Bluetooth HCI capture of the official app. Each app-derived fact names its
+evidence:
 
 - `[code: Class.method]` read in the decompiled method.
 - `[inferred]` derived from code, not read verbatim. The reasoning is given.
@@ -35,6 +37,10 @@ Values from the app's 70+87 answer, station in bypass. The app showed 224.0 V gr
 | 73, 76, 79 | 263 each | W | powers, meaning per register not confirmed | low |
 | 105-120 | 3447-3561 | mV | 16 cell voltages | high |
 | 121-123 | 71-74 | not confirmed | likely temperatures | low |
+
+Register 77 versus the app: the capture spans about a minute and register 77 read 224.3 to 224.6 V across it. The app's
+224.0 V was read by eye a few minutes later, so a gap of under 1 V is expected. The /10 scale is what makes the value a
+plausible mains voltage (scale 1 would give 2246 V).
 
 ## 1. Transport
 
