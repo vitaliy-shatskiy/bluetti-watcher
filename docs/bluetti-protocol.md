@@ -15,6 +15,27 @@ Short class names: `ProtocolParserV2` and `ConnConstantsV2` live in `net.poweroa
 `ProtocolParse`, `DeviceConnUtil` and `ProtocolVer` in `net.poweroak.bluetticloud.ui.connect` (and its `tools`),
 `BleConfig`, `BluettiBleManager` and `CRC16` in `net.poweroak.lib_ble`.
 
+## Verified on a live AC200PL
+
+Read on a live station. These facts override the app-derived claims below.
+
+- A V2 read of 1300 (count 16) got Modbus exception 0x02 (illegal data address). This station does not serve the V2
+  grid page.
+- A Bluetooth HCI capture of the official app talking to this station: the app reads **V1 only**, in three pages,
+  start 10 count 59, start 70 count 87 and start 3000 count 91. It also writes a settings range.
+
+Values from the app's 70+87 answer, station in bypass. The app showed 224.0 V grid voltage at the time.
+
+| Reg | Value seen | Scale | Meaning | Confidence |
+|---|---|---|---|---|
+| 71 | 223 | V | AC output voltage | high |
+| 74 | 500 | /10 Hz | AC output frequency (50.0 Hz) | high |
+| **77** | 2246 | /10 V | **grid input voltage** (224.6 V) | high (matches the app) |
+| **80** | 500 | /10 Hz | **grid input frequency** (50.0 Hz) | high |
+| 73, 76, 79 | 263 each | W | powers, meaning per register not confirmed | low |
+| 105-120 | 3447-3561 | mV | 16 cell voltages | high |
+| 121-123 | 71-74 | not confirmed | likely temperatures | low |
+
 ## 1. Transport
 
 ### 1.1 GATT [code: BleConfig static fields]
@@ -78,8 +99,9 @@ answer: unit | 0x03 | byteCount = 2 x count | data | CRC
 - AC200L and AC200PL take the AC240 configuration: `getDeviceFunc$default(this, "AC240", ...)`. AC240 is
   `DeviceCategory.PORTABLE_POWER` with `ProtocolVer.VER_1022` [code: DeviceConnUtil.getDeviceFunc]. Single phase for
   PV, grid and AC output [inferred: first argument 1 of `PVPhaseParams`, `GridPhaseParams`, `ACPhaseParams`].
-- The watcher reads the AC200PL with the **V1** map of bluetti-bt-lib (registers 36 to 88, `V1Models.cs`). Whether a
-  given AC200PL firmware answers the V2 pages below is not known (section 5).
+- The watcher reads the AC200PL with the **V1** map of bluetti-bt-lib (registers 36 to 88, `V1Models.cs`).
+- Live: the AC200PL does not serve the V2 pages, and the app itself reads it over V1 (section "Verified on a live
+  AC200PL"). Its grid voltage is V1 register 77, not 1314. The V2 pages below stay valid for V2 models.
 - `ProtocolVer` values: `VER_2000` 2000, `VER_2001` 2001, `VER_2005` 2005, `VER_2022` 2022 [code: ProtocolVer.<clinit>
   smali]. `VER_1022` is taken as 1022 [inferred: same naming]. Gates such as `protocolVer >= 2001` then depend on the
   version the station reports, not on this default.
@@ -175,6 +197,9 @@ Length 31 registers (43 at version 2022+) [code: getReadRegLen].
 
 32-bit phase powers at 1331 and 1337 are used only for `HOME_POWER` at version 2022+ [code: same, condition `z`].
 
+Live: an AC200PL answers page 1300 with exception 0x02. Its grid voltage is V1 register 77 (/10 V), frequency 80
+(/10 Hz).
+
 ### 2.7 Page 1400 - loads [code: ProtocolParserV2.parseInvLoadInfo]
 
 Length 48 to 92 registers [code: getReadRegLen].
@@ -223,10 +248,12 @@ Length 30 registers (36 at version 2023+) [code: getReadRegLen].
 
 ## 4. Read-only feature ideas, by value
 
-Each needs the station to answer the V2 page (section 5, first unknown). All are reads under register 2000.
+Ideas 1, 10 and 11 work on the AC200PL today (V1, live-verified). The others need a V2 station. All are reads under
+register 2000.
 
-1. **Mains present at 0 W.** Grid voltage 1314 and frequency 1300 show mains even when a full battery draws ~0 W of
-   AC input, which today leaves the mains state unknown. Also a log of brown-outs and unstable frequency before a cut.
+1. **Mains present at 0 W.** Grid voltage and frequency show mains even when a full battery draws ~0 W of AC input,
+   which today leaves the mains state unknown. Also a log of brown-outs and unstable frequency before a cut. AC200PL:
+   V1 77 (/10 V) and 80 (/10 Hz). V2 models: 1314 and 1300.
 2. **Station warnings and faults.** Decode 126-129 and 133-138 into codes, show them on the page, store an event when
    one appears or clears, put them in `/api/health`.
 3. **Battery current and voltage.** 100 and 101 give the real charge or discharge current, a better input for the
@@ -240,11 +267,13 @@ Each needs the station to answer the V2 page (section 5, first unknown). All are
 8. **PV per input.** 1210 + 8n: power, voltage, current per solar input.
 9. **Model check.** 110-119 are in the map already: compare the station's own model with `type` at start and log a
    mismatch.
+10. **Cell voltages.** V1 105-120: 16 cells in mV. Spread between the lowest and highest cell flags pack imbalance.
+11. **Temperatures (to confirm).** V1 121-123, likely temperatures, unit not confirmed.
 
 ## 5. Unknowns
 
-- Whether an AC200PL with current firmware answers the V2 pages (100, 1300...) or only the V1 registers the watcher
-  reads. A one-off read of 100 (count 56) and 1300 (count 31) on the station settles it.
+- Settled: the AC200PL does not serve the V2 pages, the app reads it over V1 (section "Verified on a live AC200PL").
+- The meaning of V1 73, 76, 79 and the unit of 121-123.
 - The protocol version the station reports, and so which version gates apply. The register that carries it was not
   traced (page 1, 16 registers, is a candidate [inferred from getReadRegLen]).
 - Which code schedules the periodic reads for a `PORTABLE_POWER` station, and its interval.
