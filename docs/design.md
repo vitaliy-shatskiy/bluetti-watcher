@@ -31,7 +31,9 @@ read-only features to come, are mapped in [bluetti-protocol.md](bluetti-protocol
    AC180, AC180T, AC180P, AP300, EL10, EL30V2, EL100V2, EP600, EP760, EP800, EP2000, Handsfree 1, PR30V2, PR100V2):
    connect, read, disconnect per poll, so the phone
    app can connect between reads; the reading fields in batched function-0x03 reads (notifications on ff01, requests
-   on ff02), each answer reassembled to its full length and CRC-checked. An answer that timed out or came back invalid
+   on ff02), each answer reassembled to its full length and CRC-checked. The AC200PL's read of 70-80 also carries the
+   grid input: register 77 voltage and 80 frequency, both / 10 (as the official app reads them, not in the library);
+   no other request follows the reading. An answer that timed out or came back invalid
    ends its connection and the next request goes over a new one; as a reconnect may reuse the radio link, an answer
    that an earlier unanswered request (of this poll or an earlier one) could have sent (same byte count, so any
    one-register read) is set aside and the registers are asked again, so a late answer never fills another request; the
@@ -387,6 +389,9 @@ changes a decision. Use it to stop a heavy program when eco starts, or to notify
 - An action fires once per entry into a state per power cut. The memory resets when mains returns, so the next cut
   fires again; `normal` fires once per lift.
 - The page's Max and Auto-lift fire `normal`; the page's Eco fires `eco`.
+- `grid-voltage-high` is an alert, not a state: it fires when the grid input voltage (AC200PL over Bluetooth) goes above
+  253 V (230 V + 10 %), with an event of the same kind, and again only after the voltage was under 250 V. The
+  memory is saved with the state, so a restart does not repeat it.
 - A dry run logs the actions (and their environment) instead of running them.
 
 ## 10. Page and times

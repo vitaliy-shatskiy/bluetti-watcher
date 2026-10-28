@@ -10,7 +10,15 @@ namespace BluettiWatcher.Tests;
 public sealed class InstanceLockTests : IDisposable
 {
     // The lock's name comes from it; only RunWatcher binds it (so the watcher stops at the port).
-    private readonly int _port = System.Security.Cryptography.RandomNumberGenerator.GetInt32(40000, 60000);
+    // OS-assigned: a random port can fall in a range Windows reserves (Hyper-V, WinNAT), where Bind is refused.
+    private readonly int _port = FreePort();
+
+    private static int FreePort()
+    {
+        using var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        probe.Start();
+        return ((System.Net.IPEndPoint)probe.LocalEndpoint).Port;
+    }
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "bluetti-watcher-test-" + Guid.NewGuid().ToString("N"));
     private readonly List<string> _log = [];
 

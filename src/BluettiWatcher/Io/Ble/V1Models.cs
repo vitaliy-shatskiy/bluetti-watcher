@@ -87,6 +87,16 @@ internal static class V1Models
         new("INTERNAL_DC_INPUT_CURRENT", 88, FieldKind.Decimal, Scale: 2),
     ];
 
+    /// <summary>
+    /// The AC200PL's grid input, as the official app reads it in its 70+87 read (not in the library): 77 voltage and 80
+    /// frequency, both / 10. Not the library's AC_INPUT_* (80 there is / 100): other names, so no other model reads them.
+    /// </summary>
+    private static readonly V1Field[] Ac200plGrid =
+    [
+        new("GRID_INPUT_VOLTAGE", 77, FieldKind.Decimal, Scale: 1),
+        new("GRID_INPUT_FREQUENCY", 80, FieldKind.Decimal, Scale: 1),
+    ];
+
     /// <summary>The AC input and PV fields of the AC300, AC500, EP500 and EP500P.</summary>
     private static readonly V1Field[] AcInPv =
     [
@@ -112,7 +122,7 @@ internal static class V1Models
     {
         ["AC200L"] = Model([.. Versions, .. Ac200]),
         ["AC200M"] = Model(Ac200),
-        ["AC200PL"] = Model(Ac200),
+        ["AC200PL"] = Model([.. Ac200, .. Ac200plGrid]),
         ["AC300"] = Model([.. Versions, new("POWER_GENERATION", 43, FieldKind.Decimal, Scale: 1), new("AC_OUTPUT_MODE", 70, FieldKind.OutputMode),
             new("INTERNAL_AC_VOLTAGE", 71, FieldKind.Decimal, Scale: 1), new("INTERNAL_AC_FREQUENCY", 74, FieldKind.Decimal, Scale: 2), .. AcInPv]),
         ["AC500"] = Model([new("AC_OUTPUT_MODE", 70, FieldKind.OutputMode), new("INTERNAL_AC_VOLTAGE", 71, FieldKind.Decimal, Scale: 1, Multiplier: 10),
@@ -128,7 +138,8 @@ internal static class V1Models
 
     /// <summary>The fields a <see cref="Reading"/> carries.</summary>
     private static readonly string[] ReadingNames =
-        ["BATTERY_SOC", "AC_INPUT_POWER", "AC_OUTPUT_POWER", "AC_OUTPUT_MODE", "DC_INPUT_POWER", "DC_OUTPUT_POWER", "INTERNAL_AC_VOLTAGE", "INTERNAL_AC_FREQUENCY"];
+        ["BATTERY_SOC", "AC_INPUT_POWER", "AC_OUTPUT_POWER", "AC_OUTPUT_MODE", "DC_INPUT_POWER", "DC_OUTPUT_POWER", "INTERNAL_AC_VOLTAGE", "INTERNAL_AC_FREQUENCY",
+            "GRID_INPUT_VOLTAGE", "GRID_INPUT_FREQUENCY"];
 
     /// <summary>The largest run of unused registers a batched read spans rather than starting a new request.</summary>
     private const int MaxGap = 4;
@@ -224,7 +235,8 @@ internal static class V1Models
             ? inAc > 0 ? DerivedMains : inAc == 0 && outAc > 0 ? "INVERTER_OUTPUT" : null
             : v.TryGetValue("AC_OUTPUT_MODE", out var m) ? m.Text : null;
         return new Reading(Num("BATTERY_SOC"), inAc, outAc, mode,
-            Num("DC_INPUT_POWER"), Num("DC_OUTPUT_POWER"), Num("INTERNAL_AC_VOLTAGE"), Num("INTERNAL_AC_FREQUENCY"));
+            Num("DC_INPUT_POWER"), Num("DC_OUTPUT_POWER"), Num("INTERNAL_AC_VOLTAGE"), Num("INTERNAL_AC_FREQUENCY"),
+            GridVolt: Num("GRID_INPUT_VOLTAGE"), GridHz: Num("GRID_INPUT_FREQUENCY"));
     }
 }
 

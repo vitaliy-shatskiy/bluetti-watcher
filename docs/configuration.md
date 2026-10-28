@@ -169,7 +169,7 @@ config.json still loads, and `service.log` names them once at start.
 | `pwshPath` | string | `pwsh.exe` | PowerShell 7 used to run the wake-task commands and a configured `powerMode.script`. |
 | `powerModeTimeoutSec` | int | 60 | 1-600: time limit of each power-mode command and each wake-task command. A command over it is killed and counts as failed. |
 | `actionTimeoutSec` | int | 30 | 1-600: time limit of each action (only actions). |
-| `actions` | object | none | Commands run when the service enters a state: keys `eco`, `emergency`, `stop`, `hibernate-warn`, `normal`. See below. |
+| `actions` | object | none | Commands run when the service enters a state: keys `eco`, `emergency`, `stop`, `hibernate-warn`, `normal`; and the alert `grid-voltage-high` (grid input above 253 V, again after it was under 250 V). See below. |
 | `dryRun` | bool | false | Log every power-mode command, action and hibernation instead of running it (also `--dry-run`). |
 
 An action is an executable followed by its arguments, started directly with no shell: a pipe, a redirect or a shell

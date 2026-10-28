@@ -179,7 +179,7 @@ public sealed class EncryptedStationHealthTests : IDisposable
 
 public class NativeBleLateAnswerTests
 {
-    private static readonly Dictionary<int, ushort> Values = new() { [36] = 120, [37] = 0, [38] = 345, [39] = 12, [43] = 85, [70] = 1, [71] = 2301, [74] = 500 };
+    private static readonly Dictionary<int, ushort> Values = new() { [36] = 120, [37] = 0, [38] = 345, [39] = 12, [43] = 85, [70] = 1, [71] = 2301, [74] = 500, [77] = 2246, [80] = 500 };
 
     private static byte[] Answer(int start, int quantity) =>
         ModbusFrameTests.Answer([.. Enumerable.Range(start, quantity).Select(a => Values.GetValueOrDefault(a))]);
@@ -210,7 +210,7 @@ public class NativeBleLateAnswerTests
         var r = await Reader(conn, log).ReadAsync(TestContext.Current.CancellationToken);
         Assert.NotNull(r);
         Assert.Equal(85, r.Soc);   // never 12, register 39's value
-        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, null, 2301, 50), r);
+        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, null, 2301, 50, GridVolt: 224.6, GridHz: 50), r);
         Assert.Equal(3, conn.Opens);   // 39 is asked again over a second connection and times out again
         Assert.True(links[0].Disposed);
     }
@@ -235,7 +235,7 @@ public class NativeBleLateAnswerTests
             return Task.FromResult(new BleOpen(l, null));
         });
         var r = await Reader(conn, []).ReadAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50), r);   // 39 asked again over the new connection
+        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 2301, 50, GridVolt: 224.6, GridHz: 50), r);   // 39 asked again over the new connection
         // Settled before 39 was asked again and 43 asked: neither answer was set aside and asked again.
         Assert.Equal(2, links.SelectMany(l => l.Written).Count(w => w.Start == 39));
         Assert.Single(links.SelectMany(l => l.Written), w => w.Start == 43);
@@ -258,7 +258,7 @@ public class NativeBleLateAnswerTests
         var links = new List<SharedRadioLink>();
         var conn = new TaskConnector(_ => { var l = new SharedRadioLink(radio, Script); links.Add(l); return Task.FromResult(new BleOpen(l, null)); });
         var r = await Reader(conn, []).ReadAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, null, 2301, 50), r);
+        Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, null, 2301, 50, GridVolt: 224.6, GridHz: 50), r);
         // 39 is asked twice (once more over a new connection), so 43's first two answers may be 39's late ones: set aside.
         Assert.Equal(3, links.SelectMany(l => l.Written).Count(w => w.Start == 43));
     }
@@ -272,20 +272,20 @@ public class NativeBleLateAnswerTests
         void Script(ReadRequest r, ChannelWriter<byte[]> w)
         {
             if (r.Start == 36 && r.Quantity > 1) return;   // the batch times out
-            if (r.Start == 70 && !lateSent) { lateSent = true; w.TryWrite(Answer(36, 8)); }   // its late answer, after 70+5 is written
+            if (r.Start == 70 && !lateSent) { lateSent = true; w.TryWrite(Answer(36, 8)); }   // its late answer, after 70+11 is written
             w.TryWrite(Answer(r.Start, r.Quantity));
         }
         var links = new List<SharedRadioLink>();
         var conn = new TaskConnector(_ => { var l = new SharedRadioLink(radio, Script); links.Add(l); return Task.FromResult(new BleOpen(l, null)); });
         var log = new List<string>();
         var r = await Reader(conn, log).ReadAsync(TestContext.Current.CancellationToken);
-        Assert.Null(r);   // 36+8 timed out, 70+5 refused: no field at all, the 36+8 values never decoded as 70+5
-        Assert.Equal(3, conn.Opens);   // 36+8 asked again over a second connection; 70+5's re-ask exceeds MaxReconnects
+        Assert.Null(r);   // 36+8 timed out, 70+11 refused: no field at all, the 36+8 values never decoded as 70+11
+        Assert.Equal(3, conn.Opens);   // 36+8 asked again over a second connection; 70+11's re-ask exceeds MaxReconnects
         Assert.All(links, l => Assert.True(l.Disposed));
         Assert.Equal([(36, 8)], links[0].Written.Select(w => (w.Start, w.Quantity)));
         Assert.Equal([(36, 8)], links[1].Written.Select(w => (w.Start, w.Quantity)));
-        Assert.Equal([(70, 5)], links[2].Written.Select(w => (w.Start, w.Quantity)));
-        Assert.Contains("byte count 16, expected 10", string.Join("\n", log), StringComparison.Ordinal);
+        Assert.Equal([(70, 11)], links[2].Written.Select(w => (w.Start, w.Quantity)));
+        Assert.Contains("byte count 16, expected 22", string.Join("\n", log), StringComparison.Ordinal);
     }
 
     /// <summary>
