@@ -5,7 +5,7 @@ import { chromium } from 'playwright-core';
 import { ORIGIN, START, CUT_AT, serve } from './demo-data.mjs';
 
 const HERE = import.meta.dirname;
-const MINUTE = CUT_AT + 45; // 45 minutes into the cut: eco on, about half the battery left
+const MINUTE = CUT_AT + 240; // four hours into the cut: eco on, about half the battery left
 const SHOTS = [
   { file: 'screen-uk.png', locale: 'uk-UA', viewport: { width: 1280, height: 860 }, scale: 1, frame: 1360 },
   { file: 'screen-mobile.png', locale: 'en-US', viewport: { width: 390, height: 844 }, scale: 2, frame: 470 },

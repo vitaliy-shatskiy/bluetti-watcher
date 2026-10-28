@@ -27,7 +27,7 @@ pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048 -Apply
 <p align="center">
   <a href="docs/media/demo.mp4"><img src="docs/media/demo.gif" alt="The dashboard through a simulated power cut: mains lost, eco, the battery draining" width="820"></a>
   <br>
-  <sub>The real dashboard (station.html) on demo readings through a simulated cut: about 80 minutes shown in 20 seconds. Recorded 28.10.2026 by <code>docs/media/record-demo.mjs</code>. <a href="docs/media/demo.mp4">MP4</a>.</sub>
+  <sub>The real dashboard (station.html) on demo readings through a simulated cut: about seven hours shown in 28 seconds. Recorded 28.10.2026 by <code>docs/media/record-demo.mjs</code>. <a href="docs/media/demo.mp4">MP4</a>.</sub>
 </p>
 
 > [!IMPORTANT]
@@ -52,6 +52,12 @@ flowchart LR
   W --> H["Hibernate before empty"]
   W --> D["Dashboard on 127.0.0.1"]
 ```
+
+<p align="center">
+  <a href="docs/media/explainer/explainer.mp4"><img src="docs/media/explainer/explainer.gif" alt="What happens in a power cut: mains lost, eco after 3 minutes, emergency at 20 %, stop at 10 %, hibernate at 5 %, mains back" width="820"></a>
+  <br>
+  <sub>Illustration, default thresholds. Drawn by <code>docs/media/explainer/render.mjs</code>. <a href="docs/media/explainer/explainer.mp4">MP4</a>.</sub>
+</p>
 
 ## How it reacts
 
@@ -129,9 +135,9 @@ pwsh -NoProfile -File "$env:LOCALAPPDATA\bluetti-watcher\power-mode\power-mode.p
 
 | Ukrainian, desktop | English, phone |
 |---|---|
-| <img src="docs/media/screen-uk.png" alt="The dashboard in Ukrainian on a desktop, 45 minutes into a cut" width="560"> | <img src="docs/media/screen-mobile.png" alt="The dashboard in English on a phone" width="220"> |
+| <img src="docs/media/screen-uk.png" alt="The dashboard in Ukrainian on a desktop, four hours into a cut" width="560"> | <img src="docs/media/screen-mobile.png" alt="The dashboard in English on a phone" width="220"> |
 
-<sub>Demo readings, 45 minutes into a simulated cut. Captured by <code>docs/media/capture-screens.mjs</code>.</sub>
+<sub>Demo readings, four hours into a simulated cut. Captured by <code>docs/media/capture-screens.mjs</code>.</sub>
 
 ## Supported hardware
 
@@ -256,6 +262,14 @@ HTTP API: [docs/api.md](docs/api.md). Restart the task after an edit:
 ```powershell
 Stop-ScheduledTask BluettiWatcher; Start-ScheduledTask BluettiWatcher
 ```
+
+The command line: `--help`, `--version` and the power-mode switch (`power-mode status` only reads the flag).
+
+<p align="center">
+  <a href="docs/demos/cli.mp4"><img src="docs/demos/cli.gif" alt="BluettiWatcher.exe --version, --help and power-mode status in PowerShell" width="820"></a>
+  <br>
+  <sub>Recorded 28.10.2026 with VHS by <code>docs/demos/cli.tape</code>: read-only commands, a demo flag file. <a href="docs/demos/cli.mp4">MP4</a>.</sub>
+</p>
 
 ## Update and uninstall
 

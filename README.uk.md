@@ -27,7 +27,7 @@ pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048 -Apply
 <p align="center">
   <a href="docs/media/demo.mp4"><img src="docs/media/demo.gif" alt="Панель під час змодельованого відключення: світла немає, еко, батарея розряджається" width="820"></a>
   <br>
-  <sub>Справжня панель (station.html) на демонстраційних даних під час змодельованого відключення: близько 80 хвилин за 20 секунд. Записано 28.10.2026 скриптом <code>docs/media/record-demo.mjs</code>. <a href="docs/media/demo.mp4">MP4</a>.</sub>
+  <sub>Справжня панель (station.html) на демонстраційних даних під час змодельованого відключення: близько семи годин за 28 секунд. Записано 28.10.2026 скриптом <code>docs/media/record-demo.mjs</code>. <a href="docs/media/demo.mp4">MP4</a>.</sub>
 </p>
 
 > [!IMPORTANT]
@@ -52,6 +52,12 @@ flowchart LR
   W --> H["Глибокий сон до розряду"]
   W --> D["Панель на 127.0.0.1"]
 ```
+
+<p align="center">
+  <a href="docs/media/explainer/explainer-uk.mp4"><img src="docs/media/explainer/explainer-uk.gif" alt="Що відбувається, коли зникає світло: світла немає, еко через 3 хвилини, аварія на 20 %, стоп на 10 %, глибокий сон на 5 %, світло є" width="820"></a>
+  <br>
+  <sub>Ілюстрація, пороги за замовчуванням. Намальовано скриптом <code>docs/media/explainer/render.mjs</code>. <a href="docs/media/explainer/explainer-uk.mp4">MP4</a>.</sub>
+</p>
 
 ## Як він реагує
 
@@ -131,9 +137,9 @@ pwsh -NoProfile -File "$env:LOCALAPPDATA\bluetti-watcher\power-mode\power-mode.p
 
 | Українською, комп'ютер | Англійською, телефон |
 |---|---|
-| <img src="docs/media/screen-uk.png" alt="Панель українською на комп'ютері, 45 хвилин відключення" width="560"> | <img src="docs/media/screen-mobile.png" alt="Панель англійською на телефоні" width="220"> |
+| <img src="docs/media/screen-uk.png" alt="Панель українською на комп'ютері, чотири години відключення" width="560"> | <img src="docs/media/screen-mobile.png" alt="Панель англійською на телефоні" width="220"> |
 
-<sub>Демонстраційні дані, 45 хвилин змодельованого відключення. Знято скриптом <code>docs/media/capture-screens.mjs</code>.</sub>
+<sub>Демонстраційні дані, чотири години змодельованого відключення. Знято скриптом <code>docs/media/capture-screens.mjs</code>.</sub>
 
 ## Підтримуване обладнання
 
@@ -186,6 +192,14 @@ Bluetti Watcher - незалежний проєкт, не пов'язаний з
 
 Налаштування: [docs/configuration.md](docs/configuration.md), HTTP API: [docs/api.md](docs/api.md), оновлення й
 видалення: [README.md](README.md#update-and-uninstall), зміни: [CHANGELOG.md](CHANGELOG.md) (усе англійською).
+
+Командний рядок: `--help`, `--version` і перемикач режиму живлення (`power-mode status` лише читає прапорець).
+
+<p align="center">
+  <a href="docs/demos/cli.mp4"><img src="docs/demos/cli.gif" alt="BluettiWatcher.exe --version, --help і power-mode status у PowerShell" width="820"></a>
+  <br>
+  <sub>Записано 28.10.2026 за допомогою VHS скриптом <code>docs/demos/cli.tape</code>: лише команди читання, демонстраційний прапорець. Вивід програми англійською. <a href="docs/demos/cli.mp4">MP4</a>.</sub>
+</p>
 
 ## Часті запитання
 
