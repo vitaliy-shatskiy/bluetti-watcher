@@ -67,8 +67,6 @@ public class GridRegisterTests
         var log = new List<string>();
         var r = await Reader(new ScriptedConnector(() => new BleOpen(link, null)), log).ReadAsync(TestContext.Current.CancellationToken);
         Assert.Equal(new Reading(85, 0, 345, "INVERTER_OUTPUT", 120, 12, 223, 50, GridVolt: 224.6, GridHz: 50.0), r);
-        Assert.Null(r!.GridAmp);   // 73/75/76 are not proven grid current or power
-        Assert.Null(r.GridW);
         Assert.Empty(log);
     }
 
@@ -87,16 +85,6 @@ public class GridRegisterTests
         var r = await reader.ReadAsync(TestContext.Current.CancellationToken);
         Assert.Equal(224.6, r?.GridVolt);
         Assert.Equal(model.Plan, link.Written.Select(w => new RegisterRange((w[2] << 8) | w[3], (w[4] << 8) | w[5])));
-    }
-
-    [Fact]
-    public void GridHighName_IsOneConstantInTheSource()
-    {
-        var src = Path.Join(HookPowerModeTests.Repo, "src", "BluettiWatcher");
-        var hits = Directory.GetFiles(src, "*.cs", SearchOption.AllDirectories)
-            .Sum(f => File.ReadAllText(f).Split("\"grid-voltage-high\"").Length - 1);
-        Assert.Equal(1, hits);
-        Assert.Equal("grid-voltage-high", StateActions.GridHigh);
     }
 }
 
@@ -169,7 +157,7 @@ public sealed class GridVoltageServiceTests : IAsyncLifetime, IDisposable
         Directory.Delete(_dir, recursive: true);
     }
 
-    private static Reading Grid(double? volt) => new(80, 300, 220, "BYPASS_OUTPUT_C", GridVolt: volt, GridHz: 50.0, GridAmp: 1.4, GridW: 320);
+    private static Reading Grid(double? volt) => new(80, 300, 220, "BYPASS_OUTPUT_C", GridVolt: volt, GridHz: 50.0);
 
     private StationService Service() => new(_cfg, _reader, new FakeActions(), new FakeHibernator(true), new FixedFlag(Station), _store, _clock, _log.Add, null, _onState);
 
@@ -216,6 +204,17 @@ public sealed class GridVoltageServiceTests : IAsyncLifetime, IDisposable
         Assert.DoesNotContain(_log, l => l.Contains("re-armed", StringComparison.Ordinal));
     }
 
+    /// <summary>The event a crossing writes is named by the one constant, and that name is the documented one.</summary>
+    [Fact]
+    public async Task PollAsync_Crossing_EventKindIsGridVoltageHigh()
+    {
+        using var s = Service();
+        await Feed(s, 255.0);
+        var e = Assert.Single(_store.Events(0, long.MaxValue), e => e.Detail.StartsWith("grid input", StringComparison.Ordinal));
+        Assert.Equal(StateActions.GridHigh, e.Kind);
+        Assert.Equal("grid-voltage-high", e.Kind);
+    }
+
     [Fact]
     public async Task PollAsync_AlertFired_SurvivesARestartWithoutFiringAgain()
     {
@@ -234,10 +233,10 @@ public sealed class GridVoltageServiceTests : IAsyncLifetime, IDisposable
         {
             await db.OpenAsync(ct);
             await using var cmd = db.CreateCommand();
-            cmd.CommandText = "SELECT grid_volt, grid_hz, grid_amp, grid_w FROM reading";
+            cmd.CommandText = "SELECT grid_volt, grid_hz FROM reading";
             await using var r = await cmd.ExecuteReaderAsync(ct);
             Assert.True(await r.ReadAsync(ct));
-            Assert.Equal((231.5, 50.0, 1.4, 320.0), (r.GetDouble(0), r.GetDouble(1), r.GetDouble(2), r.GetDouble(3)));
+            Assert.Equal((231.5, 50.0), (r.GetDouble(0), r.GetDouble(1)));
         }
         var api = new StationApi(_cfg, s, _store, _clock, T0);
         var host = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Host"] = $"127.0.0.1:{_cfg.Port}" };
@@ -247,8 +246,7 @@ public sealed class GridVoltageServiceTests : IAsyncLifetime, IDisposable
         var last = json.RootElement.GetProperty("last");
         Assert.Equal(231.5, last.GetProperty("gridVolt").GetDouble());
         Assert.Equal(50.0, last.GetProperty("gridHz").GetDouble());
-        Assert.Equal(1.4, last.GetProperty("gridAmp").GetDouble());
-        Assert.Equal(320, last.GetProperty("gridW").GetDouble());
+        Assert.False(last.TryGetProperty("gridAmp", out _));
     }
 
     /// <summary>A database made before the grid columns gets them on open; its rows keep NULL.</summary>

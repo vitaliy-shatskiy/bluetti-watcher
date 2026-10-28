@@ -42,7 +42,7 @@ The current state, for the page.
 | `ratePerHour` | Measured discharge, % per hour, whenever the readings yield one (with `runtimeSource` `rate` or `model`); else null. |
 | `learnedEfficiency` | The learned efficiency, or null. |
 | `thresholds` | `emergencyAt`, `stopAt`, `warnAt`, `hibernateAt`. |
-| `last` | The last accepted reading, or null: `at`, `soc`, `inAc`, `inDc`, `outAc`, `outDc`, `volt`, `hz`, `mains`; the grid input `gridVolt` (V) and `gridHz`, V1 registers 77 and 80 of the AC200PL over Bluetooth, else null; `gridAmp` (A) and `gridW` (W), null (no register known). |
+| `last` | The last accepted reading, or null: `at`, `soc`, `inAc`, `inDc`, `outAc`, `outDc`, `volt`, `hz`, `mains`; the grid input `gridVolt` (V) and `gridHz`, V1 registers 77 and 80 of the AC200PL over Bluetooth, else null. |
 | `wake` | The wake timer, or null: `everyMinutes`, `floorPercent`, `armed`, `wakeAt`, `disarmOwed`, `error`. |
 | `dtekWatcher` | The DTEK module (below). |
 
