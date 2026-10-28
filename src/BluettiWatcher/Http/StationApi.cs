@@ -4,6 +4,7 @@ using System.Text.Json;
 using BluettiWatcher.Decision;
 using BluettiWatcher.DtekWatcher;
 using BluettiWatcher.Io;
+using BluettiWatcher.PowerMode;
 using BluettiWatcher.Runtime;
 using BluettiWatcher.Storage;
 
@@ -11,11 +12,12 @@ namespace BluettiWatcher.Http;
 
 /// <summary>
 /// The routes. GET /, /api/now, /api/history?from&amp;to&amp;step, /api/events?from&amp;to, /api/health;
-/// POST /api/mode { "mode": "auto" | "eco" | "max" } behind <see cref="RequestGuard"/>.
+/// POST /api/mode { "mode": "auto" | "eco" | "max" } behind <see cref="RequestGuard"/>; GET /api/return-plan and, behind the
+/// same guard, POST /api/return-plan { "returnPlan": "high" | "balanced" | "previous" }.
 /// from / to: ISO 8601 or Unix milliseconds; step: seconds (default 60).
 /// </summary>
 internal sealed class StationApi(StationConfig config, StationService service, StationStore store, TimeProvider time, DateTimeOffset startedAt, IDtekWatcher? dtek = null, Action<string>? log = null,
-    Func<bool>? bluetoothEncrypted = null, Func<bool>? bluetoothStalled = null)
+    Func<bool>? bluetoothEncrypted = null, Func<bool>? bluetoothStalled = null, Func<(string Guid, string Name)>? activePlan = null)
 {
     /// <summary>The page, read once; encoded once per coding on first use; a reload with its ETag is a 304.</summary>
     private static readonly Lazy<StaticAsset> Page = new(() =>
@@ -39,15 +41,23 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             if (RequestGuard.WriteRefusal(r, config.Port) is { } why) return HttpResponse.Text(403, "forbidden: " + why);
             return await ModeAsync(r, ct);
         }
+        if (r.Path == "/api/return-plan" && r.Method == "POST")
+        {
+            if (RequestGuard.WriteRefusal(r, config.Port) is { } why) return HttpResponse.Text(403, "forbidden: " + why);
+            return SetReturnPlan(r);
+        }
         if (r.Method != "GET") return HttpResponse.Text(405, "GET only");
+        // /api/now?settle=1: answers once the saved page choice is applied, refused or failed (bounded under the server's 10 s).
+        if (r.Path == "/api/now" && r.Query.TryGetValue("settle", out var settle) && settle == "1") await service.WaitModeSettledAsync(SettleWait, ct);
         var now = time.GetLocalNow();
         return r.Path switch
         {
             "/" or "/index.html" => Page.Value.Respond(r),
-            "/api/now" => HttpResponse.Json(200, Now(now)),
+            "/api/now" => HttpResponse.Json(200, Now(now, await ActivePlanAsync(ct))),
             "/api/health" => HttpResponse.Json(200, Health(now)),
             "/api/history" => History(r, now),
             "/api/events" => Events(r, now),
+            "/api/return-plan" => HttpResponse.Json(200, Write(w => { w.WriteStartObject(); w.WriteString("returnPlan", ReturnPlanFile.Read(config.FlagFile)); w.WriteEndObject(); })),
             _ => HttpResponse.Text(404, "not found"),
         };
     }
@@ -137,6 +147,86 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             w.WriteString("manual", res.Manual.ToString().ToLowerInvariant());
             w.WriteString("message", res.Message);
             w.WriteString("code", res.Ok ? "" : ModeErrorNote(res.Message)?.Code ?? "");
+            w.WriteEndObject();
+        }));
+    }
+
+    /// <summary>The longest /api/now?settle=1 waits for a page choice to settle; with <see cref="PlanWait"/> under the server's 10 s.</summary>
+    internal static readonly TimeSpan SettleWait = TimeSpan.FromSeconds(7);
+
+    /// <summary>The longest a request waits for a fresh read of the active plan; past it the last one known answers.</summary>
+    internal static readonly TimeSpan PlanWait = TimeSpan.FromSeconds(2);
+    private readonly Lock _planGate = new();
+    private (string Id, string Name) _plan = ("", "");
+    private long _planEpoch = -1;
+    private long _planWrites;
+    private Task<(string, string)>? _planRead;
+
+    /// <summary>
+    /// The active Windows plan for the page: id high | balanced | saver | other ("" = unknown) and its name. Read again only
+    /// after a poll, an applied page choice or a plan write moved the epoch; one read at a time, off the request thread
+    /// (powercfg could hang), waited for at most <see cref="PlanWait"/>.
+    /// </summary>
+    private async Task<(string Id, string Name)> ActivePlanAsync(CancellationToken ct)
+    {
+        if (activePlan is null) return ("", "");
+        long epoch = service.PlanEpoch + Interlocked.Read(ref _planWrites);
+        Task<(string, string)>? read;
+        lock (_planGate)
+        {
+            if (epoch == _planEpoch && _planRead is null) return _plan;
+            if (_planRead is null)
+            {
+                _planEpoch = epoch;
+                // A blocking process call kept off the request: the request waits for it only up to PlanWait.
+                _planRead = Task.Run(activePlan, CancellationToken.None);
+            }
+            read = _planRead;
+        }
+        try
+        {
+            var (guid, name) = await read.WaitAsync(PlanWait, ct);
+            lock (_planGate) { _plan = (PlanId(guid), name); if (ReferenceEquals(_planRead, read)) _planRead = null; return _plan; }
+        }
+        catch (TimeoutException) { lock (_planGate) return _plan; }
+        // Any failure but the request's own cancellation drops the read: a faulted read kept would fail every later request.
+        catch (Exception e) when (!(e is OperationCanceledException && ct.IsCancellationRequested))
+        {
+            Once("plan read", e);
+            lock (_planGate) { if (ReferenceEquals(_planRead, read)) _planRead = null; return _plan; }
+        }
+    }
+
+    private static string PlanId(string guid) => guid switch
+        {
+            "" => "",
+            PowerModeSwitch.HighPlan => "high",
+            PowerModeSwitch.BalancedPlan => "balanced",
+            PowerModeSwitch.SaverPlan => "saver",
+            _ => "other",
+        };
+
+    /// <summary>The plan the end of eco sets (power-mode.config.json beside the flag); the switch reads the file as before.</summary>
+    private HttpResponse SetReturnPlan(HttpRequest r)
+    {
+        string? plan;
+        try
+        {
+            using var doc = JsonDocument.Parse(r.Body);
+            plan = doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("returnPlan", out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        }
+        catch (JsonException) { return HttpResponse.Text(400, "body must be JSON { \"returnPlan\": \"high\" | \"balanced\" | \"previous\" }"); }
+        if (plan is null || !ReturnPlanFile.IsChoice(plan)) return HttpResponse.Text(400, "returnPlan must be high, balanced or previous");
+        var (status, error) = ReturnPlanFile.Write(config.FlagFile, plan);
+        Interlocked.Increment(ref _planWrites);
+        if (status == 0) log?.Invoke($"page: after eco = {plan}");
+        else log?.Invoke($"page: after eco = {plan} not saved: {error}");
+        return HttpResponse.Json(status == 0 ? 200 : status, Write(w =>
+        {
+            w.WriteStartObject();
+            w.WriteBoolean("ok", status == 0);
+            w.WriteString("returnPlan", ReturnPlanFile.Read(config.FlagFile));
+            w.WriteString("message", error);
             w.WriteEndObject();
         }));
     }
@@ -314,7 +404,7 @@ internal sealed class StationApi(StationConfig config, StationService service, S
         return string.Join(' ', words).ToLowerInvariant();
     }
 
-    private byte[] Now(DateTimeOffset now)
+    private byte[] Now(DateTimeOffset now, (string Id, string Name) plan)
     {
         var s = service.State;
         var last = service.LastAccepted;
@@ -347,7 +437,13 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             w.WriteString("manual", s.Manual.ToString().ToLowerInvariant());
             if (s.ModePending is { } pending) w.WriteString("modePending", pending.ToString().ToLowerInvariant()); else w.WriteNull("modePending");
             w.WriteString("modeError", service.ModeError);
+            w.WriteString("returnPlan", ReturnPlanFile.Read(config.FlagFile));
             Note(w, "modeErrorNote", ModeErrorNote(service.ModeError));
+            w.WriteString("powerMode", (flag?.View ?? FlagView.Unreadable).Mode);
+            w.WriteStartObject("powerPlan");
+            w.WriteString("id", plan.Id);
+            w.WriteString("name", plan.Name);
+            w.WriteEndObject();
             w.WriteString("level", s.Level.ToString().ToLowerInvariant());
             w.WriteBoolean("cut", s.Cut);
             if (s.HibernateDelayedUntil is { } until && s.Cut) w.WriteString("hibernateDelayedUntil", Iso(until)); else w.WriteNull("hibernateDelayedUntil");

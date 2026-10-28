@@ -382,7 +382,7 @@ public sealed partial class PageI18nTests
             Assert.True(m.Success, $"{pattern} is not where the test reads it");
             return m.Value;
         }
-        string code = string.Join("\n", Line(@"^const SPAN = .*;$"), Line(@"^let nowText = .*;$"), FunctionText(page, "load"), FunctionText(page, "fetchAndShow"));
+        string code = string.Join("\n", Line(@"^const SPAN = .*;$"), Line(@"^let nowText = .*;$"), FunctionText(page, "load"), Line(@"^var reqSeq = .*;$"), FunctionText(page, "takeAnswer"), FunctionText(page, "fetchAndShow"));
         string script = $$"""
             const src = {{System.Text.Json.JsonSerializer.Serialize(code)}};
             const MIN = 60000, T = Date.UTC(2026, 9, 13, 12, 0, 30);

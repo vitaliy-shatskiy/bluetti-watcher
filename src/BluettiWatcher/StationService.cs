@@ -21,17 +21,63 @@ internal sealed class StationService(StationConfig config, IStationReader reader
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Backoff _backoff = new();
     private readonly SemaphoreSlim _wake = new(0, int.MaxValue);
+    /// <summary>A page choice saved: wakes <see cref="RunPressesAsync"/>, which never waits for a station read.</summary>
+    private readonly SemaphoreSlim _press = new(0, int.MaxValue);
     private StationState _state = store.LoadState();
     private BatteryWritten? _battery;
     private Reading? _last;
     private DateTimeOffset? _lastAt;
     private DateTimeOffset? _lastPollAt;
     private PowerModeFlag? _flag;
+    private readonly Lock _settledGate = new();
+    /// <summary>Completed while no page choice waits; a new one while a choice is saved and not yet applied, refused or failed.</summary>
+    private TaskCompletionSource _settled = Settled();
+
+    private static TaskCompletionSource Settled()
+    {
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        done.SetResult();
+        return done;
+    }
+
+    /// <summary>
+    /// Returns when the saved page choice is applied, refused or has failed (at once when none waits), or after
+    /// <paramref name="wait"/>: the page's "applying" ends on this event, not on a timer.
+    /// </summary>
+    public async Task WaitModeSettledAsync(TimeSpan wait, CancellationToken ct)
+    {
+        long start = time.GetTimestamp();
+        // A choice saved before a restart waits too: the signal is brought up to date under the gate (a poll's commands may
+        // hold it, so the wait for it counts against the same bound).
+        if (await _gate.WaitAsync(wait, ct))
+        {
+            try { Signal(); }
+            finally { _gate.Release(); }
+        }
+        var left = wait - time.GetElapsedTime(start);
+        if (left <= TimeSpan.Zero) return;
+        Task settled;
+        lock (_settledGate) settled = _settled.Task;
+        try { await settled.WaitAsync(left, ct); }
+        catch (TimeoutException) { /* still applying: the caller answers with the state as it is */ }
+    }
+
+    /// <summary>The settle signal after a change of the page choice. Always called under the gate: it reads the state.</summary>
+    private void Signal()
+    {
+        bool waiting = _state.ModePending is not null && _state.ModeError.Length == 0;
+        lock (_settledGate)
+        {
+            if (!waiting) _settled.TrySetResult();
+            else if (_settled.Task.IsCompleted) _settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+    }
 
     public void Dispose()
     {
         _gate.Dispose();
         _wake.Dispose();
+        _press.Dispose();
     }
 
     public StationState State => _state.Clone();
@@ -88,6 +134,7 @@ internal sealed class StationService(StationConfig config, IStationReader reader
         {
             _lastPollAt = now;
             _flag = flagReader.Read(now);
+            Interlocked.Increment(ref _planEpoch);
             var d = StationDecision.Decide(reading, _state, _flag?.View ?? FlagView.Unreadable, now, config);
             var status = reading is null ? ReadingStatus.Missed : d.Rejected.Length > 0 ? ReadingStatus.Rejected : ReadingStatus.Accepted;
             store.AddReading(now, reading, status, d.Rejected);
@@ -306,7 +353,9 @@ internal sealed class StationService(StationConfig config, IStationReader reader
             _state.ModeError = "";
             store.SaveState(_state);
             store.AddEvent(now, "mode", mode.ToString().ToLowerInvariant());
+            Signal();
             _wake.Release();
+            _press.Release();
             return new ModeChange(true, 202, "accepted", _state.Manual);
         }
         finally { _gate.Release(); }
@@ -336,25 +385,64 @@ internal sealed class StationService(StationConfig config, IStationReader reader
             // lift stays pending and is tried again with the normal backoff.
             if (mode != ManualMode.Eco && flag is null)
             {
-                if (!_backoff.Open("mode-lift", now)) return;
+                if (!_backoff.Open("mode-lift", now)) { BackingOff(mode, "mode-lift"); return; }
                 _state.ModeError = $"{mode}: {FlagUnreadable}";
+                _modeFailure["mode-lift"] = FlagUnreadable;
                 store.SaveState(_state);
                 Failed("mode-lift", now, FlagUnreadable);
                 return;
             }
+            string key = mode == ManualMode.Eco ? "mode-eco" : "mode-lift";
             ActionResult? r = mode == ManualMode.Eco
-                ? await Gated("mode-eco", now, () => actions.StationEcoAsync(ct))
-                : await Gated("mode-lift", now, () => actions.LiftAsync(ct));
-            if (r is null) return;   // backing off
-            if (!r.Ok && !r.DryRun) { _state.ModeError = $"{mode}: {r.LastLine}"; store.SaveState(_state); return; }
+                ? await Gated(key, now, () => actions.StationEcoAsync(ct))
+                : await Gated(key, now, () => actions.LiftAsync(ct));
+            if (r is null) { BackingOff(mode, key); return; }
+            if (!r.Ok && !r.DryRun) { _modeFailure[key] = r.LastLine; _state.ModeError = $"{mode}: {r.LastLine}"; store.SaveState(_state); return; }
+            _modeFailure.Remove(key);
+            Interlocked.Increment(ref _planEpoch);   // the plan may have changed
             if (r.Ok) onState?.Enter(mode == ManualMode.Eco ? StateActions.Eco : StateActions.Normal);
             _state.ModePending = null;
             _state.ModeError = "";
             store.SaveState(_state);
             store.AddEvent(now, "mode-applied", mode.ToString().ToLowerInvariant() + (r.DryRun ? " (dry run)" : ""));
         }
-        finally { _gate.Release(); }
+        finally
+        {
+            Signal();
+            _gate.Release();
+        }
     }
+
+    /// <summary>
+    /// Applies each page choice as it is saved, beside the poll loop: a station read runs outside the gate, so a press never
+    /// waits for Bluetooth (only for a poll's own decision and commands, which hold the gate, the single writer of the state
+    /// and of the switch's calls). Retries after a failure stay with the poll loop's backoff. Ends on cancellation.
+    /// </summary>
+    public async Task RunPressesAsync(CancellationToken ct)
+    {
+        while (true)
+        {
+            await _press.WaitAsync(ct);
+            Interlocked.Increment(ref _planEpoch);
+            try { await ApplyPendingAsync(ct); }
+            catch (Exception e) when (e is not OperationCanceledException) { log($"mode change failed: {e.GetType().Name}: {e.Message}"); }
+        }
+    }
+
+    /// <summary>The last failure of each mode command, for a press made while its backoff is closed.</summary>
+    private readonly Dictionary<string, string> _modeFailure = new(StringComparer.Ordinal);
+
+    /// <summary>A press while the command's backoff is closed: the last failure and the retry time stay in view, never a silent "applying". Under the gate.</summary>
+    private void BackingOff(ManualMode mode, string key)
+    {
+        if (_backoff.NextAt(key) is not { } next) return;
+        _state.ModeError = $"{mode}: {(_modeFailure.TryGetValue(key, out var last) ? last : "failed")} - retry at {Clock(next)}";
+        store.SaveState(_state);
+    }
+
+    private long _planEpoch;
+    /// <summary>Moves on each poll and each applied page choice: the page's active plan is read again after it moves.</summary>
+    public long PlanEpoch => Interlocked.Read(ref _planEpoch);
 
     /// <summary>Waits until <paramref name="wait"/> passes or a page choice arrives.</summary>
     public async Task WaitForWorkAsync(TimeSpan wait, CancellationToken ct)

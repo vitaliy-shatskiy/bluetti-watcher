@@ -10,16 +10,26 @@ main{max-width:1200px;margin:0 auto;display:grid;gap:10px}
 .card{background:var(--bg);border:1px solid var(--edge);border-radius:14px;padding:18px 20px;min-width:0}
 h1{font-size:16px;line-height:22px;margin:0;font-weight:600}
 h2{font-size:11px;line-height:16px;margin:0 0 12px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
-.head{display:grid;grid-template-columns:1fr auto auto;grid-template-areas:"brand mode lang" "chips mode lang";align-items:center;gap:12px 20px}
+.head{display:grid;grid-template-columns:1fr auto;grid-template-areas:"brand lang" "chips mode";align-items:center;gap:12px 20px}
 .head .sp{display:none}
-.head .brand{grid-area:brand}.head .chips{grid-area:chips}.head .modebox{grid-area:mode;align-self:start}.head #langSeg{grid-area:lang;align-self:start;margin-top:3px}
+.head .brand{grid-area:brand}.head .chips{grid-area:chips}.head .modebox{grid-area:mode;align-self:end}.head #langSeg{grid-area:lang;justify-self:end;align-self:start}
 .brand{display:flex;align-items:center;gap:12px}
 .brand svg{width:34px;height:34px;flex:none}
 .brand .sub{color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
-.modebox{display:grid;justify-items:end;gap:4px}
-.modebox .hint{color:var(--dim);font-size:12px;max-width:360px;text-align:right}
-.modebox .modenote{color:#efc36f}
+/* the power controls: one grid, a label column and a control column; both groups the same height, segment width and right edge */
+.modebox{display:grid;grid-template-columns:auto auto;align-items:center;gap:8px 12px}
+.modebox .cl{color:var(--dim);font-size:12px;text-align:right;white-space:nowrap}
+.modebox .seg{display:grid;grid-template-columns:repeat(3,1fr)}
+#modeSeg button,#planSeg button{height:30px;padding:0 14px;font-size:13px;text-align:center}
+.modebox .hint{grid-column:1/-1;width:0;min-width:100%;color:var(--dim);font-size:12px;text-align:right}
+/* the language: a small text toggle in the corner, the chosen one bright */
+.lang{display:flex;align-items:center;font-size:12px;line-height:18px}
+.lang button{all:unset;cursor:pointer;padding:2px 4px;color:var(--dim);letter-spacing:.04em}
+.lang button:hover{color:var(--text)}
+.lang button[aria-pressed=true]{color:var(--text);font-weight:600}
+.lang button+button::before{content:"·";color:var(--dim);font-weight:400;margin-right:8px}
+.lang button:focus-visible{outline:1px solid var(--accent)}
 .chip{display:inline-flex;align-items:center;gap:7px;min-height:26px;max-width:100%;padding:4px 11px;border-radius:13px;background:var(--raised);font-size:12px;line-height:16px;color:var(--text)}
 .chip i{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}
 #ecoChip{font-variant-numeric:tabular-nums}
@@ -44,8 +54,13 @@ h2{font-size:11px;line-height:16px;margin:0 0 12px;font-weight:600;color:var(--d
 .seg button:hover{color:var(--text)}
 .seg button[aria-pressed=true]{background:var(--raised);color:var(--text)}
 .seg button:focus-visible{outline:1px solid var(--accent)}
-#modeSeg button{height:30px;padding:0 18px;font-size:13px;font-weight:600}
-#modeSeg button[aria-pressed=true]{background:var(--accent);color:#fff}
+#modeSeg button{font-weight:600}
+#modeSeg button[aria-pressed=true],#planSeg button[aria-pressed=true]{background:var(--accent);color:#fff}
+/* a mode press on its way: the pressed option outlined and marked, the group waiting; the line under it says what is applied */
+#modeSeg button[data-pending],#planSeg button[data-pending]{outline:1px dashed var(--accent);outline-offset:-1px;color:var(--text)}
+#modeSeg button[data-pending]::after,#planSeg button[data-pending]::after{content:" …"}
+.seg button:disabled{cursor:progress}
+.modebox .hint.pend{color:var(--accent)}.modebox .hint.warn{color:var(--warn)}.modebox .hint.bad{color:var(--bad)}
 .legend{display:flex;gap:18px;color:var(--dim);font-size:12px;flex-wrap:wrap;margin-top:6px}
 .legend b{display:inline-block;width:12px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
 #chart{width:100%;height:auto;display:block;margin-top:6px}
@@ -123,17 +138,17 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 /* wide monitors (2K): a wider page, the same layout */
 @media(min-width:1800px){main{max-width:1560px}body{padding:28px}.top{grid-template-columns:360px 1fr}.ring svg{width:280px;height:280px}.ring .pct{font-size:64px;line-height:68px}.v{font-size:34px;line-height:42px}}
 @media(min-width:2200px){html{zoom:1.15}}
-@media(max-width:900px){.head{grid-template-columns:1fr auto;grid-template-areas:"brand lang" "chips chips" "mode mode"}.top{grid-template-columns:1fr}.tiles{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.modebox{justify-items:start}.modebox .hint{text-align:left}.dgrid{grid-template-columns:repeat(6,1fr)}}
+@media(max-width:900px){.head{grid-template-columns:1fr auto;grid-template-areas:"brand lang" "chips chips" "mode mode"}.top{grid-template-columns:1fr}.tiles{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.modebox{grid-template-columns:auto 1fr}.modebox .cl{text-align:left}.modebox .hint{text-align:left}.dgrid{grid-template-columns:repeat(6,1fr)}}
 /* phones */
 @media(max-width:600px){body{padding:10px}main{gap:8px}.card{padding:14px;border-radius:12px}.tiles{gap:8px}.v{font-size:24px;line-height:30px}.v small{font-size:12px;margin:0 4px 0 2px}
   .ring svg{width:200px;height:200px}.ring .pct{font-size:46px;line-height:50px}
-  #modeSeg{width:100%}#modeSeg button{flex:1;text-align:center;padding:0 8px}.modebox{justify-items:stretch}
+  #modeSeg button,#planSeg button{padding:0 6px}
   .dgrid{gap:4px}.dgrid .c{height:48px;font-size:11px;gap:3px}.dban b{font-size:14px}
   #dtekBody .rowbar{grid-template-columns:1fr!important;gap:0;margin-bottom:6px}
   .ring svg{width:220px;height:220px}.ring .wh{font-size:11px;line-height:15px}.ring{padding:12px}
   td,th{padding:6px 4px;font-size:11px}.bar{flex-wrap:wrap}}
 </style></head><body><main>
-<div class="card head"><div class="brand"><svg viewBox="0 0 34 34" aria-hidden="true"><rect x="1" y="1" width="32" height="32" rx="9" fill="#26282c"/><rect x="8" y="11" width="16" height="12" rx="2.5" fill="none" stroke="#5fad65" stroke-width="2"/><rect x="24.5" y="14.5" width="2.5" height="5" rx="1" fill="#5fad65"/><path d="M17 13.5l-3.5 4.5h3l-1 3.5 3.5-4.5h-3z" fill="#5fad65"/></svg><div><h1 id="title"></h1><div class="sub" id="readAt"></div></div></div><div class="chips"><span class="chip" id="gridChip"><i></i><span></span></span><span class="chip" id="ecoChip" hidden><i></i><span></span></span><span class="chip warn" id="staleChip" hidden><i></i><span></span></span><span class="chip acc" id="maxChip" hidden><i></i><span></span></span><span class="chip" id="noteChip" hidden><i></i><span></span></span></div><span class="sp"></span><div class="modebox"><div class="seg" id="modeSeg" role="group" data-i18n-aria="powerMode"><button data-m="auto" data-i18n="modeAuto" data-i18n-title="modeAutoTip"></button><button data-m="eco" data-i18n="modeEco" data-i18n-title="modeEcoTip"></button><button data-m="max" data-i18n="modeMax" data-i18n-title="modeMaxTip"></button></div><div class="hint modenote" id="modeNote" role="status" hidden></div></div><div class="seg" id="langSeg" role="group" data-i18n-aria="language"><button data-lang="en" data-i18n="langEn"></button><button data-lang="uk" data-i18n="langUk"></button></div></div>
+<div class="card head"><div class="brand"><svg viewBox="0 0 34 34" aria-hidden="true"><rect x="1" y="1" width="32" height="32" rx="9" fill="#26282c"/><rect x="8" y="11" width="16" height="12" rx="2.5" fill="none" stroke="#5fad65" stroke-width="2"/><rect x="24.5" y="14.5" width="2.5" height="5" rx="1" fill="#5fad65"/><path d="M17 13.5l-3.5 4.5h3l-1 3.5 3.5-4.5h-3z" fill="#5fad65"/></svg><div><h1 id="title"></h1><div class="sub" id="readAt"></div></div></div><div class="chips"><span class="chip" id="gridChip"><i></i><span></span></span><span class="chip" id="ecoChip" hidden><i></i><span></span></span><span class="chip" id="planChip" hidden><i></i><span></span></span><span class="chip warn" id="staleChip" hidden><i></i><span></span></span><span class="chip acc" id="maxChip" hidden><i></i><span></span></span><span class="chip" id="noteChip" hidden><i></i><span></span></span></div><span class="sp"></span><div class="modebox"><span class="cl" data-i18n="powerLabel"></span><div class="seg" id="modeSeg" role="group" data-i18n-aria="powerMode"><button data-m="auto" data-i18n="modeAuto" data-i18n-title="modeAutoTip"></button><button data-m="eco" data-i18n="modeEco" data-i18n-title="modeEcoTip"></button><button data-m="max" data-i18n="modeMax" data-i18n-title="modeMaxTip"></button></div><span class="cl" id="planLabel" data-i18n="afterEco"></span><div class="seg" id="planSeg" role="group" data-i18n-aria="afterEcoAria"><button data-p="balanced" data-i18n="planBalanced" data-i18n-title="planBalancedTip"></button><button data-p="high" data-i18n="planHigh" data-i18n-title="planHighTip"></button><button data-p="previous" data-i18n="planPrevious" data-i18n-title="planPreviousTip"></button></div><div class="hint" id="modeLine" role="status" aria-live="polite"></div></div><div class="lang" id="langSeg" role="group" data-i18n-aria="language"><button data-lang="en" data-i18n="langEn"></button><button data-lang="uk" data-i18n="langUk"></button></div></div>
 
 <div class="top">
   <div class="card ring"><svg id="ring" viewBox="0 0 240 240" aria-hidden="true"><circle cx="120" cy="120" r="100" fill="none" stroke="#26282c" stroke-width="16"/><g transform="rotate(-90 120 120)" fill="none" stroke-width="16"><circle id="zoneR" cx="120" cy="120" r="100" stroke="#db5c5c" stroke-opacity=".22"/><circle id="zoneA" cx="120" cy="120" r="100" stroke="#e0a53a" stroke-opacity=".22"/><circle class="arc" id="arc" cx="120" cy="120" r="100" stroke="#5fad65" stroke-linecap="round" style="stroke-dasharray:0 629"/></g><g id="ticks"></g></svg>
@@ -187,6 +202,27 @@ en: {
   modeEcoTip: "Eco now",
   modeMax: "Max",
   modeMaxTip: "Full performance until mains changes",
+  powerLabel: "Power",
+  planChip: "Plan: {p}",
+  afterEco: "After eco",
+  afterEcoCustom: "After eco: a plan from the config file",
+  afterEcoAria: "Power plan after eco",
+  planBalanced: "Balanced",
+  planBalancedTip: "Balanced plan with the Best performance power mode",
+  planHigh: "High",
+  planHighTip: "High performance plan",
+  planPrevious: "As before",
+  planPreviousTip: "The plan that was on before eco (High performance when unknown)",
+  modeApplying: "Applying {m}…",
+  modeNow: "Now: {m}",
+  modeNowPlan: "Now: {m} · {p} plan",
+  pmNormal: "normal mode",
+  pmEco: "eco",
+  pmEmergency: "emergency",
+  pmUnknown: "mode unknown",
+  activeHigh: "High performance",
+  activeBalanced: "Balanced",
+  activeSaver: "Power saver",
   loadNow: "Load now",
   timeLeft: "Time left",
   thisCut: "This power cut",
@@ -425,6 +461,27 @@ uk: {
   modeEcoTip: "Еко-режим зараз",
   modeMax: "Макс",
   modeMaxTip: "Повна продуктивність до зміни мережі",
+  powerLabel: "Живлення",
+  planChip: "Схема: {p}",
+  afterEco: "Після еко",
+  afterEcoCustom: "Після еко: схема з файлу налаштувань",
+  afterEcoAria: "Схема живлення після еко",
+  planBalanced: "Збалансована",
+  planBalancedTip: "Збалансована схема з режимом живлення «Найкраща продуктивність»",
+  planHigh: "Висока",
+  planHighTip: "Схема «Висока продуктивність»",
+  planPrevious: "Як було",
+  planPreviousTip: "Схема, що була до еко (висока продуктивність, коли невідомо)",
+  modeApplying: "Застосовую: {m}…",
+  modeNow: "Зараз: {m}",
+  modeNowPlan: "Зараз: {m} · схема {p}",
+  pmNormal: "звичайний режим",
+  pmEco: "еко",
+  pmEmergency: "аварійний режим",
+  pmUnknown: "режим невідомий",
+  activeHigh: "Висока продуктивність",
+  activeBalanced: "Збалансована",
+  activeSaver: "Економія енергії",
   loadNow: "Навантаження зараз",
   timeLeft: "Залишилось",
   thisCut: "Поточне відключення",
@@ -719,6 +776,10 @@ function longRows(hours) {
   return c && c.rows ? c : null;
 }function render(D) {
 clearInterval(ecoTimer); ecoTimer = null;
+// the plan the end of eco sets, shown with no readings too: a plan GUID put in the config by hand presses no button and says so
+document.querySelectorAll('#planSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.p === D.returnPlan)));
+$('planLabel').textContent = t(D.returnPlan === 'custom' ? 'afterEcoCustom' : 'afterEco');
+paintMode(D);
 if (!D.rows.length) { $('title').textContent = `${t('appName')} · ${t('noReadings')}`; return; }
 const rows = D.rows.map(toRow);
 const now = rows[rows.length - 1];
@@ -925,10 +986,9 @@ $('rows').innerHTML = rows.slice(-30).reverse().map((r) => `<tr><td>${dmy(r.t)} 
       + kpi(t('kDeepest'), deepest ? `${deepest.socTo}%` : '–', deepest ? `${deepest.socFrom}% → ${deepest.socTo}% · ${dmy(deepest.start)}` : '')
       + kpi(t('kAvgLoad'), tot ? `${Math.round(e / (tot / 3600000))}<small>${t('uW')}</small>` : '–', ''); } }
 // Service state: the manual mode, Max's battery hours at the current load, rejected readings and a silent station.
-document.querySelectorAll('#modeSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.m === D.manual)));
 const mx = $('maxChip'); mx.hidden = !(D.manual === 'max' && !now.mains && D.hoursLeft) || (D.notes ? D.notes.some((n) => n.code === 'max-held') : (D.note || '').includes('Max held back'));
 if (!mx.hidden) mx.lastChild.textContent = t('maxChip', { h: `${fmt(D.hoursLeft)} ${t('uH')}` });
-// a mode refusal shows under the mode buttons (renderModeNote), never repeated here
+// a mode refusal shows under the mode buttons (paintMode), never repeated here
 const note = notesText(D.notes, D.note);
 const nc = $('noteChip'); nc.hidden = !note; nc.lastChild.textContent = note;
 if (D.dryRun) { $('readAt').textContent += ` · ${t('dryRun')}`; }
@@ -1079,7 +1139,6 @@ function renderDtek(w, th, mainsOn, hist) {
 // The last answers, so a language switch repaints without a reload or a request.
 let lastNow = null, lastRows = null;
 function show() {
-  renderModeNote();
   if (!lastNow) return;
   // mains from the last reading, unknown when it is older than 10 minutes
   const last = lastRows && lastRows.length ? lastRows[lastRows.length - 1] : null;
@@ -1092,16 +1151,25 @@ function show() {
 const SPAN = 26 * 3600000, POLL = 60000, FULL = 30 * 60000, STALE = 5 * 60000;
 let nowText = '', histAt = 0, fullAt = 0, pollTimer = null, loading = null;
 // One request pair at a time; a forced one (a mode press, the page seen again) waits for the running one, then reads anew.
-function load(force) {
-  if (loading) return force ? loading.then(() => load(true)) : loading;
-  return (loading = fetchAndShow(force).finally(() => { loading = null; }));
+function load(force, settle) {
+  if (loading) return force ? loading.then(() => load(true, settle)) : loading;
+  return (loading = fetchAndShow(force, settle).finally(() => { loading = null; }));
 }
-async function fetchAndShow(force) {
+// Answers in order: one older than the last shown, or sent before a page write went out, is dropped (a fresh read follows the write).
+var reqSeq = 0, shownSeq = 0, writeSeq = 0;
+function takeAnswer(seq, w) {
+  if (seq <= shownSeq || w !== writeSeq) return false;
+  shownSeq = seq;
+  return true;
+}
+async function fetchAndShow(force, settle) {
   try {
+    const seq = ++reqSeq, w = writeSeq;
     const to = Date.now(), full = !lastRows || to - fullAt >= FULL, from = full ? to - SPAN : histAt + 1000;
-    const [n, h] = await Promise.all([fetch('/api/now', { cache: 'no-store' }), fetch(`/api/history?from=${from}&to=${to}&step=60`, { cache: 'no-store' })]);
+    const [n, h] = await Promise.all([fetch(settle ? '/api/now?settle=1' : '/api/now', { cache: 'no-store' }), fetch(`/api/history?from=${from}&to=${to}&step=60`, { cache: 'no-store' })]);
     if (!n.ok || !h.ok) throw new Error(`HTTP ${n.status}/${h.status}`);
     const text = await n.text(), hist = await h.json();
+    if (!takeAnswer(seq, w)) return;
     const fresh = hist.rows.filter((r) => r.soc !== null), changed = full || fresh.length > 0 || text !== nowText;
     histAt = hist.rows.length ? Date.parse(hist.rows[hist.rows.length - 1].at) : Math.max(histAt, from - 1000);
     if (full) { lastRows = fresh; fullAt = to; }
@@ -1127,32 +1195,111 @@ document.querySelectorAll('#langSeg button').forEach((b) => { b.onclick = () => 
   try { localStorage.setItem('station.lang', lang); } catch (e) { /* private window */ }
   applyStatic(); show();
 }; });
-// The last mode button's refusal ({code, text, args} or {text}) stays under the buttons across refreshes until the next press.
-var modeError = null;
-// A refusal shows under the buttons: the press's own answer, else the service's saved one (modeError of /api/now).
-function renderModeNote() {
-  const D = lastNow || {};
-  const text = modeError ? (modeError.code ? noteText(modeError) : modeError.text) : (D.modeErrorNote ? noteText(D.modeErrorNote) : D.modeError) || '';
-  const el = $('modeNote'); el.hidden = !text; el.textContent = text;
+// The last mode button's refusal or failure stays under the buttons across refreshes until the next press.
+var modeError = '';
+var modePress = null; // the mode a press is sending, until its reply
+var modeErrorCode = ''; // the code of the press's own refusal (max-held), '' for a failure without one
+var planPress = null; // the After-eco option a press is sending, until its reply
+var settling = false; // a settle read is out
+const MODE_KEY = { auto: 'modeAuto', eco: 'modeEco', max: 'modeMax' };
+const ACTIVE_PLAN_KEY = { high: 'activeHigh', balanced: 'activeBalanced', saver: 'activeSaver' };
+const HELD_CODES = ['max-held', 'eco-held', 'auto-held'];
+// The plan after eco: the pressed option shown at once, a second click while the POST is out ignored; a failure goes to the
+// line under the mode buttons as a mode press's does.
+async function pressPlan(b, all) {
+  if (planPress) return;
+  planPress = b.dataset.p;
+  all.forEach((x) => { x.disabled = true; x.setAttribute('aria-pressed', String(x === b)); if (x === b) x.setAttribute('data-pending', ''); else x.removeAttribute('data-pending'); });
+  modeError = ''; modeErrorCode = ''; writeSeq++;
+  const what = `${t('afterEco')}: ${b.textContent}`;
+  try {
+    const r = await fetch('/api/return-plan', { method: 'POST', headers: { 'X-Station': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ returnPlan: b.dataset.p }) });
+    const j = await r.json().catch(() => ({ message: `HTTP ${r.status}` }));
+    if (!r.ok) modeError = `${what}: ${j.message || r.status}`;
+  } catch (e) {
+    modeError = `${what}: ${t('serviceDown', { e: e.message })}`;
+  } finally {
+    planPress = null; writeSeq++;
+    all.forEach((x) => { x.disabled = false; x.removeAttribute('data-pending'); });
+    paintMode(lastNow || {});   // a failure on the line at once, before any /api/now answer too
+  }
+  await load(true);
+}// A mode press: one at a time (a second click while one is out is ignored), the pressed option marked pending at once and
+// the group disabled until the reply; then the service's own state, followed until the choice is applied.
+async function pressMode(b, all) {
+  if (modePress) return;
+  modePress = b.dataset.m; modeError = ''; modeErrorCode = ''; writeSeq++;
+  all.forEach((x) => { x.disabled = true; });
+  if (lastNow) paintMode(lastNow);
+  let accepted = false;
+  try {
+    // a reply that never comes must not leave the group disabled: the press gives up after 15 s as a failure
+    const signal = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined;
+    const r = await fetch('/api/mode', { method: 'POST', headers: { 'X-Station': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: b.dataset.m }), signal });
+    const j = await r.json().catch(() => ({ message: `HTTP ${r.status}` }));
+    if (!r.ok) { modeError = j.code ? noteText({ code: j.code, text: j.message, args: [] }) : `${b.textContent}: ${j.message || r.status}`; modeErrorCode = j.code || ''; }
+    accepted = r.status === 202;
+  } catch (e) {
+    modeError = `${b.textContent}: ${t('serviceDown', { e: e.message })}`;
+  } finally {
+    modePress = null; writeSeq++;
+    all.forEach((x) => { x.disabled = false; });
+    paintMode(lastNow || {});   // the refusal or failure on the line at once, the service down and no /api/now answer yet included
+  }
+  await load(true);
+  if (accepted) await settle();
+}
+// While a saved choice is applying: reads that the service answers when it is applied, refused or failed (each bounded by the
+// service), at most 8 in a row; an unreachable service ends it at once.
+async function settle() {
+  if (settling) return;
+  settling = true;
+  try {
+    for (let i = 0; i < 8 && lastNow && lastNow.modePending && !lastNow.modeError; i++) {
+      const before = nowText;
+      await load(true, true);
+      if (nowText === before && $('staleChip') && !$('staleChip').hidden) break;
+    }
+  } finally { settling = false; }
+}
+// The line under the mode buttons: what is applying, why a choice was held back or failed, else what is in force now.
+function modeLine(D, press, own, ownCode) {
+  if (press) return { kind: 'pend', text: t('modeApplying', { m: t(MODE_KEY[press] || 'modeAuto') }) };
+  // the press's own refusal (409 at once) or a service out of reach: the reply the service never saved
+  if (own) return { kind: HELD_CODES.includes(ownCode) ? 'warn' : 'bad', text: own };
+  const applying = !D.modeError && D.modePending;
+  if (applying) return { kind: 'pend', text: t('modeApplying', { m: t(MODE_KEY[applying] || 'modeAuto') }) };
+  if (D.modeError) {
+    const n = D.modeErrorNote;
+    return { kind: n && HELD_CODES.includes(n.code) ? 'warn' : 'bad', text: n ? noteText(n) : D.modeError };
+  }
+  const mode = t({ normal: 'pmNormal', eco: 'pmEco', emergency: 'pmEmergency' }[D.powerMode] || 'pmUnknown');
+  const p = D.powerPlan || {}, plan = ACTIVE_PLAN_KEY[p.id] ? t(ACTIVE_PLAN_KEY[p.id]) : p.name;
+  return { kind: '', text: plan ? t('modeNowPlan', { m: mode, p: plan }) : t('modeNow', { m: mode }) };
+}
+// The mode group as the service and a press in flight say: the choice pressed, the one applying marked, the line under it.
+function paintMode(D) {
+  const applying = modePress || (!D.modeError && D.modePending) || null;
+  document.querySelectorAll('#modeSeg button').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.dataset.m === (modePress || D.manual)));
+    if (b.dataset.m === applying) b.setAttribute('data-pending', ''); else b.removeAttribute('data-pending');
+  });
+  // a coded refusal is worded again on each paint, so a language switch rewords it; an uncoded failure stays as said
+  const own = modeErrorCode ? noteText({ code: modeErrorCode, text: modeError, args: [] }) : modeError;
+  const l = modeLine(D, modePress, own, modeErrorCode), el = $('modeLine');
+  // what is in force is state, not a control: the plan goes to a chip, the line stays for a press applying, held back or failed
+  el.textContent = l.text; el.className = `hint ${l.kind}`.trim(); el.hidden = !l.kind;
+  const p = D.powerPlan || {}, plan = ACTIVE_PLAN_KEY[p.id] ? t(ACTIVE_PLAN_KEY[p.id]) : p.name, pc = $('planChip');
+  pc.className = 'chip' + (p.id === 'saver' ? ' acc' : '');
+  pc.lastChild.textContent = plan ? t('planChip', { p: plan }) : l.text;
+  pc.hidden = Boolean(l.kind) || !(plan || D.powerMode === 'unreadable');
 }
 var ecoTimer = null; // the eco countdown's one-second tick, stopped while the page is hidden
 var dtekDay = 'today'; // the DTEK tab picked: today or tomorrow
 var introChart = true; // the chart draws its lines in on the first paint and on a range switch, not on the minute repaint
 var iconSoc = null; // the charge the tab icon was last drawn for
-document.querySelectorAll('#modeSeg button').forEach((b) => { b.onclick = async () => {
-  modeError = null;
-  try {
-    const r = await fetch('/api/mode', { method: 'POST', headers: { 'X-Station': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: b.dataset.m }) });
-    const j = await r.json().catch(() => ({ message: `HTTP ${r.status}` }));
-    if (!r.ok) modeError = j.code ? { code: j.code, text: j.message, args: [] } : { text: `${b.textContent}: ${j.message || r.status}` };
-  } catch (e) {
-    modeError = { text: `${b.textContent}: ${t('serviceDown', { e: e.message })}` };
-  } finally {
-    renderModeNote();
-    load(true);
-  }
-}; });
-// Phones have no hover: a tap on anything with a tooltip (or on the ring) shows it in the tip box, a tap elsewhere hides it.
+document.querySelectorAll('#modeSeg button').forEach((b, _, all) => { b.onclick = () => pressMode(b, [...all]); });
+document.querySelectorAll('#planSeg button').forEach((b, _, all) => { b.onclick = () => pressPlan(b, [...all]); });// Phones have no hover: a tap on anything with a tooltip (or on the ring) shows it in the tip box, a tap elsewhere hides it.
 if (window.matchMedia && matchMedia('(hover: none)').matches) document.addEventListener('click', (e) => {
   const tip = $('tip'), ring = e.target.closest('#ring'), el = e.target.closest('[title]');
   if (ring && ring.onmousemove) { ring.onmousemove(e); return; }
@@ -1164,5 +1311,5 @@ if (window.matchMedia && matchMedia('(hover: none)').matches) document.addEventL
 let resizeTimer = null;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(show, 250); });
 applyStatic();
-load().then(schedule);
+load().then(() => { settle(); schedule(); });   // a choice still applying from before the reload is followed too
 </script></body></html>

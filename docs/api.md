@@ -8,10 +8,10 @@ or Unix milliseconds.
 
 - Every request: the `Host` header must be exactly `127.0.0.1:<port>` or `localhost:<port>`; anything else is `403
   forbidden: foreign Host`. This blocks DNS rebinding.
-- `POST /api/mode` also needs the header `X-Station: 1` and an `Origin` that is absent or the service's own
+- `POST /api/mode` and `POST /api/return-plan` also need the header `X-Station: 1` and an `Origin` that is absent or the service's own
   (`http://127.0.0.1:<port>` or `http://localhost:<port>`); else 403 with the reason. A web page on another origin
   cannot send the custom header without a CORS preflight, and the service never sends a CORS header.
-- Wrong method: 405 (`POST only` for `/api/mode`, `GET only` elsewhere). Unknown path: 404.
+- Wrong method: 405 (`POST only` for `/api/mode`, `GET only` elsewhere; `/api/return-plan` takes both). Unknown path: 404.
 
 ## GET /
 
@@ -19,7 +19,7 @@ The dashboard page (`text/html`). Also `/index.html`.
 
 ## GET /api/now
 
-The current state, for the page.
+The current state, for the page. `?settle=1` answers once a saved page choice (`modePending`) is applied, refused or failed, at most 8 s later; at once when none waits.
 
 | Field | Meaning |
 |---|---|
@@ -28,6 +28,9 @@ The current state, for the page.
 | `eco`, `ecoNote` | The power mode in words ("" when normal) and as a coded note. |
 | `manual` | The page's choice: `auto`, `eco`, `max`. `modePending`: a choice not applied yet, or null. |
 | `modeError`, `modeErrorNote` | The last refusal or failure of a page choice ("" when none), and as a coded note. |
+| `powerMode` | The flag's mode in force as the service last read it: `normal`, `eco`, `emergency`, or `unreadable` (not read yet or untrusted). |
+| `powerPlan` | The active Windows power plan as the switch reads it (`powercfg /list`): `{ "id": "high" \| "balanced" \| "saver" \| "other" \| "", "name" }`; `""` = unknown. |
+| `returnPlan` | The plan the end of eco sets (see `/api/return-plan`). |
 | `level` | Battery level: `ok`, `low`, `critical`, `hibernating`. |
 | `cut` | true while a power cut is confirmed. |
 | `grid` | Mains: `on`, `off`, `unknown`. |
@@ -105,6 +108,13 @@ Stored events, same time defaults: `{ "events": [ { "at", "kind", "detail" } ] }
 | `misses` | Misses in a row. |
 | `silent` | true while the station does not answer. |
 | `rawRows`, `aggregateRows` | Rows in the database. |
+
+## GET /api/return-plan, POST /api/return-plan
+
+The power plan every end of eco sets: `returnPlan` in `power-mode.config.json` beside the flag ([power-mode/README.md](../power-mode/README.md), Configuration).
+GET answers `{ "returnPlan": "high" | "balanced" | "previous" | "custom" }` (`custom` = a plan GUID set by hand; no file = `high`); `/api/now` carries the same field.
+POST body `{"returnPlan": "high" | "balanced" | "previous"}`, headers per the guard above; every other key of the file is kept, the write is a temp file moved over it.
+Answer `{ "ok", "returnPlan", "message" }`: 200 saved · 400 a body that is not JSON or another value · 409 the flag folder does not exist yet or the file is not a JSON object (nothing written) · 500 the write failed (the old file stays).
 
 ## POST /api/mode
 
