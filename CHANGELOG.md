@@ -6,6 +6,8 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-28
+
 ### Added
 
 - Page header controls: Power and After eco as one grid, the power plan in force as a chip, the language as a text
@@ -375,8 +377,9 @@ with `-Apply`. Requirements and details: [README](https://github.com/vitaliy-sha
 
 Source at this tag: [v1.0.0](https://github.com/vitaliy-shatskiy/bluetti-watcher/tree/v1.0.0)
 
-[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.4.2...HEAD
-[1.4.2]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.4.1...v1.4.2
+[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.5.0...v1.6.0
+[1.5.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.3...v1.4.0
 [1.3.3]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.3.2...v1.3.3
