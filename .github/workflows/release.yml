@@ -80,6 +80,13 @@ jobs:
           if (-not (Test-Path -LiteralPath THIRD-PARTY-NOTICES.md)) { Write-Output 'no THIRD-PARTY-NOTICES.md: the release needs it'; exit 1 }
           Copy-Item install.ps1, README.md, LICENSE, THIRD-PARTY-NOTICES.md $pkg
           foreach ($f in 'README.uk.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'SECURITY.md') { if (Test-Path $f) { Copy-Item $f $pkg } }
+          # The README images and videos stay out of the zip: the packaged READMEs point at them on GitHub, at this tag.
+          $raw = "https://raw.githubusercontent.com/${{ github.repository }}/$env:REF_NAME/docs/"
+          foreach ($readme in Get-ChildItem $pkg -Filter 'README*.md' -File) {
+            $text = Get-Content -Raw -LiteralPath $readme.FullName
+            $text = [regex]::Replace($text, '((?:src|srcset|href)="|\]\()docs/(media|demos)/', { param($m) $m.Groups[1].Value + $raw + $m.Groups[2].Value + '/' })
+            [IO.File]::WriteAllText($readme.FullName, $text)
+          }
           # Every relative link and image in the READMEs must resolve inside the package.
           $missing = @()
           foreach ($readme in Get-ChildItem $pkg -Filter 'README*.md' -File) {
