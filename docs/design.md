@@ -4,7 +4,8 @@ Bluetti Watcher is an always-on local service for a Windows PC that runs from a 
 It reads the station once a minute, stores the readings compactly, serves a dashboard and a small HTTP API on
 `127.0.0.1`, and switches the PC's power mode (eco, emergency, normal, hibernate) by mains state and battery level.
 This document states the rules the service follows. Every key named here is described in
-[configuration.md](configuration.md); every endpoint in [api.md](api.md).
+[configuration.md](configuration.md); every endpoint in [api.md](api.md). The registers the official app reads, for
+read-only features to come, are mapped in [bluetti-protocol.md](bluetti-protocol.md).
 
 ## 1. Goals and limits
 
