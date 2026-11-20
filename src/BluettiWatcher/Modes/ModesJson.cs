@@ -15,5 +15,9 @@ namespace BluettiWatcher.Modes;
 [JsonSerializable(typeof(ActionModuleDescriptor))]
 [JsonSerializable(typeof(DiscoveredItem))]
 [JsonSerializable(typeof(ActionStatus))]
+[JsonSerializable(typeof(JournalRecord))]
+[JsonSerializable(typeof(List<JournalRecord>))]
+[JsonSerializable(typeof(ActionReport))]
+[JsonSerializable(typeof(ResourceStatus))]
 [JsonSerializable(typeof(JsonObject))]
 internal sealed partial class ModesJson : JsonSerializerContext;
