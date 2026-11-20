@@ -127,6 +127,20 @@ public sealed class ModesApiTests : IDisposable
         Assert.DoesNotContain(_engine.Settings.Modes, m => m.Id == "quiet");
     }
 
+    [Theory]
+    [InlineData("POST", "/api/modes")]
+    [InlineData("PUT", "/api/modes/eco")]
+    public async Task Mode_ActionWithoutEnabled_IsEnabled(string method, string path)
+    {
+        string id = method == "POST" ? "quiet" : "eco";
+        string body = $$$$"""{"id":"{{{{id}}}}","name":"Quiet","flagWord":"eco","actions":[{"typeId":"windows.powerPlan","settings":{"key":"plan","value":"saver"}}]}""";
+
+        var r = await _api.HandleAsync(Req(method, path, body), TestContext.Current.CancellationToken);
+
+        Assert.Equal(200, r.Status);
+        Assert.True(_engine.Settings.Modes.Single(m => m.Id == id).Actions.Single().Enabled);
+    }
+
     [Fact]
     public async Task Catalogue_ListsSchemaAvailabilityAndDiscovery()
     {

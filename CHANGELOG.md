@@ -21,6 +21,9 @@ The release notes on GitHub are this file's section for the tag.
 - After a sleep or hibernation and a service restart, a mode's runtime writes (a paused backup, a held task) are kept:
   on .NET 11 the awake-time counter skips sleep, so the boot time came out late and those writes were taken for lost
   in a reboot. The boot time now counts the time asleep.
+- An action saved through `POST`/`PUT /api/modes` without an `enabled` field is enabled, as documented: the .NET 10
+  JSON source generator set every missing init-only field to its type's default (`false`), the .NET 11 one keeps the
+  declared default.
 - A cloud token file with an absurd lifetime ends at the last representable date or at 1970 instead of failing to
   load, and an empty battery history gives no measured drain instead of an error.
 
