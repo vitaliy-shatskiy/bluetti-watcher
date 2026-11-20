@@ -149,6 +149,30 @@ public sealed class ModesServiceTests : IDisposable
         Assert.Equal([FlagWord.Normal], flag.Written);
     }
 
+    [Fact]
+    public async Task Start_ServiceRestartsInTheSameMode_NoModeChangedEvent()
+    {
+        string sub = Directory.CreateDirectory(Path.Combine(_dir, "restart")).FullName;
+        var cfg = new StationConfig { DataDir = sub };
+        var input = new SelectorInput(true, TimeSpan.FromHours(1), 80, null, _clock.GetLocalNow());
+        var events = new List<string>();
+        ModesEngine New() => new(cfg, new ModuleRegistry([new FakeModule(BuiltInModes.PowerPlanType, _m)]), new ModesStore(sub),
+            new ModeJournal(Path.Combine(sub, ModeJournal.FileName)), new FakeFlagWriter(), _clock, _ => { }, (k, _) => events.Add(k));
+        using (var first = New())
+        {
+            first.Start(T0.AddDays(-1));
+            await first.StepAsync(input, emergency: false, TestContext.Current.CancellationToken);
+        }
+        Assert.Single(events, e => e == "mode-changed");
+        events.Clear();
+
+        using var second = New();
+        second.Start(T0.AddDays(-1));
+        await second.StepAsync(input, emergency: false, TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain("mode-changed", events);
+    }
+
     private static List<Rule> CutRule() => [new() { Condition = new RuleCondition { Kind = ConditionKind.CutWithin, Minutes = 30 }, ModeId = BuiltInModes.Eco }];
 
     [Fact]
