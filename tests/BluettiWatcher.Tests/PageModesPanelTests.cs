@@ -274,24 +274,29 @@ public sealed partial class PageI18nTests
     }
 
     [Fact]
-    public void Built_in_modes_cannot_be_deleted_and_a_user_mode_is_deleted_only_after_the_confirm()
+    public void Built_in_modes_cannot_be_deleted_and_a_user_mode_is_deleted_only_after_its_undo_window()
     {
         var r = RunPanel("""
             (async () => {
+              const timers = []; setTimeout = (f, ms) => { timers.push({ f, ms, live: true }); return timers.length; }; clearTimeout = (i) => { if (timers[i - 1]) timers[i - 1].live = false; };
               mpPaintList();
-              const list = $('modesList'), has = ['normal', 'eco', 'quiet'].map((id) => !!A(list, 'delete', id));
-              const tags = walk(list, (x) => x.className === 'tag').map((x) => x.textContent);
-              confirmAnswer = false; await A(list, 'delete', 'quiet').onclick();
-              const afterNo = fetches.length;
-              confirmAnswer = true; answers = [{ status: 409, body: 'a rule chooses quiet: change the rules first' }];
-              await A($('modesList'), 'delete', 'quiet').onclick();
-              console.log(JSON.stringify({ has, tags, afterNo, asks, req: fetches[0], msg: mpMsg }));
+              const has = ['normal', 'eco', 'quiet'].map((id) => { mpEditMode(id); const b = !!A($('modesEdit'), 'delete', id); mpCloseEdit(); return b; });
+              const tags = walk($('modesList'), (x) => x.className === 'own').map((x) => x.textContent);
+              mpEditMode('quiet'); A($('modesEdit'), 'delete', 'quiet').onclick();
+              const gone = [mpDraft === null, !!A($('modesList'), 'undo-delete', 'quiet'), !A($('modesList'), 'edit', 'quiet'), timers[0].ms];
+              A($('modesList'), 'undo-delete', 'quiet').onclick();
+              const undone = [timers[0].live, !!A($('modesList'), 'edit', 'quiet'), fetches.length];
+              mpEditMode('quiet'); A($('modesEdit'), 'delete', 'quiet').onclick();
+              answers = [{ status: 409, body: 'a rule chooses quiet: change the rules first' }];
+              await timers[1].f();
+              console.log(JSON.stringify({ has, tags, gone, undone, sent: fetches.length, req: fetches[0], msg: mpMsg }));
             })();
             """);
         Assert.Equal("[false,false,true]", r.GetProperty("has").GetRawText());
-        Assert.Equal("""["modesBuiltIn","modesBuiltIn"]""", r.GetProperty("tags").GetRawText());
-        Assert.Equal(0, r.GetProperty("afterNo").GetInt32());
-        Assert.Equal("""["modesDeleteAsk{\"n\":\"Quiet\"}","modesDeleteAsk{\"n\":\"Quiet\"}"]""", r.GetProperty("asks").GetRawText());
+        Assert.Equal("""["modesCustom"]""", r.GetProperty("tags").GetRawText());   // only a user mode is tagged
+        Assert.Equal("[true,true,true,5000]", r.GetProperty("gone").GetRawText());   // the editor closed, the row offers Undo
+        Assert.Equal("[false,true,0]", r.GetProperty("undone").GetRawText());   // undone: the timer is cleared and nothing was sent
+        Assert.Equal(1, r.GetProperty("sent").GetInt32());
         var req = r.GetProperty("req");
         Assert.Equal(("DELETE", "/api/modes/quiet", "1"), (req.GetProperty("method").GetString(), req.GetProperty("url").GetString(), req.GetProperty("station").GetString()));
         Assert.Equal("""{"kind":"bad","text":"modesNotSaved{\"e\":\"a rule chooses quiet: change the rules first\"}"}""", r.GetProperty("msg").GetRawText());
@@ -352,70 +357,157 @@ public sealed partial class PageI18nTests
     }
 
     [Fact]
-    public void Status_chips_say_each_action_state_with_its_reason()
+    public void The_action_list_says_each_state_in_a_row_and_keeps_the_engine_detail_in_the_tooltip()
     {
         var r = RunPanel("""
             mpPaintTop();
-            const first = walk($('modesStatus'), (x) => x.attrs['data-st']).map((c) => [c.attrs['data-st'], c.className, c.children[1].textContent]);
-            const problems = walk($('modesStatus'), (x) => x.className === 'bad').map((x) => x.textContent);
+            const rows = walk($('modesStatus'), (x) => x.attrs['data-st']).map((c) => [c.attrs['data-st'], c.className || '', c.children[1].textContent, c.children[2].textContent, c.title || '']);
+            const problems = walk($('modesStatus'), (x) => x.tagName === 'LI' && !x.attrs['data-st']).map((x) => x.textContent);
             mpView.emergency = true; mpView.actions = []; mpView.restores = []; mpPaintTop();
-            console.log(JSON.stringify({ first, problems, second: $('modesStatus').textContent }));
+            console.log(JSON.stringify({ rows, problems, tag: $('modesStatus').children[0].tagName, second: $('modesStatus').textContent }));
             """);
-        Assert.Equal("""[["applied","chip ok","modesChip{\"a\":\"Plan\",\"s\":\"st_applied\"}"],["failed","chip bad","modesChipWhy{\"a\":\"Everything\",\"s\":\"st_failed\",\"r\":\"access denied\"}"],["relinquished","chip warn","modesChip{\"a\":\"Plan\",\"s\":\"st_relinquished\"}"],["unsupported","chip","modesChipWhy{\"a\":\"x.gone\",\"s\":\"st_unsupported\",\"r\":\"not registered\"}"],["satisfied","chip ok","modesChip{\"a\":\"Plan\",\"s\":\"st_satisfied\"}"],["restore-failed","chip bad","modesChipWhy{\"a\":\"Everything (gpu/0/powerLimit)\",\"s\":\"st_restore_failed\",\"r\":\"3 tries\"}"]]""",
-            r.GetProperty("first").GetRawText());
+        Assert.Equal("""[["applied","tone-ok","Plan","st_applied",""],["failed","tone-bad","Everything","st_failed","access denied"],["relinquished","tone-warn","Plan","st_relinquished","changed by hand"],["unsupported","","x.gone","st_unsupported","not registered"],["satisfied","tone-ok","Plan","st_satisfied",""],["restore-failed","tone-bad","modesRestoreOf{\"a\":\"Everything\"}","st_restore_failed","3 tries"]]""",
+            r.GetProperty("rows").GetRawText());
         Assert.Equal("""["journal unreadable: moved aside"]""", r.GetProperty("problems").GetRawText());
+        Assert.Equal("LI", r.GetProperty("tag").GetString());
         Assert.Equal("modesEmergencymodesNoActionsjournal unreadable: moved aside", r.GetProperty("second").GetString());
     }
 
     [Fact]
-    public void The_selector_marks_the_choice_says_why_the_mode_is_in_force_and_posts_a_pick()
+    public void An_action_takes_the_page_name_of_its_type_and_an_unknown_type_its_catalogue_title()
+    {
+        var r = RunPanel("""
+            t = (k, p) => (k === 'act_test_plan' ? 'Схема' : p ? k + JSON.stringify(p) : k);
+            console.log(JSON.stringify([mpTitle('test.plan'), mpTitle('test.all'), mpTitle('x.gone')]));
+            """);
+        Assert.Equal("""["Схема","Everything","x.gone"]""", r.GetRawText());
+    }
+
+    [Fact]
+    public void The_summary_names_the_mode_and_why_and_a_pick_from_the_header_is_posted_once()
     {
         var r = RunPanel("""
             (async () => {
               mpPaintTop();
-              const sel = () => walk($('modesSel'), (x) => x.tagName === 'BUTTON');
-              const auto = { ms: sel().map((b) => b.attrs['data-m']), texts: sel().map((b) => b.textContent), pressed: sel().map((b) => b.attrs['aria-pressed']), line: $('modesNow').textContent };
+              const now = () => walk($('modesNow'), (x) => x.tagName === 'DD').map((x) => x.textContent);
+              const auto = now(), labels = walk($('modesNow'), (x) => x.tagName === 'DT').map((x) => x.textContent);
               const MANUAL = JSON.parse(JSON.stringify(VIEW)); MANUAL.activeModeId = 'quiet'; MANUAL.settings.selection = { kind: 'manual', manualModeId: 'quiet', autoModeId: 'eco', autoRule: null };
               let release; const sent = [];
               fetch = (u, o) => { sent.push([u, o.method, o.headers['X-Station'], o.body]); return new Promise((res) => { release = () => res({ ok: true, status: 200, json: () => Promise.resolve(MANUAL) }); }); };
-              const p = sel()[3].onclick();
-              const during = { pending: sel().map((b) => 'data-pending' in b.attrs), disabled: sel().map((b) => b.disabled) };
-              const again = sel()[1].onclick();
+              const p = mpSelect('quiet');
+              const during = [now()[0], now()[1], F($('modesHib'), 'hibernate').disabled];
+              const again = mpSelect('normal');
               release(); await p; await again;
-              console.log(JSON.stringify({ auto, during, sent, loads, pressed: sel().map((b) => b.attrs['aria-pressed']), line: $('modesNow').textContent }));
+              console.log(JSON.stringify({ auto, labels, during, sent, loads, manual: now() }));
             })();
             """);
-        var auto = r.GetProperty("auto");
-        Assert.Equal("""["auto","normal","eco","quiet"]""", auto.GetProperty("ms").GetRawText());
-        Assert.Equal("""["modeAuto","Normal","Eco","Quiet"]""", auto.GetProperty("texts").GetRawText());
-        Assert.Equal("""["true","false","false","false"]""", auto.GetProperty("pressed").GetRawText());
-        Assert.Equal("""modesNowAuto{"m":"Eco","n":1,"c":"rdMainsOff{\"n\":\"180\"}"}""", auto.GetProperty("line").GetString());
-        Assert.Equal("[false,false,false,true]", r.GetProperty("during").GetProperty("pending").GetRawText());
-        Assert.Equal("[true,true,true,true]", r.GetProperty("during").GetProperty("disabled").GetRawText());
+        Assert.Equal("""["modesSumMode","modesSumWhy"]""", r.GetProperty("labels").GetRawText());
+        Assert.Equal("""["modeEco","modesWhyRule{\"c\":\"rdMainsOff{\\\"n\\\":\\\"3 uMin\\\"}\",\"n\":1}"]""", r.GetProperty("auto").GetRawText());
+        Assert.Equal("""["Quiet","modesSwitching",true]""", r.GetProperty("during").GetRawText());   // the mode it goes to, said as running
         Assert.Equal("""[["/api/modes/select","POST","1","{\"mode\":\"quiet\"}"]]""", r.GetProperty("sent").GetRawText());   // a second press while one is out sends nothing
         Assert.Equal(1, r.GetProperty("loads").GetInt32());   // the header follows at once
-        Assert.Equal("""["false","false","false","true"]""", r.GetProperty("pressed").GetRawText());
-        Assert.Equal("""modesNowManual{"m":"Quiet"}""", r.GetProperty("line").GetString());
+        Assert.Equal("""["Quiet","modesWhyManual"]""", r.GetProperty("manual").GetRawText());
     }
 
     [Fact]
-    public void The_hibernate_toggle_puts_the_setting_and_a_refused_change_springs_back()
+    public void The_active_mode_row_says_active_and_the_list_runs_eco_normal_then_user_modes()
+    {
+        var r = RunPanel("""
+            mpView.settings.modes.push({ id: 'max', name: 'Max', flagWord: 'normal', builtIn: true, actions: [] });
+            mpPaintList();
+            const rows = walk($('modesList'), (x) => x.tagName === 'LI');
+            console.log(JSON.stringify({ order: rows.map((x) => x.attrs['data-m']), on: rows.map((x) => x.className),
+              word: walk(rows[0], (x) => x.attrs['data-f'] === 'active').map((x) => x.textContent), others: walk(rows[1], (x) => x.attrs['data-f'] === 'active').length,
+              buttons: rows.map((x) => walk(x, (b) => b.tagName === 'BUTTON').map((b) => b.attrs['data-act']).join()) }));
+            """);
+        Assert.Equal("""["eco","normal","max","quiet"]""", r.GetProperty("order").GetRawText());
+        Assert.Equal("""["item on","item","item","item"]""", r.GetProperty("on").GetRawText());
+        Assert.Equal("""["modesActive"]""", r.GetProperty("word").GetRawText());
+        Assert.Equal(0, r.GetProperty("others").GetInt32());
+        Assert.Equal("""["edit","edit","edit","edit"]""", r.GetProperty("buttons").GetRawText());   // "Edit" is each row's only button
+    }
+
+    [Fact]
+    public void The_editor_opens_in_its_row_and_save_waits_for_a_change()
+    {
+        var r = RunPanel("""
+            mpPaintList(); mpEditMode('eco');
+            const rowOf = (id) => walk($('modesList'), (x) => x.tagName === 'LI' && x.attrs['data-m'] === id)[0];
+            const inRow = walk(rowOf('eco'), (x) => x === $('modesEdit')).length, elsewhere = walk(rowOf('normal'), (x) => x === $('modesEdit')).length;
+            const ed = $('modesEdit'), save = () => A(ed, 'save-mode');
+            const before = save().disabled;
+            const n = F(ed, 'name'); n.value = 'Eco 2'; n.oninput(); ed.oninput();
+            const after = save().disabled;
+            mpEditMode('normal');   // another row while this one has a change: kept open and said
+            console.log(JSON.stringify({ inRow, elsewhere, before, after, still: mpDraft.mode.id, msg: walk($('modesEdit'), (x) => x.className === 'msg bad').map((x) => x.textContent),
+              expanded: A($('modesList'), 'edit', 'eco').attrs['aria-expanded'] }));
+            """);
+        Assert.Equal(1, r.GetProperty("inRow").GetInt32());
+        Assert.Equal(0, r.GetProperty("elsewhere").GetInt32());
+        Assert.True(r.GetProperty("before").GetBoolean());
+        Assert.False(r.GetProperty("after").GetBoolean());
+        Assert.Equal("eco", r.GetProperty("still").GetString());
+        Assert.Equal("""["modesUnsaved"]""", r.GetProperty("msg").GetRawText());
+        Assert.Equal("true", r.GetProperty("expanded").GetString());
+    }
+
+    [Fact]
+    public void A_rule_duration_shows_whole_minutes_saves_seconds_and_keeps_odd_seconds()
+    {
+        var r = RunPanel("""
+            (async () => {
+              mpView.settings.rules[1].condition.seconds = 90;
+              mpPaintRules();
+              let box = $('modesRules');
+              const unitOf = (key) => { const li = F(box, key.split('.')[0]); return walk(li, () => true).map((x) => x.children).flat().filter((c) => c.text !== undefined).map((c) => c.text).join('|'); };
+              const shown = [F(box, 'r0.seconds').value, F(box, 'r1.seconds').value, unitOf('r0.seconds').includes('uMin'), unitOf('r1.seconds').includes('uSec')];
+              const s = F(box, 'r0.seconds'); s.value = '4'; s.oninput();
+              const plus = A(F(box, 'r0'), 'more'); plus.onclick(); plus.onclick(); const minus = A(F(box, 'r0'), 'less'); minus.onclick();
+              const stepped = [F(box, 'r0.seconds').value, mpRules[0].condition.seconds];
+              answers = [{ status: 200, body: VIEW }];
+              await A($('modesRules'), 'save-rules').onclick();
+              console.log(JSON.stringify({ shown, stepped, body: JSON.parse(fetches[0].body).map((x) => x.condition.seconds) }));
+            })();
+            """);
+        Assert.Equal("""["3","90",true,true]""", r.GetProperty("shown").GetRawText());   // 180 s reads 3 min; 90 s stays in seconds
+        Assert.Equal("""["5",300]""", r.GetProperty("stepped").GetRawText());   // 4, +1, +1, -1 minutes
+        Assert.Equal("[300,90]", r.GetProperty("body").GetRawText());   // saved as seconds; 90 s is never rounded
+    }
+
+    [Fact]
+    public void Typing_a_rule_duration_in_minutes_saves_it_in_seconds()
+    {
+        var r = RunPanel("""
+            (async () => {
+              mpPaintRules();
+              const s = F($('modesRules'), 'r0.seconds'); s.value = '4'; s.oninput();
+              answers = [{ status: 200, body: VIEW }];
+              await mpSaveRules();
+              console.log(JSON.stringify(JSON.parse(fetches[0].body)[0].condition));
+            })();
+            """);
+        Assert.Equal("""{"kind":"mainsOffFor","seconds":240}""", r.GetRawText());
+    }
+
+    [Fact]
+    public void The_hibernate_switch_puts_the_setting_and_a_refused_change_springs_back()
     {
         var r = RunPanel("""
             (async () => {
               mpPaintTop();
               const box = () => F($('modesHib'), 'hibernate');
-              const before = box().checked;
+              const before = [box().attrs.role, box().attrs['aria-checked'] === 'true'];
               answers = [{ status: 500, body: 'modes.json not saved: disk full' }];
-              box().checked = false; await box().onchange();
-              const refused = [box().checked, mpMsg.text];
+              await box().onclick();
+              const refused = [box().attrs['aria-checked'] === 'true', mpMsg.text];
               const OFF = JSON.parse(JSON.stringify(VIEW)); OFF.settings.autoHibernate = false;
               answers = [{ status: 200, body: OFF }];
-              box().checked = false; await box().onchange();
-              console.log(JSON.stringify({ before, req: fetches[0], refused, after: [box().checked, mpMsg.text] }));
+              await box().onclick();
+              console.log(JSON.stringify({ before: before[1], role: before[0], req: fetches[0], refused, after: [box().attrs['aria-checked'] === 'true', mpMsg.text] }));
             })();
             """);
         Assert.True(r.GetProperty("before").GetBoolean());
+        Assert.Equal("switch", r.GetProperty("role").GetString());
         var req = r.GetProperty("req");
         Assert.Equal(("PUT", "/api/settings/hibernate", "1", """{"autoHibernate":false}"""),
             (req.GetProperty("method").GetString(), req.GetProperty("url").GetString(), req.GetProperty("station").GetString(), req.GetProperty("body").GetString()));
