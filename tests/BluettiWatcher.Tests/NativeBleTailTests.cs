@@ -45,20 +45,20 @@ public class NativeBleSingleFlightTests
     public async Task A_poll_while_an_abandoned_read_is_alive_starts_no_bluetooth_read_and_the_link_is_released_when_it_ends()
     {
         var ct = TestContext.Current.CancellationToken;
-        var stuck = new TaskCompletionSource<BleOpen>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var late = new ScriptedLink(Good);
-        var conn = new TaskConnector(n => n == 1 ? stuck.Task : Task.FromResult(new BleOpen(new ScriptedLink(Good), null)));
+        var stuck = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var late = new GatedLink(stuck.Task, Good);
+        var conn = new TaskConnector(n => Task.FromResult(new BleOpen(n == 1 ? late : new ScriptedLink(Good), null)));
         var log = new ConcurrentQueue<string>();
         var reader = new NativeBleReader(new StationConfig { Mac = "AA:BB:CC:DD:EE:FF", Type = "AC200PL", ReaderTimeoutSec = 1 },
             conn, log.Enqueue, TimeSpan.FromMilliseconds(300), TimeSpan.FromMilliseconds(100));
 
-        Assert.Null(await reader.ReadAsync(ct));   // the open never returns: abandoned at readerTimeoutSec + margin
+        Assert.Null(await reader.ReadAsync(ct));   // the write never returns: abandoned at readerTimeoutSec + margin
         for (int i = 0; i < 3; i++) Assert.Null(await reader.ReadAsync(ct));
         Assert.Equal(1, conn.Opens);   // no second Bluetooth read while the first is alive
         Assert.Single(log, l => l.Contains("still running", StringComparison.Ordinal));   // not repeated while it stays the same
         Assert.True(reader.BluetoothStalled);
 
-        stuck.SetResult(new BleOpen(late, null));   // the stuck call returns at last
+        stuck.SetResult();   // the stuck call returns at last
         Reading? again = null;
         for (var until = DateTime.UtcNow.AddSeconds(5); again is null && DateTime.UtcNow < until; await Task.Delay(20, ct))
             again = await reader.ReadAsync(ct);
@@ -76,15 +76,16 @@ public class NativeBleSingleFlightTests
     public async Task A_read_that_never_ends_is_given_up_at_the_cap_and_its_late_end_touches_no_newer_read()
     {
         var ct = TestContext.Current.CancellationToken;
-        var hung = new TaskCompletionSource<BleOpen>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var hungToo = new TaskCompletionSource<BleOpen>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var hungLink = new ScriptedLink(Good);
-        var conn = new TaskConnector(n => n switch
+        var hung = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var hungToo = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var hungLink = new GatedLink(hung.Task, Good);
+        await using var hungTooLink = new GatedLink(hungToo.Task, Good);
+        var conn = new TaskConnector(n => Task.FromResult(new BleOpen(n switch
         {
-            1 => hung.Task,
-            2 => Task.FromResult(new BleOpen(new ScriptedLink(Good), null)),
-            _ => hungToo.Task,
-        });
+            1 => hungLink,
+            2 => new ScriptedLink(Good),
+            _ => hungTooLink,
+        }, null)));
         var clock = new ManualClock(Fx.T0);
         var log = new ConcurrentQueue<string>();
         var reader = new NativeBleReader(new StationConfig { Mac = "AA:BB:CC:DD:EE:FF", Type = "AC200PL", ReaderTimeoutSec = 1 },
@@ -105,14 +106,14 @@ public class NativeBleSingleFlightTests
 
         Assert.Null(await reader.ReadAsync(ct));   // read 3 hangs as well
         Assert.True(reader.BluetoothStalled);
-        hung.SetResult(new BleOpen(hungLink, null));   // read 1 ends at last
+        hung.SetResult();   // read 1 ends at last
         for (var until = DateTime.UtcNow.AddSeconds(5); !hungLink.Disposed && DateTime.UtcNow < until;) await Task.Delay(20, ct);
         Assert.True(hungLink.Disposed);
         await Task.Delay(100, ct);
         Assert.True(reader.BluetoothStalled);   // read 1's end did not clear read 3's state
         Assert.Null(await reader.ReadAsync(ct));
         Assert.Equal(3, conn.Opens);   // still waiting for read 3: no new connection
-        hungToo.SetResult(new BleOpen(null, "gone"));
+        hungToo.SetResult();
     }
 }
 

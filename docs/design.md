@@ -48,8 +48,10 @@ read-only features to come, are mapped in [bluetti-protocol.md](bluetti-protocol
    shown on the page; the pack current does not feed the runtime estimate (the app reads it unsigned, so it does not say
    charge from discharge, and no V2 station was available to validate it). A new warning or fault, a code that clears
    and a temperature above `stationTempHighC` (re-armed 5 °C under it) each write an event row and run the matching
-   `actions` command. When opening the connection fails (GATT Unreachable, no ff01/ff02), the poll opens once more
-   before it gives up; when `readerTimeoutSec` runs out, the fields already read are kept as a partial reading and the log
+   `actions` command. Each connection open is capped at 40 % of `readerTimeoutSec` (12 s at the default 30 s) and cut
+   there even when the Bluetooth call ignores its cancellation (a link it hands over later is released), so two opens
+   leave at least 20 % of the budget for the register reads. When opening the connection fails (GATT Unreachable, no
+   ff01/ff02, the cap), the poll opens once more before it gives up; when `readerTimeoutSec` runs out, the fields already read are kept as a partial reading and the log
    names what the read was waiting for. An answer that timed out or came back invalid
    ends its connection and the next request goes over a new one; as a reconnect may reuse the radio link, an answer
    that an earlier unanswered request (of this poll or an earlier one) could have sent (same byte count, so any

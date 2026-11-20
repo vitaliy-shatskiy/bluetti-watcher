@@ -515,10 +515,23 @@ internal sealed class DelayedLink(Func<ReadRequest, (TimeSpan Delay, byte[][] Ch
     public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
 }
 
-/// <summary>A connector whose open never finishes and ignores its cancellation, as a stuck WinRT call can.</summary>
-internal sealed class HangingConnector : IBleConnector
+/// <summary>
+/// A link whose writes wait for <paramref name="gate"/>, ignoring their cancellation as a stuck WinRT call can (an open
+/// is cut at its own cap, so a call that never returns is simulated past the open); once the gate opens it answers by the script.
+/// </summary>
+internal sealed class GatedLink(Task gate, Func<ReadRequest, IEnumerable<byte[]>> script) : IBleLink
 {
-    public Task<BleOpen> OpenAsync(ulong address, CancellationToken ct) => new TaskCompletionSource<BleOpen>().Task;
+    private readonly Channel<byte[]> _notes = Channel.CreateUnbounded<byte[]>();
+    public bool Disposed { get; private set; }
+    public ChannelReader<byte[]> Notifications => _notes.Reader;
+
+    public async Task WriteAsync(ReadRequest request, CancellationToken ct)
+    {
+        await gate;
+        foreach (var chunk in script(request)) _notes.Writer.TryWrite(chunk);
+    }
+
+    public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
 }
 
 internal sealed class ScriptedConnector(Func<BleOpen> open) : IBleConnector
@@ -722,7 +735,8 @@ public class NativeBleReaderTests
     public async Task A_bluetooth_call_that_never_returns_is_a_miss_within_the_reader_timeout()
     {
         var log = new List<string>();
-        var reader = new NativeBleReader(new StationConfig { Mac = "AA:BB:CC:DD:EE:FF", Type = "AC200PL", ReaderTimeoutSec = 1 }, new HangingConnector(), log.Add);
+        await using var hanging = new GatedLink(new TaskCompletionSource().Task, _ => []);
+        var reader = new NativeBleReader(new StationConfig { Mac = "AA:BB:CC:DD:EE:FF", Type = "AC200PL", ReaderTimeoutSec = 1 }, new ScriptedConnector(() => new BleOpen(hanging, null)), log.Add);
         var read = reader.ReadAsync(CancellationToken.None);
         var sw = System.Diagnostics.Stopwatch.StartNew();
         Assert.Same(read, await Task.WhenAny(read, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken)));
