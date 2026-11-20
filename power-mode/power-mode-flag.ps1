@@ -17,7 +17,8 @@ Configuration (environment, read here only; the Bluetti Watcher passes all four 
   Get-PowerModeFlagPath [<path>]   the flag file: the argument (any other file, unguarded: tests; the old place in the user profile is refused), else the configured one
   Get-PowerModeNames               @{ flag; mutex; taskPrefix; endTask; gpuCapTask; gpuRestoreTask; extraReaders }
   Initialize-PowerModeFlagDir <f>  before a write: the configured flag's folder is created by the user with its own ACL, an
-                                   existing one that is not the user's (Test-PowerModeFlagDirAcl) refuses; another missing one throws
+                                   existing one that is not the user's (Test-PowerModeFlagDirAcl) refuses unless it only inherits
+                                   and the user owns it or it is empty (then it gets the own ACL); another missing one throws
   Read-PowerModeFlag <path>        @{ mode; raw; since; rawSince; at; until; untilAt; expired; prevPlan; source; by; battery }
                                    a missing file = normal · $null = the file is there and cannot be trusted. `mode` is what
                                    is in force now (an eco flag past its `until` reads normal, `expired` set); `raw` is the
@@ -144,8 +145,9 @@ function Test-PowerModeFlagDirAcl([string] $Dir) {
 
 # Before a write: the flag's directory exists, or - for the configured flag only - is created by the user with its own
 # ACL: the user Modify, SYSTEM and Administrators Full control, protected (nothing inherited from %ProgramData%, whose
-# Users entries would let any account write the flag). An existing configured folder is checked, never changed: one that
-# is not the user's (Test-PowerModeFlagDirAcl) refuses the write. Throws 'directory missing' / 'not the user's'.
+# Users entries would let any account write the flag). An existing configured folder is checked: one that is not the
+# user's (Test-PowerModeFlagDirAcl) refuses the write unless Repair-PowerModeInheritedFlagDir may fix it.
+# Throws 'directory missing' / 'not the user's'.
 function Initialize-PowerModeFlagDir([string] $FlagPath) {
     $full = [IO.Path]::GetFullPath($FlagPath)
     $dir = [IO.Path]::GetDirectoryName($full)
@@ -153,13 +155,41 @@ function Initialize-PowerModeFlagDir([string] $FlagPath) {
     if (Test-Path -LiteralPath $dir -PathType Container) {
         if ($isDefault) {
             $why = Test-PowerModeFlagDirAcl $dir
-            if ($why) { throw "the flag folder $dir is not the user's: $why; nothing written (fix the ACL by hand)" }
+            if ($why -and -not (Repair-PowerModeInheritedFlagDir $dir)) { throw "the flag folder $dir is not the user's: $why; nothing written (fix the ACL by hand)" }
         }
         return
     }
     if (-not $isDefault) { throw "directory missing: $dir" }
+    $sec = New-PowerModeFlagDirSecurity $dir
+    # Created WITH the ACL, so the folder is never open under the inherited one, not even for a moment.
+    if ($PSVersionTable.PSVersion.Major -ge 6) { [IO.FileSystemAclExtensions]::Create((New-Object IO.DirectoryInfo $dir), $sec) }
+    else { $null = [IO.Directory]::CreateDirectory($dir, $sec) }
+}
+
+# The configured flag folder left inheriting its ACL (an older install created it before the first flag write) gets the
+# folder's own ACL when it is the user's to fix: the user owns it, or it is empty. Anything else - a link, a protected
+# folder, one holding someone else's files - stays refused: the exe's flag writer keeps the same rule.
+# $true = repaired, and it now passes the check.
+function Repair-PowerModeInheritedFlagDir([string] $Dir) {
+    try {
+        $item = Get-Item -LiteralPath $Dir -Force -ErrorAction Stop
+        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { return $false }
+        $acl = Get-Acl -LiteralPath $Dir -ErrorAction Stop
+        if ($acl.AreAccessRulesProtected) { return $false }
+        $owner = try { $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value } catch { '' }
+        if ($owner -cne (Get-PowerModeMeSid) -and @(Get-ChildItem -LiteralPath $Dir -Force -ErrorAction Stop).Count -gt 0) { return $false }
+        $sec = New-PowerModeFlagDirSecurity $Dir
+        if ($PSVersionTable.PSVersion.Major -ge 6) { [IO.FileSystemAclExtensions]::SetAccessControl($item, $sec) } else { $item.SetAccessControl($sec) }
+    }
+    catch { return $false }   # not repaired: the caller refuses the write with the check's own reason
+    return -not (Test-PowerModeFlagDirAcl $Dir)
+}
+
+# The flag folder's own ACL: the user Modify, SYSTEM and Administrators Full control, nothing inherited. Throws when the
+# account running this is SYSTEM, a service account or an extra reader: the folder is the user's only.
+function New-PowerModeFlagDirSecurity([string] $Dir) {
     $me = [Security.Principal.WindowsIdentity]::GetCurrent().User
-    if ($me.Value -cin 'S-1-5-18', 'S-1-5-19', 'S-1-5-20' -or @(Get-PowerModeExtraReaderSids) -ccontains $me.Value) { throw "the flag folder $dir is created by the user only, not by $($me.Value)" }
+    if ($me.Value -cin 'S-1-5-18', 'S-1-5-19', 'S-1-5-20' -or @(Get-PowerModeExtraReaderSids) -ccontains $me.Value) { throw "the flag folder $Dir is created by the user only, not by $($me.Value)" }
     $inherit = [Security.AccessControl.InheritanceFlags] 'ContainerInherit, ObjectInherit'
     $sec = New-Object Security.AccessControl.DirectorySecurity
     $sec.SetAccessRuleProtection($true, $false)
@@ -170,9 +200,7 @@ function Initialize-PowerModeFlagDir([string] $FlagPath) {
     foreach ($g in $grants) {
         $sec.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($g[0], $g[1], $inherit, [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow)))
     }
-    # Created WITH the ACL, so the folder is never open under the inherited one, not even for a moment.
-    if ($PSVersionTable.PSVersion.Major -ge 6) { [IO.FileSystemAclExtensions]::Create((New-Object IO.DirectoryInfo $dir), $sec) }
-    else { $null = [IO.Directory]::CreateDirectory($dir, $sec) }
+    return $sec
 }
 
 # The zone times are shown in: the PC's own.

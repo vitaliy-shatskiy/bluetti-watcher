@@ -177,13 +177,29 @@ public sealed class PowerModeFlagLibBTests
         Eq(new Res(0, "written", ""), await l.Run());
     }
 
-    [Fact(DisplayName = "a folder that inherits its ACL refuses the write and keeps its ACL")]
-    public async Task A_folder_that_inherits_its_ACL_refuses_the_write()
+    [Fact(DisplayName = "an empty folder that inherits its ACL is given the flag's own ACL and written, as the exe does")]
+    public async Task A_folder_that_inherits_its_ACL_and_is_empty_is_repaired()
     {
         await using Cleanup t = new();
-        Res r = await AclCaseAsync(t, "$null");
+        // As an older install left it: created before the first flag write, inheriting from its parent.
+        FlagLib l = NewFlagLib(t, "$d = Split-Path (Get-PowerModeFlagPath); Initialize-PowerModeFlagDir (Get-PowerModeFlagPath); " +
+            "\"protected=$((Get-Acl -LiteralPath $d).AreAccessRulesProtected)\"; Initialize-PowerModeFlagDir (Get-PowerModeFlagPath); 'written'");
+        Directory.CreateDirectory(Path.GetDirectoryName(l.Fresh)!);
+        Eq(new Res(0, "protected=True\nwritten", ""), await l.Run());
+    }
+
+    [Fact(DisplayName = "a folder that inherits its ACL, holds files and is someone else's is refused and kept")]
+    public async Task A_folder_that_inherits_its_ACL_and_is_someone_elses_refuses_the_write()
+    {
+        await using Cleanup t = new();
+        // A file in it and the seam making the running user someone else: not the user's to fix.
+        FlagLib l = NewFlagLib(t, "$d = Split-Path (Get-PowerModeFlagPath); New-Item -ItemType File -Path (Join-Path $d 'other.txt') | Out-Null; " +
+            "$script:PowerModeMeSidTest = 'S-1-5-21-1-2-3-1001'; try { Initialize-PowerModeFlagDir (Get-PowerModeFlagPath); 'written' } catch { \"refused: $($_.Exception.Message)\" }; " +
+            "\"protected=$((Get-Acl -LiteralPath $d).AreAccessRulesProtected)\"");
+        Directory.CreateDirectory(Path.GetDirectoryName(l.Fresh)!);
+        Res r = await l.Run();
         Eq(0, r.Status, r.Err);
-        Match(@"^refused: the flag folder .* is not the user's: it inherits its ACL \(inheritance must be off\)", r.Out);
+        Match(@"^refused: the flag folder .* is not the user's: .*\nprotected=False$", r.Out);
     }
 
     [Fact(DisplayName = "a folder where Users hold read refuses the write")]
