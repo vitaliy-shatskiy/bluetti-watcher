@@ -23,7 +23,7 @@ h2{font-size:16px;line-height:22px;margin:0 0 12px;font-weight:600;color:var(--t
 .modebox .seg{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(72px,auto);flex:none}
 #modeSeg button{white-space:nowrap}
 #modeSeg button,#planSeg button{height:30px;line-height:30px;padding:0 16px}
-.pick{gap:8px;min-width:140px;justify-content:space-between;background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;position:relative}.pick svg{width:16px;height:16px}
+.head{position:relative;z-index:10}.btn.pick{gap:8px;min-width:140px;justify-content:space-between;background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;position:relative}.pick svg{width:16px;height:16px}
 .menu{position:absolute;z-index:20;min-width:180px;display:grid;padding:4px;background:var(--raised);border:1px solid #3a3d44;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
 .menu button{all:unset;cursor:pointer;height:32px;line-height:32px;padding:0 12px;border-radius:6px;font-size:14px;white-space:nowrap}.menu button:hover{background:rgba(255,255,255,.06)}.menu button[aria-checked=true]{background:var(--accent);color:#fff;font-weight:600}
 .modebox .hint{display:flex;align-items:center;gap:10px;min-height:20px;color:var(--dim);font-size:13px}
@@ -319,7 +319,7 @@ en: {
   powerMode: "Power mode",
   modeAuto: "Auto",
   modeNormal: "Normal",
-  modeMore: "More modes",
+  modeMore: "More",
   modeAutoIs: "Auto picked {m}",
   modeAutoTip: "Eco during a power cut",
   modeEco: "Eco",
@@ -365,8 +365,8 @@ en: {
   stTempAmb: "Ambient temperature",
   stTempInv: "Inverter temperature",
   stTempPv: "Solar converter temperature",
-  thisCut: "This power cut",
-  lastCut: "Last power cut",
+  thisCut: "This outage",
+  lastCut: "Last outage",
   reaches: "Reaches",
   output: "Output",
   today: "Today",
@@ -425,7 +425,7 @@ en: {
   energyPerHour: "Energy per hour over the last {n} h",
   cyclesTitle: "Recurring load",
   loadRangeTitle: "Load, selected range",
-  powerCuts: "Power cuts",
+  powerCuts: "Outages",
   colDate: "Date",
   colStart: "Start",
   colFrom: "Charge from",
@@ -811,7 +811,7 @@ uk: {
   powerMode: "Режим живлення",
   modeAuto: "Авто",
   modeNormal: "Звичайний",
-  modeMore: "Інші режими",
+  modeMore: "Ще",
   modeAutoIs: "Авто обрав {m}",
   modeAutoTip: "Еко-режим під час відключення",
   modeEco: "Еко",
@@ -1842,8 +1842,11 @@ document.addEventListener('visibilitychange', () => {
 document.querySelectorAll('#langSeg button').forEach((b) => { b.onclick = () => {
   lang = b.dataset.lang === 'uk' ? 'uk' : 'en';
   try { localStorage.setItem('station.lang', lang); } catch (e) { /* private window */ }
-  applyStatic(); show();
+  applyStatic(); show(); sendLang();
 }; });
+// the tray and the Windows notifications speak the page's language: the service keeps the last one a page chose
+function sendLang() { fetch('/api/settings/page', { method: 'PUT', headers: { 'X-Station': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ lang }) }).catch(() => { /* an older service: the tray stays English */ }); }
+sendLang();
 // The last mode button's refusal or failure stays under the buttons across refreshes until the next mode press.
 var modeError = '';
 var modePress = null; // the mode a press is sending, until its reply
@@ -2585,16 +2588,19 @@ async function mpDeleteNow(id) {
   mpMsg = r.ok ? { kind: 'ok', text: t('modesDeleted', { n: g.name }) } : { kind: 'bad', text: t('modesNotSaved', { e: r.text }) };
   mpPaintAll();
 }
+var mpQueued = null;     // a choice pressed while another was on its way: sent when that one is answered (the last press wins)
 async function mpSelect(choice) {
-  if (mpBusy || mpPress) return;
+  if (mpBusy || mpPress) { if (mpPress && choice !== mpPress) { mpQueued = choice; mpPress = choice; mpPaintTop(); } return; }
   mpPress = choice;
   const r = await mpWrite('POST', '/api/modes/select', { mode: choice });
   mpPress = null;
   mpMsg = r.ok ? null : { kind: 'bad', text: t('modesNotSaved', { e: r.text }) };
   selError = r.ok ? '' : mpMsg.text;   // the header says it under its buttons too
   selFailed = r.ok ? null : choice;
+  const next = mpQueued; mpQueued = null;
+  if (next && next !== choice) { await mpSelect(next); return; }
   mpPaintTop(); mpPaintList();
-  if (r.ok) await load(true);   // the plan chip follows at once
+  if (r.ok) await load(true);
 }
 // A change the service answered 202 (still switching): the view is read again each second until it is done, at most 60 times.
 async function mpFollow() {

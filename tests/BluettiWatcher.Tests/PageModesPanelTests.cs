@@ -392,19 +392,19 @@ public sealed partial class PageI18nTests
               const now = () => walk($('modesNow'), (x) => x.tagName === 'DD').map((x) => x.textContent);
               const auto = now(), labels = walk($('modesNow'), (x) => x.tagName === 'DT').map((x) => x.textContent);
               const MANUAL = JSON.parse(JSON.stringify(VIEW)); MANUAL.activeModeId = 'quiet'; MANUAL.settings.selection = { kind: 'manual', manualModeId: 'quiet', autoModeId: 'eco', autoRule: null };
-              let release; const sent = [];
-              fetch = (u, o) => { sent.push([u, o.method, o.headers['X-Station'], o.body]); return new Promise((res) => { release = () => res({ ok: true, status: 200, json: () => Promise.resolve(MANUAL) }); }); };
+              const releases = []; const sent = [];
+              fetch = (u, o) => { sent.push([u, o.method, o.headers['X-Station'], o.body]); return new Promise((res) => { releases.push(() => res({ ok: true, status: 200, json: () => Promise.resolve(MANUAL) })); }); };
               const p = mpSelect('quiet');
               const during = [now()[0], now()[1], F($('modesHib'), 'hibernate').disabled];
               const again = mpSelect('normal');
-              release(); await p; await again;
+              releases[0](); await again; for (let i = 0; i < 50 && releases.length < 2; i++) await Promise.resolve(); releases[1](); await p;
               console.log(JSON.stringify({ auto, labels, during, sent, loads, manual: now() }));
             })();
             """);
         Assert.Equal("""["modesSumMode","modesSumWhy"]""", r.GetProperty("labels").GetRawText());
         Assert.Equal("""["modeEco","modesWhyRule{\"c\":\"rdMainsOff{\\\"n\\\":\\\"3 uMin\\\"}\",\"n\":1}"]""", r.GetProperty("auto").GetRawText());
         Assert.Equal("""["Quiet","modesSwitching",true]""", r.GetProperty("during").GetRawText());   // the mode it goes to, said as running
-        Assert.Equal("""[["/api/modes/select","POST","1","{\"mode\":\"quiet\"}"]]""", r.GetProperty("sent").GetRawText());   // a second press while one is out sends nothing
+        Assert.Equal("""[["/api/modes/select","POST","1","{\"mode\":\"quiet\"}"],["/api/modes/select","POST","1","{\"mode\":\"normal\"}"]]""", r.GetProperty("sent").GetRawText());   // a second press while one is out is sent once the first is answered: the last press wins
         Assert.Equal(1, r.GetProperty("loads").GetInt32());   // the header follows at once
         Assert.Equal("""["Quiet","modesWhyManual"]""", r.GetProperty("manual").GetRawText());
     }
