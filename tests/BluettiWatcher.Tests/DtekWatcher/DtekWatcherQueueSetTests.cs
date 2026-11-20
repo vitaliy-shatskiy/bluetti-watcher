@@ -173,14 +173,14 @@ public sealed class DtekWatcherQueueSetTests : IDisposable
     public void The_set_is_a_hint_like_one_queue_a_cut_that_fits_the_union_ends_the_row_two_for_another_queue_refute_it()
     {
         var s = Schedule(Evening());
-        var union = Cut("2026-10-07 17:05", "2026-10-07 23:50");
+        var merged = Cut("2026-10-07 17:05", "2026-10-07 23:50");
         var only41 = Cut("2026-10-07 17:05", "2026-10-07 21:05");     // one line of the set alone: the house followed 4.1, not the union
         var other = Cut("2026-10-07 09:05", "2026-10-07 12:10");      // 2.2
-        var h = DtekMatcher.Hint(null, Set, union, s, Houses, Kyiv, TimeSpan.Zero);
+        var h = DtekMatcher.Hint(null, Set, merged, s, Houses, Kyiv, TimeSpan.Zero);
         Assert.Equal((Set, null, 0, null), (h.Group, h.Candidate, h.Count, h.RefutedBy));
         h = DtekMatcher.Hint(h, Set, only41, s, Houses, Kyiv, TimeSpan.Zero);
         Assert.Equal(("GPV4.1", 1), (h.Candidate, h.Count));
-        h = DtekMatcher.Hint(h, Set, union, s, Houses, Kyiv, TimeSpan.Zero);           // ends the row
+        h = DtekMatcher.Hint(h, Set, merged, s, Houses, Kyiv, TimeSpan.Zero);           // ends the row
         Assert.Equal((null, 0), (h.Candidate, h.Count));
         h = DtekMatcher.Hint(DtekMatcher.Hint(h, Set, other, s, Houses, Kyiv, TimeSpan.Zero), Set, other, s, Houses, Kyiv, TimeSpan.Zero);
         Assert.Equal("GPV2.2", h.RefutedBy);

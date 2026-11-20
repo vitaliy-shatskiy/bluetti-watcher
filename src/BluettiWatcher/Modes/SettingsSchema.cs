@@ -44,11 +44,11 @@ internal static class SettingsSchema
         if (schema["required"] is JsonArray required)
             foreach (var r in required)
                 if (r?.GetValue<string>() is { } name && !obj.ContainsKey(name)) problems.Add($"{path}.{name}: required");
-        bool closed = schema["additionalProperties"] is JsonValue ap && ap.GetValueKind() == JsonValueKind.False;
+        bool noExtras = schema["additionalProperties"] is JsonValue ap && ap.GetValueKind() == JsonValueKind.False;
         foreach (var (name, child) in obj)
         {
             if (props?[name] is JsonObject sub) Check(sub, child, $"{path}.{name}", problems);
-            else if (closed) problems.Add($"{path}.{name}: not allowed");
+            else if (noExtras) problems.Add($"{path}.{name}: not allowed");
         }
     }
 

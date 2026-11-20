@@ -81,17 +81,17 @@ internal static class DtekTime
         if (day.Queues.TryGetValue(queue, out var cells)) return Expand(cells);
         var members = Members(queue);
         if (members.Count < 2) return null;
-        var union = new DtekSlot[48];
+        var merged = new DtekSlot[48];
         foreach (var m in members)
         {
             if (!day.Queues.TryGetValue(m, out var c)) return null;
             for (int i = 0; i < 48; i++)
             {
                 var s = SlotOf(c, i);
-                if (Rank(s) > Rank(union[i])) union[i] = s;
+                if (Rank(s) > Rank(merged[i])) merged[i] = s;
             }
         }
-        return union;
+        return merged;
     }
 
     /// <summary>
