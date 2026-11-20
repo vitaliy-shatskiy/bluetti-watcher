@@ -15,7 +15,7 @@ namespace BluettiWatcher.Modes.Modules;
 /// Compensatable: the import replaces the profiles the export holds, but a profile the applied file created that was not
 /// customised before stays. Pattern: Adapter.
 /// </remarks>
-internal sealed class NvidiaProfileModule(INvidiaProfileFiles files, IAdminBroker broker) : IActionModule
+internal sealed class NvidiaProfileModule(INvidiaProfileFiles files, IAdminBroker broker) : IActionModule, IChecksOnTransition
 {
     public const string TypeId = "nvidia.profile";
     public const string ResourceKey = "nvidia/profiles";

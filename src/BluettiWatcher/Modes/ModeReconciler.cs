@@ -21,6 +21,8 @@ internal sealed class ModeReconciler(ModuleRegistry registry, ModeJournal journa
     private readonly HashSet<string> _relinquished = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ResourceStatus> _restores = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ModuleAvailability> _available = new(StringComparer.Ordinal);
+    /// <summary>Statuses of <see cref="IChecksOnTransition"/> resources settled in this activation: not read again until the mode changes.</summary>
+    private readonly Dictionary<string, (ActionStatus, string)> _checked = new(StringComparer.Ordinal);
     private string? _activeModeId;
     private volatile ReconcileSnapshot _snapshot = ReconcileSnapshot.Empty;
 
@@ -82,6 +84,7 @@ internal sealed class ModeReconciler(ModuleRegistry registry, ModeJournal journa
             _activeModeId = target.Id;
             _relinquished.Clear();
             _available.Clear();
+            _checked.Clear();
             foreach (var key in _restores.Where(kv => kv.Value.Status != ActionStatus.RestoreFailed || !_owned.ContainsKey(kv.Key)).Select(kv => kv.Key).ToList())
                 _restores.Remove(key);
         }
@@ -112,7 +115,13 @@ internal sealed class ModeReconciler(ModuleRegistry registry, ModeJournal journa
 
         foreach (var (key, w) in wanted)
         {
+            if (w.Module is IChecksOnTransition && _checked.TryGetValue(key, out var kept))
+            {
+                perAction.First(p => p.Index == w.Action).Keys.Add(kept);
+                continue;
+            }
             var status = await ApplyAsync(target.Id, w.Module, w.Intent, w.Enforce, ct);
+            if (w.Module is IChecksOnTransition && status.Item1 is not (ActionStatus.Failed or ActionStatus.Unknown)) _checked[key] = status;
             perAction.First(p => p.Index == w.Action).Keys.Add(status);
         }
         _snapshot = new ReconcileSnapshot(target.Id,
