@@ -1,6 +1,7 @@
 using System.Globalization;
 using BluettiWatcher.Decision;
 using BluettiWatcher.Io;
+using BluettiWatcher.Runtime;
 using BluettiWatcher.Storage;
 
 namespace BluettiWatcher;
@@ -27,6 +28,7 @@ internal sealed class StationService(StationConfig config, IStationReader reader
     private BatteryWritten? _battery;
     private Reading? _last;
     private DateTimeOffset? _lastAt;
+    private double? _drain;
     private DateTimeOffset? _lastPollAt;
     private PowerModeFlag? _flag;
     private readonly Lock _settledGate = new();
@@ -124,6 +126,25 @@ internal sealed class StationService(StationConfig config, IStationReader reader
         store.SaveState(_state);
     }
 
+    /// <summary>
+    /// The measured drain at this reading (battery points per hour) the levels follow; null on mains, with too little or
+    /// stale data, or when the history cannot be read (the configured levels apply).
+    /// </summary>
+    private double? Drain(Reading? reading, DateTimeOffset now)
+    {
+        if (reading is null || config.RateWindowMin <= 0) return null;
+        long nowSec = now.ToUnixTimeSeconds();
+        try { return RuntimeEstimator.DrainPerHour(reading, store.History(nowSec - config.RateWindowMin * 60L, nowSec + 1, 1), nowSec, config); }
+        catch (Exception e) when (e is System.Data.Common.DbException or InvalidOperationException)
+        {
+            log($"drain: history read failed - {e.GetType().Name}: {e.Message}; the configured levels apply");
+            return null;
+        }
+    }
+
+    /// <summary>The levels of the last accepted reading: the configured ones raised by its measured drain.</summary>
+    public Thresholds Thresholds => StationDecision.Effective(config, _drain);
+
     /// <summary>One poll. Returns the delay in seconds before the next one.</summary>
     public async Task<int> PollAsync(CancellationToken ct)
     {
@@ -135,11 +156,12 @@ internal sealed class StationService(StationConfig config, IStationReader reader
             _lastPollAt = now;
             _flag = flagReader.Read(now);
             Interlocked.Increment(ref _planEpoch);
-            var d = StationDecision.Decide(reading, _state, _flag?.View ?? FlagView.Unreadable, now, config);
+            double? drain = Drain(reading, now);
+            var d = StationDecision.Decide(reading, _state, _flag?.View ?? FlagView.Unreadable, now, config, drain);
             var status = reading is null ? ReadingStatus.Missed : d.Rejected.Length > 0 ? ReadingStatus.Rejected : ReadingStatus.Accepted;
             store.AddReading(now, reading, status, d.Rejected);
             string? sourceBefore = _last?.Source;
-            if (status == ReadingStatus.Accepted) { _last = reading; _lastAt = now; }
+            if (status == ReadingStatus.Accepted) { _last = reading; _lastAt = now; _drain = drain; }
             bool cutBefore = _state.Cut || _state.CutBeforeGap;
             bool silentBefore = _state.Silent;
             // Taken from the state before the decision: a gap that resets the decision's state does not re-fire the alert.

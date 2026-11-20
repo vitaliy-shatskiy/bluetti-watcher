@@ -140,7 +140,7 @@ config.json still loads, and `service.log` names them once at start.
 | `mainsBackSec` | int | 180 | AC input held this long -> every mode lifted. |
 | `emergencyAt` | number | 20 | Percent: station emergency. |
 | `stopAt` | number | 10 | Percent: stop (the flag's level says critical). |
-| `warnAt` | number | 7 | Percent: hibernate warning. |
+| `warnAt` | number | 7 | Percent: hibernate warning. `emergencyAt`, `stopAt` and `warnAt` rise above the configured value at a high measured drain (design.md section 6). |
 | `hibernateAt` | number | 5 | Percent: the PC hibernates. |
 | `agreeSec` | int | 90 | Two agreeing readings at least this far apart confirm a level. |
 | `hibernateAfterWarnSec` | int | 180 | Hibernate waits at least this long after the warning. |

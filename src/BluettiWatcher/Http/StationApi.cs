@@ -465,6 +465,14 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             w.WriteNumber("warnAt", config.WarnAt);
             w.WriteNumber("hibernateAt", config.HibernateAt);
             w.WriteEndObject();
+            var th = service.Thresholds;
+            w.WriteStartObject("effectiveThresholds");
+            w.WriteNumber("emergencyAt", th.EmergencyAt);
+            w.WriteNumber("stopAt", th.StopAt);
+            w.WriteNumber("warnAt", th.WarnAt);
+            w.WriteNumber("hibernateAt", th.HibernateAt);
+            Num(w, "drainPerHour", th.DrainPerHour);
+            w.WriteEndObject();
             if (last is not null && lastAt is { } at)
             {
                 w.WriteStartObject("last");

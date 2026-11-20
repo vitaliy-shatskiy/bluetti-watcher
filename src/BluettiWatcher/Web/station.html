@@ -302,6 +302,7 @@ en: {
   noneRecordedYet: "none recorded yet",
   passed: "passed",
   aboutAt: "about {at}",
+  levelsRaised: "levels raised for a drain of {r} %/h: hibernate warning at {w} %",
   todayOnBattery: "on battery, cuts: {n}",
   todayEnergy: "{e} used",
   nowForecast: "now · forecast",
@@ -563,6 +564,7 @@ uk: {
   noneRecordedYet: "ще не було",
   passed: "пройдено",
   aboutAt: "близько {at}",
+  levelsRaised: "рівні підняті через розряд {r} %/год: попередження про гібернацію на {w} %",
   todayOnBattery: "від батареї, відключень: {n}",
   todayEnergy: "витрачено {e}",
   nowForecast: "зараз · прогноз",
@@ -854,7 +856,7 @@ $('ring').classList.toggle('charging', !!now.mains && now.inp > 0);
 const ringSvg = $('ring');
 ringSvg.onmousemove = (e) => { const b = ringSvg.getBoundingClientRect(), px = (e.clientX - b.left) * 240 / b.width - 120, py = (e.clientY - b.top) * 240 / b.height - 120, tip = $('tip');
   if (Math.hypot(px, py) < 84 || Math.hypot(px, py) > 116) { tip.style.display = 'none'; return; }
-  const p = ((Math.atan2(py, px) + Math.PI / 2 + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI) * 100, th = D.thresholds, wn = th.warnAt ?? th.hibernateAt;
+  const p = ((Math.atan2(py, px) + Math.PI / 2 + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI) * 100, th = D.effectiveThresholds ?? D.thresholds, wn = th.warnAt ?? th.hibernateAt;
   tip.textContent = p > th.emergencyAt ? t('ringOk', { a: th.emergencyAt }) : p > th.stopAt ? t('ringEmergency', { a: th.stopAt, b: th.emergencyAt })
     : p > wn ? t('ringStop', { a: wn, b: th.stopAt }) : p > th.hibernateAt ? t('ringWarn', { a: th.hibernateAt, b: wn }) : t('ringHibernate', { b: th.hibernateAt });
   tip.style.display = 'block'; placeTip(tip, e.clientX + 12, e.clientY + 14); };
@@ -880,8 +882,11 @@ else { $('cutK').textContent = t('lastCut'); const c = cuts[cuts.length - 1];
   else { $('cut').textContent = '–'; $('cutSub').textContent = t('noneRecorded'); $('cutSub2').textContent = ''; } }
 // the rate at the current load: the service's time already scales the measured drop to it
 const perH = leftH ? now.soc / leftH : measured;
-$('reach').innerHTML = now.mains ? `<div class="rowbar" style="grid-template-columns:1fr"><span class="n ok" style="text-align:left">${t('charging')}</span></div>` : [D.thresholds.emergencyAt, D.thresholds.stopAt, D.thresholds.hibernateAt].map((p) => { const txt = now.mains || !perH ? '–' : now.soc <= p ? t('passed') : t('aboutAt', { at: hm(NOW + (now.soc - p) / perH * 3600000) });
-  return `<div class="rowbar" style="grid-template-columns:54px 1fr"><span class="${cls(p)}">${p}%</span><span class="n" style="text-align:left">${txt}</span></div>`; }).join('');
+// the levels the service applies now: the configured ones, raised for a high measured drain
+const EFF = D.effectiveThresholds ?? D.thresholds;
+$('reach').innerHTML = now.mains ? `<div class="rowbar" style="grid-template-columns:1fr"><span class="n ok" style="text-align:left">${t('charging')}</span></div>` : [EFF.emergencyAt, EFF.stopAt, EFF.hibernateAt].map((p) => { const txt = now.mains || !perH ? '–' : now.soc <= p ? t('passed') : t('aboutAt', { at: hm(NOW + (now.soc - p) / perH * 3600000) });
+  return `<div class="rowbar" style="grid-template-columns:54px 1fr"><span class="${cls(p)}">${p}%</span><span class="n" style="text-align:left">${txt}</span></div>`; }).join('')
+  + (!now.mains && EFF.drainPerHour != null && EFF.warnAt > D.thresholds.warnAt ? `<div class="dim">${t('levelsRaised', { r: fmt(EFF.drainPerHour), w: fmt(EFF.warnAt) })}</div>` : '');
 const omKey = 'om_' + (D.modeCode || '');
 $('volt').innerHTML = now.volt == null ? `<span class="na">${t('noData')}</span>` : `${fmt(now.volt, 1)}<small>${t('uV')}</small>`; $('voltSub').textContent = [now.hz == null ? '' : `${fmt(now.hz, 2)} ${t('uHz')}`, has(omKey) ? t(omKey) : D.mode].filter(Boolean).join(' · ');
 const day0 = new Date(NOW); day0.setHours(0, 0, 0, 0);
