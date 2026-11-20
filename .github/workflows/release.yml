@@ -70,7 +70,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$pkg/power-mode", "$pkg/tools", "$pkg/docs" | Out-Null
           Copy-Item power-mode/*.ps1 "$pkg/power-mode/"
           if (Test-Path power-mode/README.md) { Copy-Item power-mode/README.md "$pkg/power-mode/" }
-          Copy-Item tools/swap.ps1, tools/wake-task.ps1 "$pkg/tools/"
+          Copy-Item tools/swap.ps1, tools/wake-task.ps1, tools/broker-task.ps1 "$pkg/tools/"
           Copy-Item docs/*.md, docs/*.png "$pkg/docs/"
           if (Test-Path integrations/claude-code) {
             New-Item -ItemType Directory -Force -Path "$pkg/integrations" | Out-Null

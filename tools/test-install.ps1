@@ -131,7 +131,7 @@ try {
     $rel = Join-Path $base 'release'
     foreach ($d in 'bin', 'tools', 'power-mode') { $null = New-Item -ItemType Directory -Path (Join-Path $rel $d) }
     Copy-Item -LiteralPath $installer -Destination $rel
-    foreach ($f in 'swap.ps1', 'wake-task.ps1') { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $f) -Destination (Join-Path $rel 'tools') }
+    foreach ($f in 'swap.ps1', 'wake-task.ps1', 'broker-task.ps1') { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $f) -Destination (Join-Path $rel 'tools') }
     [IO.File]::WriteAllText((Join-Path $rel 'bin\BluettiWatcher.exe'), 'stand-in')
     [IO.File]::WriteAllText((Join-Path $rel 'power-mode\power-mode.ps1'), '# stand-in')
     $r = Invoke-DryRun -Script (Join-Path $rel 'install.ps1') -Extra @('-Mac', 'AA:BB:CC:DD:EE:04', '-CapacityWh', '2048')
@@ -151,6 +151,17 @@ try {
     # -RemoveWake without -Apply: a dry run
     $r = Invoke-DryRun -Extra @('-RemoveWake')
     Check 'remove wake: dry run' ($r.Code -eq 0 -and $r.Text -match "would\s+remove the wake task 'BluettiWatcherWake'" -and $r.Unchanged) $r.Text
+    # -Broker without -Apply: the broker's steps alone; no installed exe = blocked, exit 1, nothing written
+    $r = Invoke-DryRun -Extra @('-Broker')
+    Check 'broker: folder step' ($r.Text -match 'would\s+create .+\\BluettiWatcher\\broker with requests\\') $r.Text
+    Check 'broker: exe copy step, never the user bin' ($r.Text -match 'would\s+copy .+BluettiWatcher\.exe to .+\\broker\\bin\\BluettiWatcher\.exe \(SYSTEM runs this copy') $r.Text
+    Check 'broker: task step' ($r.Text -match "would\s+register the task 'BluettiWatcherBroker': SYSTEM, no trigger") $r.Text
+    Check 'broker: no exe blocks, exit 1' ($r.Code -eq 1 -and $r.Text -match 'blocked: no installed .+BluettiWatcher\.exe to copy') "exit $($r.Code)"
+    Check 'broker: nothing written' $r.Unchanged
+    Check 'broker: no service steps' ($r.Text -notmatch 'swap|shortcut') $r.Text
+    # a normal dry run names the broker as a separate elevated step
+    $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:01', '-CapacityWh', '2048')
+    Check 'install: names the broker step' ($r.Text -match 'install\.ps1 -Broker -Apply in an elevated shell') $r.Text
     # the wake task name from the config: never the service's own task, only plain characters
     $mac = '"mac": "AA:BB:CC:DD:EE:06"'
     foreach ($bad in 'BluettiWatcher', 'bluettiwatcher', 'a\\b', 'x*', 'a;b', 'a\"b', 'abc\n', ' lead', 'trail.', ('n' * 101)) {
@@ -229,7 +240,42 @@ try {
         $threw = $false
         try { $null = Remove-WatcherOldVenv $file } catch { $threw = $true }
         Check 'old venv removal: a plain file is refused and stays' ($threw -and (Test-Path -LiteralPath $file))
-    }}
+    }
+
+    # Install-WatcherBroker against fake icacls / Task Scheduler in a temp folder: what SYSTEM runs, who may write.
+    & {
+        . (Join-Path $PSScriptRoot 'broker-task.ps1')
+        $root = Join-Path $base 'broker'
+        $src = Join-Path $base 'src-bin\BluettiWatcher.exe'
+        $null = New-Item -ItemType Directory -Force -Path (Split-Path $src)
+        [IO.File]::WriteAllText($src, 'exe')
+        $sid = 'S-1-5-21-1-2-3-1001'
+        $calls = [Collections.Generic.List[string]]::new()
+        $registered = @{}
+        $ops = @{
+            Icacls   = { param([string[]] $list) $calls.Add($list -join ' ') }.GetNewClosure()
+            Register = { param($name, $xml, $sddl) $registered.name = $name; $registered.xml = $xml; $registered.sddl = $sddl }.GetNewClosure()
+            Query    = { param($name) $registered.xml }.GetNewClosure()
+        }
+        $r = Install-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Ops $ops
+        Check 'broker: installed' $r.ok $r.text
+        Check 'broker: the exe is copied into the admin folder' ((Get-Content -Raw (Join-Path $root 'bin\BluettiWatcher.exe')) -eq 'exe')
+        Check 'broker: the task runs that copy as SYSTEM with --broker' ($registered.xml -match '<UserId>S-1-5-18</UserId>' -and $registered.xml.Contains("<Command>$root\bin\BluettiWatcher.exe</Command>") -and $registered.xml -match '<Arguments>--broker</Arguments>') $registered.xml
+        Check 'broker: the task has no trigger' ($registered.xml -notmatch '<Triggers>') $registered.xml
+        Check 'broker: the user may read and run the task only' ($registered.sddl -ceq "D:P(A;;FA;;;BA)(A;;FA;;;SY)(A;;FRFX;;;$sid)") $registered.sddl
+        Check 'broker: inheritance cut, the user reads' (@($calls | Where-Object { $_ -match '/inheritance:r' -and $_.Contains("*${sid}:(OI)(CI)RX") -and $_ -notmatch "\*${sid}:\(OI\)\(CI\)(F|M|W)" }).Count -eq 1) ($calls -join ' | ')
+        Check 'broker: requests lets the user add files, never folders' (@($calls | Where-Object { $_ -match 'requests' -and $_.Contains("*${sid}:(WD)") -and $_ -notmatch '\(AD\)|\(CI\)' }).Count -eq 1) ($calls -join ' | ')
+        Check 'broker: owner Administrators after every file is written' ($calls[$calls.Count - 1] -match '/setowner \*S-1-5-32-544 /T') ($calls -join ' | ')
+        $policy = Get-Content -Raw (Join-Path $root 'policy.json') | ConvertFrom-Json
+        Check 'broker: the policy names the user and allows nothing' ($policy.userSid -eq $sid -and @($policy.services).Count -eq 0 -and @($policy.tasks).Count -eq 0 -and @($policy.profiles).Count -eq 0) (Get-Content -Raw (Join-Path $root 'policy.json'))
+        [IO.File]::WriteAllText((Join-Path $root 'policy.json'), '{"keep":1}')
+        $null = Install-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Ops $ops
+        Check 'broker: an existing policy is never replaced' ((Get-Content -Raw (Join-Path $root 'policy.json')) -eq '{"keep":1}')
+        $ops.Query = { param($name) '<Task><Principals><Principal><UserId>S-1-5-21-9</UserId></Principal></Principals></Task>' }
+        $r = Install-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Ops $ops
+        Check 'broker: a task read back as another account fails' (-not $r.ok -and $r.text -match 'not registered as written') $r.text
+    }
+}
 catch {
     Write-Output "FAIL  unexpected: $($_.Exception.Message) at $($_.InvocationInfo.ScriptLineNumber)"
     $script:failed++

@@ -41,15 +41,15 @@ function Get-WatcherBrokerTaskSddl([string] $Sid) { "D:P(A;;FA;;;BA)(A;;FA;;;SY)
 
 # The policy a fresh install writes: the user whose requests the broker takes, nothing allowed yet.
 function New-WatcherBrokerPolicyText([string] $Sid) {
-    @{ version = 1; userSid = $Sid; services = @(); profiles = @(); profileInspector = '' } | ConvertTo-Json -Compress
+    @{ version = 1; userSid = $Sid; services = @(); tasks = @(); profiles = @(); profileInspector = '' } | ConvertTo-Json -Compress
 }
 
 # The steps, as the dry run prints them and -Apply runs them.
 function Get-WatcherBrokerSteps([string] $Root, [string] $SourceExe, [string] $User) {
     @(
-        "create $Root with requests\, responses\, profiles\, bin\: Administrators and SYSTEM full control, $User read; requests\ also lets $User add files (never folders); owner Administrators throughout"
+        "create $Root with requests\, responses\, profiles\, exports\, bin\: Administrators and SYSTEM full control, $User read; requests\ also lets $User add files (never folders); owner Administrators throughout"
         "copy $SourceExe to $Root\bin\BluettiWatcher.exe (SYSTEM runs this copy, never the one in the user's bin)"
-        "write $Root\policy.json when there is none: $User's requests, no service, no profile allowed (BluettiWatcher.exe --broker-allow adds them, elevated)"
+        "write $Root\policy.json when there is none: $User's requests, no service, task or profile allowed (BluettiWatcher.exe --broker-allow adds them, elevated)"
         "register the task '$script:WatcherBrokerTask': SYSTEM, no trigger, started on demand, $Root\bin\BluettiWatcher.exe --broker, at most 2 minutes, queued; security: Administrators, SYSTEM, $User read and run; read back after registering"
     )
 }
@@ -68,7 +68,7 @@ function Get-WatcherBrokerOps {
 function Install-WatcherBroker([string] $Root, [string] $SourceExe, [string] $Sid, [hashtable] $Ops = $null) {
     if (-not $Ops) { $Ops = Get-WatcherBrokerOps }
     try {
-        foreach ($d in @('', 'requests', 'responses', 'profiles', 'bin')) { $null = New-Item -ItemType Directory -Force -Path (Join-Path $Root $d) }
+        foreach ($d in @('', 'requests', 'responses', 'profiles', 'exports', 'bin')) { $null = New-Item -ItemType Directory -Force -Path (Join-Path $Root $d) }
         & $Ops.Icacls @($Root, '/setowner', '*S-1-5-32-544', '/T', '/C', '/L', '/Q')
         & $Ops.Icacls @($Root, '/inheritance:r', '/grant:r', '*S-1-5-32-544:(OI)(CI)F', '*S-1-5-18:(OI)(CI)F', "*${Sid}:(OI)(CI)RX", '/Q')
         & $Ops.Icacls @((Join-Path $Root 'requests'), '/grant', "*${Sid}:(WD)", "*${Sid}:(OI)(IO)(RX,W,D)", '/Q')

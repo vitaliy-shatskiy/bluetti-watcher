@@ -4,6 +4,13 @@ install.ps1 - install Bluetti Watcher for the current user. DRY RUN by default: 
   pwsh -NoProfile -File install.ps1 [-Mac AA:BB:CC:DD:EE:FF -CapacityWh <Wh>]          dry run: what would happen, and what blocks it
   pwsh -NoProfile -File install.ps1 [-Mac AA:BB:CC:DD:EE:FF -CapacityWh <Wh>] -Apply   do it
   pwsh -NoProfile -File install.ps1 -RemoveWake [-Apply]              only the wake task: removed
+  pwsh -NoProfile -File install.ps1 -Broker [-Apply]                  only the admin broker (elevated; after an install)
+
+-Broker (the power modes' admin broker, tools/broker-task.ps1): %ProgramData%\BluettiWatcher\broker owned by
+Administrators (the user reads it and may only add request files), a copy of the installed exe in its bin\ (SYSTEM never
+runs the copy in the user's bin), policy.json when there is none (nothing allowed; BluettiWatcher.exe --broker-allow adds
+services, tasks, profiles, elevated), and the task "BluettiWatcherBroker": SYSTEM, no trigger, started on demand by the
+service. Run it again after each upgrade: it refreshes the copy of the exe.
 
 Runs from a release zip (bin\BluettiWatcher.exe beside this script: the exe is copied) or from a source checkout
 (src\ beside this script: the exe is published, which needs the .NET SDK and, for NativeAOT, the MSVC linker).
@@ -45,6 +52,7 @@ param(
     [switch] $Apply,
     [switch] $Fallback,
     [switch] $RemoveWake,
+    [switch] $Broker,
     [string] $Mac = '',
     [int] $CapacityWh = 0,
     [int] $Port = 18940
@@ -54,6 +62,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7) { Write-Output 'install: COULD NOT RU
 $repo = $PSScriptRoot
 . (Join-Path $repo 'tools\swap.ps1')
 . (Join-Path $repo 'tools\wake-task.ps1')
+. (Join-Path $repo 'tools\broker-task.ps1')
 $root = Join-Path $env:LOCALAPPDATA 'bluetti-watcher'
 $bin = Join-Path $root 'bin'
 $exe = Join-Path $bin 'BluettiWatcher.exe'
@@ -97,6 +106,22 @@ $switch = Join-Path $root 'no-hibernate'
 $macPattern = '^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$'
 
 function Step([string] $text) { Write-Output "$(if ($Apply) { 'do ' } else { 'would' })  $text" }
+
+# ---- the admin broker alone (tools/broker-task.ps1): elevated, after the service is installed
+if ($Broker) {
+    $brokerRoot = Get-WatcherBrokerRoot
+    $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    $brokerProblems = @()
+    if (-not (Test-Path -LiteralPath $exe)) { $brokerProblems += "no installed $exe to copy: run install.ps1 -Apply first" }
+    if ($Apply -and -not $elevated) { $brokerProblems += 'the broker is a SYSTEM task: run install.ps1 -Broker -Apply in an elevated shell' }
+    Get-WatcherBrokerSteps -Root $brokerRoot -SourceExe $exe -User "$env:USERDOMAIN\$env:USERNAME" | ForEach-Object { Step $_ }
+    if ($brokerProblems) { $brokerProblems | ForEach-Object { Write-Output "blocked: $_" }; exit $(if ($Apply) { 2 } else { 1 }) }
+    if (-not $Apply) { Write-Output 'dry run: nothing changed.'; exit 0 }
+    $done = Install-WatcherBroker -Root $brokerRoot -SourceExe $exe -Sid $sid
+    Write-Output "install: $($done.text)"
+    exit $(if ($done.ok) { 0 } else { 1 })
+}
 
 # The fresh config.json: the station's address and battery capacity; every other key keeps its default (docs/configuration.md).
 function New-WatcherConfigText([string] $Address, [int] $Capacity) {
@@ -191,6 +216,7 @@ Step "after the health check passed: remove $previous. A failed swap or no healt
 Step "copy the power-mode switch $powerModeFrom\*.ps1 to $powerModeTo (after the health check: the scripts forward to BluettiWatcher.exe power-mode)"
 if (Test-Path -LiteralPath $oldVenv) { Step "remove the 1.0.0 Python venv $oldVenv (after the health check; the built-in reader does not use it)" }
 Step "register the wake task '$script:WatcherWakeTask': disabled, WakeToRun, a time trigger the service sets, action $([Environment]::GetFolderPath('System'))\conhost.exe --headless cmd.exe /d /c exit 0 (a no-op) as $env:USERDOMAIN\$env:USERNAME, interactive token, least privilege; security: Administrators, SYSTEM, the user; read back after registering"
+Step "leave the admin broker (power modes) as it is: install.ps1 -Broker -Apply in an elevated shell registers it, or refreshes its copy of the exe after this upgrade"
 Step "create the shortcuts $($shortcuts -join ' and ') -> $browser --app=$url"
 if (-not $Apply) { Write-Output 'dry run: nothing changed. Run with -Apply to install.'; exit $(if ($problems) { 1 } else { 0 }) }
 
