@@ -6,6 +6,21 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.10.3] - 2026-11-20
+
+### Fixed
+
+- Bluetooth: a stale Windows GATT cache no longer fails every poll. When the notification subscription (or any step of
+  the cached lookup) fails after ff01/ff02 came from the cache, the same open looks them up over the air once, within
+  the same cap. A failure names the cache mode of each step, for example
+  `the notification subscription (uncached): Unreachable; from the cache: the notification subscription (cached): Unreachable`.
+
+### Changed
+
+- Documentation rewritten: both READMEs (English and Ukrainian), `docs/design.md`, `docs/api.md`,
+  `docs/configuration.md`, `docs/bluetti-protocol.md`, `power-mode/README.md`, `CONTRIBUTING.md` and the code comments,
+  checked against the code. The uninstall steps now restore the active power mode first and remove the admin broker.
+
 ## [1.10.2] - 2026-11-20
 
 ### Fixed
@@ -581,7 +596,9 @@ with `-Apply`. Requirements and details: [README](https://github.com/vitaliy-sha
 
 Source at this tag: [v1.0.0](https://github.com/vitaliy-shatskiy/bluetti-watcher/tree/v1.0.0)
 
-[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.10.1...HEAD
+[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.10.3...HEAD
+[1.10.3]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.10.2...v1.10.3
+[1.10.2]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.10.1...v1.10.2
 [1.10.1]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.8.1...v1.9.0

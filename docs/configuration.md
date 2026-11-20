@@ -257,7 +257,7 @@ Not configuration files; listed so they are not edited by hand by mistake.
 | `modes-journal.jsonl` | the power-modes engine | What each mode wrote and what it must restore. |
 | `reading-source.json` | `POST /api/reading-source` | The page's reading-source choice. |
 | `cloud-token.json` | the cloud sign-in | The BLUETTI cloud token (default `cloudTokenPath`). |
-| `no-hibernate` | you | An empty file: no hibernation. Read on every poll. |
+| `no-hibernate` | you | An empty file: no hibernation. `legacy` engine: read on every poll; `v2`: carried into `autoHibernate` false at start and renamed `no-hibernate.migrated`. |
 | `station.db`, `service.log` | the service | Readings, events and state; the log. |
 
 `power-mode.config.json` beside the flag file belongs to the power-mode switch

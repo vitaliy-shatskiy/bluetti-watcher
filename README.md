@@ -78,6 +78,8 @@ flowchart LR
 Every threshold is configurable ([configuration.md](docs/configuration.md#mains-and-battery-levels)). At a high measured
 drain the levels are raised so the PC still hibernates in time. The rules in full: [docs/design.md](docs/design.md).
 
+<a id="quick-start"></a>
+
 ## Install
 
 Needs Windows 10 or 11 x64 with a Bluetooth LE adapter, PowerShell 7 (`pwsh`), and Chrome or Edge for the dashboard
@@ -145,16 +147,19 @@ or through the [API](docs/api.md#power-modes-modesengine--v2). **Auto** picks a 
 off or on for some time, battery under a level, a planned outage within some minutes (DTEK module), a time window. A
 mode you pick by hand holds until you choose Auto again.
 
-| Action | Needs the broker |
-|---|---|
-| Power plan; processor maximum state and boost; display-off timeout | no |
-| Display refresh rate and brightness | no |
-| NVIDIA GPU power limit and driver profile | yes |
-| Services and scheduled tasks stopped or disabled | yes |
-| Apps and Phone Link closed | no |
-| A command pair from `config.json` (for example pause a backup, resume it on leaving) | no |
-| RGB lighting off through [OpenRGB](https://openrgb.org/), a profile of your choice back on leaving | no |
-| A watcher that logs what keeps the GPU at full clock | no |
+The actions a mode can hold:
+
+- the power plan, the processor's maximum state and boost, the display-off timeout;
+- the display refresh rate and brightness;
+- the NVIDIA GPU power limit and driver profile;
+- services and scheduled tasks;
+- apps and Phone Link closed;
+- a command pair from `config.json` (for example pause a backup on entering, resume it on leaving);
+- the RGB lighting off through [OpenRGB](https://openrgb.org/), a profile of your choice back on leaving;
+- a watcher that logs what keeps the GPU at full clock.
+
+The GPU limit and profile, services, scheduled tasks that refuse the user and elevated apps go through the admin broker,
+which acts only on what its allow list names (`BluettiWatcher.exe --broker-allow`, elevated).
 
 Every change is journaled and undone when the mode is left, unless you changed that setting by hand in the meantime:
 then it stays as you set it. The built-in Eco uses the Power saver plan and lists the other actions switched off.
@@ -210,7 +215,7 @@ does: set `"wakeEveryMinutes": 45` in `config.json` and restart the task.
 - **Read only toward the station.** The Bluetooth reader builds one kind of request, a Modbus read (function 0x03), and
   writes nothing but that request and its notification subscription. The cloud client has no control call.
 - **Local only.** The HTTP API listens on `127.0.0.1` and refuses any `Host` other than `127.0.0.1:<port>` or
-  `localhost:<port>`. Every write route needs the header `X-Station: 1` and a same-origin `Origin`, which other web
+  `localhost:<port>`. Every write route needs the header `X-Station: 1` and no foreign `Origin`, which other web
   pages cannot send ([api.md](docs/api.md#request-rules)).
 - **Off switches.** "Hibernation off" in the Power modes panel stops hibernation. `--dry-run` or `"dryRun": true` logs
   every power-mode command and hibernation instead of running it.

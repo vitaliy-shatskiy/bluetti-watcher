@@ -253,7 +253,7 @@ User-defined modes, the Auto rules and per-action status ([design.md](design.md)
 | `DELETE /api/modes/{id}` | | Removes it. |
 | `PUT /api/modes/rules` | an array of rules | Replaces the Auto rules; order = priority, the first match wins. |
 | `POST /api/modes/select` | `{ "mode": "auto" \| "<id>" }` | Holds that mode until `auto`. |
-| `PUT /api/settings/hibernate` | `{ "autoHibernate": true \| false }` | Hibernation at the hibernate level on or off; the `no-hibernate` file is still honoured. |
+| `PUT /api/settings/hibernate` | `{ "autoHibernate": true \| false }` | Hibernation at the hibernate level on or off; a `no-hibernate` file found at start sets it to `false` once (design.md, section 6). |
 | `GET /api/modes/catalogue` | | Every action type: `{ "modules": [ { "descriptor", "available", "unavailableReason", "discovery" } ] }`; each module gets 3 s. |
 | `GET /api/modes/journal` | `?since=<seq>` | `{ "pageSize": 500, "records": [] }`: journal records after that sequence number, at most 500. |
 

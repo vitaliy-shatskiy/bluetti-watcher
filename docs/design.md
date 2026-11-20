@@ -291,7 +291,7 @@ alert `grid-voltage-high`.
 - Once per entry into a state per cut; the memory resets when mains returns. The page's Max and Auto-lift fire
   `normal`, its Eco fires `eco`.
 - Under `v2`, `actions.eco` and `actions.normal` become the named commands `eco` and `normal`, run by the built-in Eco
-  mode's command pair; the station's eco and mains-back no longer fire them.
+  mode's command pair; the station's eco and mains-back do not fire them.
 - `grid-voltage-high`: AC200PL grid voltage above 253 V, re-armed under 250 V; saved with the state.
 - A V2 station's new warning or fault, a cleared code and a temperature over `stationTempHighC` (re-armed 5 °C under)
   write `station-warning`, `station-fault`, `station-alarm-cleared`, `station-hot`.

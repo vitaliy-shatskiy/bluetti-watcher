@@ -2,7 +2,7 @@ namespace BluettiWatcher.Http;
 
 /// <summary>
 /// Who may talk to the service. Every request: Host exactly <c>127.0.0.1:&lt;port&gt;</c> or <c>localhost:&lt;port&gt;</c>
-/// (no DNS rebinding). The one write route, POST /api/mode, also needs the header <c>X-Station: 1</c> (a custom header a
+/// (no DNS rebinding). Every write route also needs the header <c>X-Station: 1</c> (a custom header a
 /// foreign page cannot send without a CORS preflight, which is never allowed) and an Origin that is absent or the
 /// service's own.
 /// </summary>
