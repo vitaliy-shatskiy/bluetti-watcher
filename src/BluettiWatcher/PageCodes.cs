@@ -68,7 +68,7 @@ internal static class PageCodes
     /// </summary>
     public static IReadOnlyList<string> Values { get; } =
         ["off", "ok", "stale", "none", "blocked", "failed", "network", "format", "dataset", "site", "auto", "eco", "max", "yes", "no", "unknown",
-         "bluetooth", "cloud", "signed-out", "sign-in-needed", "error", "idle", "waiting", "signed-in",
+         "bluetooth", "cloud", "signed-out", "sign-in-needed", "error", "idle", "waiting", "signed-in", "timed-out", "cancelled",
          "soc", "ac-input-power", "ac-output-power", "output-mode"];
 
     /// <summary>The station's output modes (bluetti_bt_lib enums/output_mode.py), CLOUD_MAINS (a cloud reading with AC input, design.md §4 AC2a) and BLE_MAINS (the same from a Bluetooth model with no output-mode field).</summary>

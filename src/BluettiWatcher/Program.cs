@@ -110,7 +110,8 @@ var api = new StationApi(config, service, store, time, started, dtek, Log, () =>
         {
             using var planSwitch = new BluettiWatcher.PowerMode.PowerModeSwitch([.. BluettiWatcher.PowerMode.PowerModeSwitch.ProcessEnvironment(), .. config.PowerModeEnvironment], TextWriter.Null);
             return planSwitch.ActivePlan();
-        }, account, bluetooth.StationBlocks, modes is null ? null : new ModesApi(config, modes), notificationSettings, BrokerState);
+        }, account, bluetooth.StationBlocks, modes is null ? null : new ModesApi(config, modes), notificationSettings, BrokerState,
+    new PageSettingsStore(Path.Combine(config.DataDir, PageSettingsStore.FileName), Log));
 // The notification-area icon and the notifications: a thread of this process, only in an interactive session (README, Tray).
 using var trayHost = config.Tray && Environment.UserInteractive
     ? TrayHost.Start(modes is null ? new ManualTrayModes(service) : new ModesTrayModes(modes), new Uri($"http://127.0.0.1:{config.Port}/"), time.LocalTimeZone, Log)

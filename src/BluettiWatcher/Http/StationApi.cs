@@ -21,7 +21,7 @@ namespace BluettiWatcher.Http;
 internal sealed partial class StationApi(StationConfig config, StationService service, StationStore store, TimeProvider time, DateTimeOffset startedAt, IDtekWatcher? dtek = null, Action<string>? log = null,
     Func<bool>? bluetoothEncrypted = null, Func<bool>? bluetoothStalled = null, Func<(string Guid, string Name)>? activePlan = null, CloudAccount? cloud = null,
     Func<IReadOnlyList<KeyValuePair<string, string>>>? stationBlocks = null, ModesApi? modes = null, Tray.NotificationSettingsStore? notificationSettings = null,
-    Func<Modes.Broker.BrokerStatus>? broker = null)
+    Func<Modes.Broker.BrokerStatus>? broker = null, PageSettingsStore? pageSettings = null)
 {
     /// <summary>Shows one test notification (POST /api/settings/notifications/test); null = no tray icon. Set once at start.</summary>
     public Action? SendTestNotice { get; set; }
@@ -68,6 +68,7 @@ internal sealed partial class StationApi(StationConfig config, StationService se
             return SetReturnPlan(r);
         }
         if (await CloudRouteAsync(r, ct) is { } cloudAnswer) return cloudAnswer;
+        if (r.Path == PageSettingsStore.Route && pageSettings is not null) return pageSettings.Handle(r, config.Port);
         if (r.Path == Tray.NotificationSettingsApi.Route && notificationSettings is not null) return Tray.NotificationSettingsApi.Handle(r, notificationSettings, config.Port);
         if (r.Path == Tray.NotificationSettingsApi.TestRoute) return Tray.NotificationSettingsApi.HandleTest(r, SendTestNotice, config.Port);
         if (r.Method != "GET") return HttpResponse.Text(405, "GET only");
@@ -715,13 +716,13 @@ internal sealed partial class StationApi(StationConfig config, StationService se
     /// <summary>
     /// The reading source and the cloud account (design.md §4 Reading source, Cloud sign-in): GET /api/cloud; behind
     /// <see cref="RequestGuard"/> POST /api/reading-source { "readingSource": "auto" | "bluetooth" | "cloud" },
-    /// POST /api/cloud/sign-in (answers the authorize address the page opens) and POST /api/cloud/sign-out.
+    /// POST /api/cloud/sign-in (answers the authorize address the page opens), POST /api/cloud/sign-in/cancel and POST /api/cloud/sign-out.
     /// Null = not one of these routes.
     /// </summary>
     private async Task<HttpResponse?> CloudRouteAsync(HttpRequest r, CancellationToken ct)
     {
         bool get = r.Path == "/api/cloud";
-        if (!get && r.Path is not ("/api/reading-source" or "/api/cloud/sign-in" or "/api/cloud/sign-out")) return null;
+        if (!get && r.Path is not ("/api/reading-source" or "/api/cloud/sign-in" or "/api/cloud/sign-in/cancel" or "/api/cloud/sign-out")) return null;
         if (get != (r.Method == "GET")) return HttpResponse.Text(405, get ? "GET only" : "POST only");
         if (cloud is null) return HttpResponse.Text(404, "not found");
         if (get) return HttpResponse.Json(200, Write(w => CloudJson(w, null)));
@@ -746,6 +747,9 @@ internal sealed partial class StationApi(StationConfig config, StationService se
                 var (url, failed) = await cloud.StartSignInAsync(ct);
                 // The address carries the login's one-time state: it goes to this page only, never to a log.
                 return url is null ? HttpResponse.Text(502, failed.Length > 0 ? failed : "the sign-in did not start") : HttpResponse.Json(202, Write(w => CloudJson(w, url)));
+            case "/api/cloud/sign-in/cancel":
+                cloud.CancelSignIn();
+                return HttpResponse.Json(200, Write(w => CloudJson(w, null)));
             default:
                 var (outStatus, outError) = await cloud.SignOutAsync(ct);
                 return outStatus == 200 ? HttpResponse.Json(200, Write(w => CloudJson(w, null))) : HttpResponse.Text(outStatus, outError);

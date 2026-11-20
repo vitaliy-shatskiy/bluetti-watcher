@@ -58,6 +58,7 @@ internal sealed class CloudAccount(StationConfig config, BluettiCloudReader read
                     {
                         0 => new SignInStatus("signed-in", last, time.GetUtcNow()),
                         < 0 => new SignInStatus("idle", "", time.GetUtcNow()),
+                        _ when login.TimedOut => new SignInStatus("timed-out", last, time.GetUtcNow()),
                         _ => new SignInStatus("failed", last, time.GetUtcNow()),
                     };
                     _run = null;
@@ -102,6 +103,14 @@ internal sealed class CloudAccount(StationConfig config, BluettiCloudReader read
         config.PageSource = source;
         log(source is { } chosen ? $"reading source set on the page: {ReadingSourceFile.Name(chosen)}" : $"reading source: the page's choice is cleared, the config applies ({ReadingSourceFile.Name(config.Source)})");
         return (200, "");
+    }
+
+    /// <summary>The page's Cancel: a waiting sign-in ends and its catcher is released; the state says cancelled until the next start.</summary>
+    public void CancelSignIn()
+    {
+        StopRun();
+        lock (_lock) _signIn = new SignInStatus("cancelled", "", time.GetUtcNow());
+        log("cloud sign-in: cancelled on the page");
     }
 
     /// <summary>Cancels a waiting sign-in (its session disposes its own source); the next start begins anew.</summary>
