@@ -202,6 +202,20 @@ public sealed class PowerModulesTests
     }
 
     [Fact]
+    public async Task GpuLimit_LimitMin_SetsTheCardsMinimumThroughBroker()
+    {
+        var m = new GpuPowerLimitModule(_smi, _broker);
+        var intent = Assert.Single(m.Expand(new JsonObject { ["gpu"] = "0", ["limit"] = "min" }));
+
+        var (baseline, written) = await ApplyAsync(m, intent);
+
+        Assert.True(written.Ok, written.Error);
+        Assert.Equal(["gpu.setPowerLimit {\"gpu\":\"0\",\"watts\":100}"], _broker.Calls);
+        Assert.True(m.Equivalent(intent.Key, intent.Target, written.ReadBack));
+        Assert.False(m.Equivalent(intent.Key, intent.Target, baseline.Value));
+    }
+
+    [Fact]
     public async Task GpuLimit_OutsideRange_FailsWithoutCallingBroker()
     {
         var m = new GpuPowerLimitModule(_smi, _broker);
@@ -234,6 +248,8 @@ public sealed class PowerModulesTests
     [InlineData("""{"gpu":"0","percent":70,"watts":200}""")]
     [InlineData("""{"gpu":"x","percent":70}""")]
     [InlineData("""{"gpu":"0","percent":5}""")]
+    [InlineData("""{"gpu":"0","limit":"max"}""")]
+    [InlineData("""{"gpu":"0","limit":"min","watts":200}""")]
     public void GpuLimit_Validate_Refuses(string json) =>
         Assert.NotEmpty(new GpuPowerLimitModule(_smi, _broker).Validate((JsonObject)JsonNode.Parse(json)!));
 

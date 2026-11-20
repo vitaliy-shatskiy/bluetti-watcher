@@ -576,16 +576,21 @@ internal sealed class StationService(StationConfig config, IStationReader reader
     public const string FlagUnreadable = "the power-mode flag is unreadable - nothing lifted";
 
     /// <summary>An emergency is on (the flag says so) or the station's emergency level is reached in this cut.</summary>
-    public bool EmergencyHolds(PowerModeFlag? flag) =>
-        flag?.Mode == "emergency" || (_state.Cut && _state.Reached[(int)LevelStep.Emergency]);
+    public bool EmergencyHolds(PowerModeFlag? flag) => flag?.Mode == "emergency" || StationEmergency;
+
+    /// <summary>The station's emergency level is reached in the cut that is on now.</summary>
+    private bool StationEmergency => _state.Cut && _state.Reached[(int)LevelStep.Emergency];
 
     // ---- power modes v2 (modes.engine = v2) ---------------------------------------------------------------------------
 
     /// <summary>The modes engine; null = the legacy switch path (eco / off commands, the page's Auto / Eco / Max).</summary>
     public BluettiWatcher.Modes.ModesEngine? Modes { get; init; }
 
-    /// <summary>Hibernation is off: the <c>no-hibernate</c> file (kept for compatibility) or the modes' autoHibernate setting.</summary>
-    private bool HibernateOff => File.Exists(KillSwitch) || Modes is { AutoHibernate: false };
+    /// <summary>
+    /// Hibernation is off: the modes' autoHibernate setting, or the <c>no-hibernate</c> file on the legacy switch path (the
+    /// modes carry that file into the setting at start and rename it).
+    /// </summary>
+    private bool HibernateOff => Modes is null ? File.Exists(KillSwitch) : !Modes.AutoHibernate;
 
     /// <summary>
     /// Under v2 the station's eco and mains-back run no switch command (the modes own the plan and the flag word) and no
@@ -594,9 +599,12 @@ internal sealed class StationService(StationConfig config, IStationReader reader
     private void ModesTransition(StationAction a, DateTimeOffset now)
     {
         bool eco = a == StationAction.EcoOn;
-        store.AddEvent(now, eco ? "eco-on" : "mains-back", "modes v2: the Auto rules choose the mode");
+        store.AddEvent(now, eco ? "eco-on" : "mains-back", ModesV2Detail);
         if (!eco) Complete(a, now);
     }
+
+    /// <summary>The detail of a station eco-on / mains-back under v2: the tray stays silent on it, the mode change notifies.</summary>
+    public const string ModesV2Detail = "modes v2: the Auto rules choose the mode";
 
     /// <summary>The start of the next planned outage (the DTEK module's schedule); null or unset = unknown, so cutWithin rules match nothing.</summary>
     public Func<DateTimeOffset?>? NextCut { get; set; }
@@ -622,7 +630,8 @@ internal sealed class StationService(StationConfig config, IStationReader reader
             _ => ((bool?)null, (TimeSpan?)null),
         };
         var input = new BluettiWatcher.Modes.SelectorInput(on, since, _state.LastSoc, MinutesToCut(_state.Cut, ReadNextCut(), now), now);
-        try { await Modes.StepAsync(input, EmergencyHolds(_flag), ct); }
+        // The station's own emergency, from the decision state: a flag word left by an emergency that is over is the modes' to replace.
+        try { await Modes.StepAsync(input, StationEmergency, ct); }
         catch (Exception e) when (e is not OperationCanceledException) { log($"modes: step failed: {e.GetType().Name}: {e.Message}"); }
     }
 

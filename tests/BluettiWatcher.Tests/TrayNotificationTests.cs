@@ -62,6 +62,17 @@ public sealed class TrayNotificationTests : IDisposable
     [InlineData("")]
     public void Other_events_notify_nothing(string kind) => Assert.Null(TrayNotices.FromEvent(kind, "x", 50));
 
+    [Theory]
+    [InlineData("eco-on", "eco (mains off for 5 min)")]
+    [InlineData("mains-back", "normal (mains on for 5 min)")]
+    public void Under_the_modes_v2_a_station_transition_notifies_once_by_its_mode_change(string station, string mode)
+    {
+        // The two events StationService stores for one transition under v2.
+        var notices = new[] { TrayNotices.FromEvent(station, StationService.ModesV2Detail, 50), TrayNotices.FromEvent("mode-changed", mode, 50) };
+
+        Assert.Equal("Power mode", Assert.Single(notices, n => n is not null)!.Title);
+    }
+
     [Fact]
     public void The_events_text_is_the_detail_and_never_a_command_line_for_eco_or_emergency()
     {

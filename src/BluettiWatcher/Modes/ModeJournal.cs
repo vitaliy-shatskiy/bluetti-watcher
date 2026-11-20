@@ -93,6 +93,76 @@ internal sealed class ModeJournal(string path)
         return r;
     }
 
+    /// <summary>The record count above which the engine compacts the journal while it runs (it also compacts at each start).</summary>
+    public const int CompactAbove = 5000;
+    /// <summary>The most recent records a compaction keeps whatever they are: the history the page shows.</summary>
+    public const int KeepRecent = 200;
+
+    public int Count => _records.Count;
+
+    /// <summary>
+    /// Rewrites the journal with what a replay needs and the recent history: for each resource still owned, the records
+    /// its state is rebuilt from (<see cref="Needed"/>); the last mode entered; the last <see cref="KeepRecent"/> records.
+    /// Sequence numbers are kept, so a replay of the result owns exactly what a replay of the whole file owns. Atomic: a
+    /// temporary file is flushed and moved over the journal. Returns the number of records dropped.
+    /// </summary>
+    public int Compact()
+    {
+        var chains = new Dictionary<string, List<JournalRecord>>(StringComparer.Ordinal);
+        long lastMode = 0;
+        foreach (var r in _records)
+        {
+            switch (r.Kind)
+            {
+                case JournalKind.ModeEntered: lastMode = r.Seq; break;
+                case JournalKind.Prepared:
+                    if (!chains.TryGetValue(r.Key, out var open)) chains[r.Key] = open = [];
+                    open.Add(r);
+                    break;
+                case JournalKind.Applied or JournalKind.RestoreFailed when !r.Final:
+                    if (chains.TryGetValue(r.Key, out var owned)) owned.Add(r);
+                    break;
+                default: chains.Remove(r.Key); break;   // relinquished, restored, dropped, a final restore failure
+            }
+        }
+        var keep = new HashSet<long>(chains.Values.SelectMany(Needed)) { lastMode };
+        keep.UnionWith(_records.Skip(Math.Max(0, _records.Count - KeepRecent)).Select(r => r.Seq));
+        var kept = _records.Where(r => keep.Contains(r.Seq)).ToList();
+        int dropped = _records.Count - kept.Count;
+        if (dropped == 0) return 0;
+        string tmp = path + ".tmp";
+        using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            foreach (var r in kept) fs.Write(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(r, ModesJson.Default.JournalRecord) + "\n"));
+            fs.Flush(flushToDisk: true);
+        }
+        File.Move(tmp, path, overwrite: true);
+        _records.Clear();
+        _records.AddRange(kept);
+        return dropped;
+    }
+
+    /// <summary>
+    /// The records of one owned resource's chain (opened by a Prepared, never closed) that its replayed state depends on.
+    /// Each Applied resets what came before it except the last Prepared (key, type, baseline, target), so: an applied
+    /// write = its last Prepared, its last Applied and the restore failures after it; an open write = its Prepared and,
+    /// when an applied one preceded it (the value it may have left), that Applied with the Prepared it closed.
+    /// </summary>
+    private static IEnumerable<long> Needed(List<JournalRecord> chain)
+    {
+        int lastPrepared = chain.FindLastIndex(r => r.Kind == JournalKind.Prepared);
+        int lastApplied = chain.FindLastIndex(r => r.Kind == JournalKind.Applied);
+        yield return chain[lastPrepared].Seq;
+        if (lastApplied > lastPrepared)
+        {
+            for (int i = lastApplied; i < chain.Count; i++) yield return chain[i].Seq;
+            yield break;
+        }
+        if (lastApplied < 0) yield break;
+        yield return chain[lastApplied].Seq;
+        yield return chain[chain.FindLastIndex(lastApplied, r => r.Kind == JournalKind.Prepared)].Seq;
+    }
+
     /// <summary>The records after <paramref name="since"/>, oldest first, at most <see cref="PageSize"/>.</summary>
     public IReadOnlyList<JournalRecord> Since(long since) => [.. _records.Where(r => r.Seq > since).Take(PageSize)];
 }

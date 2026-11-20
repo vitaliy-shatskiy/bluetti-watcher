@@ -20,6 +20,8 @@ internal static class TrayNotices
         string battery = soc is { } v ? $"Battery {TrayIconRenderer.Text(v)} %. " : "";
         return kind switch
         {
+            // Under the modes v2 the mode change that follows is the one notice of the transition.
+            "eco-on" or "mains-back" when detail == StationService.ModesV2Detail => null,
             "eco-on" => Make(NotificationKind.ModeChanges, "Eco mode on", $"{battery}The PC runs on the battery: eco is on.", NoticeLevel.Info),
             "mains-back" => Make(NotificationKind.ModeChanges, "Modes lifted", "Mains is back: eco and the battery levels are lifted.", NoticeLevel.Info),
             Modes.Broker.BrokerVersion.StaleEvent => Make(NotificationKind.Failures, "Admin broker out of date", Sentence(detail), NoticeLevel.Warning),

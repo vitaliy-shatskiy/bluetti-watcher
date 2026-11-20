@@ -19,7 +19,7 @@ internal static class BuiltInModes
 
     /// <summary>Settings <c>{ "plan": "&lt;GUID&gt;" }</c>: the Windows power plan made active.</summary>
     public const string PowerPlanType = "windows.powerPlan";
-    /// <summary>Settings <c>{ "limit": "min" | "default" | watts }</c>: the GPU board power limit.</summary>
+    /// <summary>Settings <c>{ "gpu": "0", "percent": n | "watts": n | "limit": "min" }</c>: the GPU board power limit.</summary>
     public const string GpuLimitType = "gpu.powerLimit";
 
     public static bool IsBuiltIn(string id) => id is Normal or Eco or Max;
@@ -40,10 +40,13 @@ internal static class BuiltInModes
         ArgumentNullException.ThrowIfNull(config);
         var pm = PowerModeSwitch.ReadConfig(config.FlagFile);
         string? normalPlan = pm.ReturnPlan == "previous" ? null : pm.ReturnPlan;
-        bool hibernate = !File.Exists(Path.Combine(config.DataDir, "no-hibernate"));
+        bool hibernate = !File.Exists(NoHibernatePath(config));
         string Command(string key) => string.IsNullOrWhiteSpace(config.Actions?.GetValueOrDefault(key)) ? "" : key;
         return Build(normalPlan, pm.GpuCap, config.MainsLostSec, config.MainsBackSec, hibernate, Command(StateActions.Eco), Command(StateActions.Normal));
     }
+
+    /// <summary>The legacy kill switch: its presence turned hibernation off before the modes' autoHibernate setting.</summary>
+    public static string NoHibernatePath(StationConfig config) => Path.Combine(config.DataDir, "no-hibernate");
 
     /// <summary>The switch has run here before: its flag or its config file exists.</summary>
     public static bool HasLegacySettings(StationConfig config)
@@ -73,7 +76,7 @@ internal static class BuiltInModes
                 Actions =
                 [
                     Plan(PowerModeSwitch.SaverPlan),
-                    new ModeAction { TypeId = GpuLimitType, Enabled = gpuCap, Settings = new JsonObject { ["limit"] = "min" } },
+                    new ModeAction { TypeId = GpuLimitType, Enabled = gpuCap, Settings = new JsonObject { ["gpu"] = "0", ["limit"] = GpuPowerLimitModule.MinLimit } },
                     new ModeAction
                     {
                         TypeId = CommandPairModule.Id, Enabled = enterCommand.Length + leaveCommand.Length > 0,

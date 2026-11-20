@@ -5,15 +5,18 @@ using BluettiWatcher.Modes.Broker;
 namespace BluettiWatcher.Modes.Modules;
 
 /// <summary>
-/// <c>gpu.powerLimit</c>: an NVIDIA GPU's power limit, as a percent of its default limit or in watts. Reads go straight to
+/// <c>gpu.powerLimit</c>: an NVIDIA GPU's power limit, as a percent of its default limit, in watts, or the card's own
+/// minimum (<c>"limit": "min"</c>: a percent cannot say it portably, each card has its own floor). Reads go straight to
 /// nvidia-smi (no elevation needed); the write goes through the admin broker, which checks the card's min..max again.
 /// Resource <c>gpu/{index}/powerLimit</c>; a read is <c>{ watts, min, max, default }</c>, a target <c>{ percent }</c> or
-/// <c>{ watts }</c>.
+/// <c>{ watts }</c> or <c>{ limit: "min" }</c>.
 /// </summary>
 internal sealed class GpuPowerLimitModule(INvidiaSmi smi, IAdminBroker broker) : IActionModule
 {
     /// <summary>Two limits closer than this are the same (nvidia-smi rounds to hundredths, a percent to whole watts).</summary>
     private const double ToleranceWatts = 1.0;
+    /// <summary>The <c>limit</c> value that means the card's minimum.</summary>
+    public const string MinLimit = "min";
 
     public ActionModuleDescriptor Descriptor { get; } = new(
         "gpu.powerLimit",
@@ -23,7 +26,8 @@ internal sealed class GpuPowerLimitModule(INvidiaSmi smi, IAdminBroker broker) :
             {"type":"object","additionalProperties":false,"required":["gpu"],"properties":{
               "gpu":{"type":"string","title":"GPU"},
               "percent":{"type":"integer","minimum":10,"maximum":100,"title":"Limit, % of the default"},
-              "watts":{"type":"number","minimum":1,"maximum":2000,"title":"Limit, W"}}}
+              "watts":{"type":"number","minimum":1,"maximum":2000,"title":"Limit, W"},
+              "limit":{"type":"string","enum":["min"],"title":"The card's minimum limit"}}}
             """)!,
         (JsonObject)JsonNode.Parse("""{"gpu":{"widget":"select","list":"gpus","label":"GPU"}}""")!,
         ["gpus"],
@@ -53,8 +57,9 @@ internal sealed class GpuPowerLimitModule(INvidiaSmi smi, IAdminBroker broker) :
         var problems = new List<string>();
         if (JsonNumber.Text(settings["gpu"]) is not { } gpu || !int.TryParse(gpu, NumberStyles.None, CultureInfo.InvariantCulture, out int index) || index > 99)
             problems.Add("gpu is not a GPU index");
-        bool percent = settings["percent"] is not null, watts = settings["watts"] is not null;
-        if (percent == watts) problems.Add("set exactly one of percent and watts");
+        bool percent = settings["percent"] is not null, watts = settings["watts"] is not null, min = settings["limit"] is not null;
+        if ((percent ? 1 : 0) + (watts ? 1 : 0) + (min ? 1 : 0) != 1) problems.Add("set exactly one of percent, watts and limit");
+        if (min && JsonNumber.Text(settings["limit"]) != MinLimit) problems.Add("limit is not \"min\"");
         if (percent && !JsonNumber.TryWhole(settings["percent"], 10, 100, out _)) problems.Add("percent is not 10..100");
         if (watts && (!JsonNumber.TryDouble(settings["watts"], out double w) || w < 1 || w > 2000)) problems.Add("watts is not 1..2000");
         return problems;
@@ -63,7 +68,9 @@ internal sealed class GpuPowerLimitModule(INvidiaSmi smi, IAdminBroker broker) :
     public IReadOnlyList<ResourceIntent> Expand(JsonObject settings)
     {
         if (Validate(settings).Count > 0) throw new ArgumentException("the settings are not valid", nameof(settings));
-        var target = settings["percent"] is { } p ? new JsonObject { ["percent"] = p.DeepClone() } : new JsonObject { ["watts"] = settings["watts"]!.DeepClone() };
+        var target = settings["percent"] is { } p ? new JsonObject { ["percent"] = p.DeepClone() }
+            : settings["watts"] is { } w ? new JsonObject { ["watts"] = w.DeepClone() }
+            : new JsonObject { ["limit"] = MinLimit };
         return [new ResourceIntent($"gpu/{JsonNumber.Text(settings["gpu"])}/powerLimit", target)];
     }
 
@@ -81,11 +88,16 @@ internal sealed class GpuPowerLimitModule(INvidiaSmi smi, IAdminBroker broker) :
         return q.Gpus.FirstOrDefault(g => g.Id == id) is { } gpu ? ResourceRead.Of(BrokerCore.GpuJson(gpu)) : ResourceRead.Failed($"there is no GPU {id} with a power limit");
     }
 
-    /// <summary>The watts a value means: its own watts, or its percent of the default limit (its own, or the other value's).</summary>
+    /// <summary>
+    /// The watts a value means: its own watts, its percent of the default limit, or the card's minimum limit (its own, or
+    /// the other value's: a target says "min", the read names the floor).
+    /// </summary>
     private static double? WattsOf(JsonNode? value, JsonNode? other)
     {
         if (value is not JsonObject o) return null;
         if (JsonNumber.TryDouble(o["watts"], out double w)) return w;
+        if (JsonNumber.Text(o["limit"]) == MinLimit)
+            return JsonNumber.TryDouble(o["min"], out double own) ? own : other is JsonObject read && JsonNumber.TryDouble(read["min"], out double floor) ? floor : null;
         if (!JsonNumber.TryDouble(o["percent"], out double p)) return null;
         double def = 0;
         if (!JsonNumber.TryDouble(o["default"], out def) && !(other is JsonObject x && JsonNumber.TryDouble(x["default"], out def))) return null;

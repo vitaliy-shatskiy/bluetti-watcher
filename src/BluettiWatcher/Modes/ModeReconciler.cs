@@ -15,6 +15,13 @@ namespace BluettiWatcher.Modes;
 internal sealed class ModeReconciler(ModuleRegistry registry, ModeJournal journal, TimeProvider time, Action<string, string>? onEvent = null)
 {
     public const int MaxRestoreTries = 3;
+    /// <summary>The longest pause between two tries of a write that keeps failing (1, 2, 4 ... minutes up to this).</summary>
+    public static readonly TimeSpan MaxRetryPause = TimeSpan.FromMinutes(30);
+
+    /// <summary>Writes that failed in this activation: not tried again before <c>RetryAt</c>.</summary>
+    private readonly Dictionary<string, (int Fails, DateTimeOffset RetryAt, string Error)> _failing = new(StringComparer.Ordinal);
+    /// <summary>Keys whose failure was alerted in this activation: one action-failed per mode entry and resource.</summary>
+    private readonly HashSet<string> _alerted = new(StringComparer.Ordinal);
 
     private readonly Dictionary<string, OwnedResource> _owned = new(StringComparer.Ordinal);
     /// <summary>Keys the person took over during this activation: not written again until the mode is entered anew.</summary>
@@ -83,6 +90,8 @@ internal sealed class ModeReconciler(ModuleRegistry registry, ModeJournal journa
             journal.Append(new JournalRecord { At = time.GetUtcNow(), Kind = JournalKind.ModeEntered, ModeId = target.Id });
             _activeModeId = target.Id;
             _relinquished.Clear();
+            _failing.Clear();
+            _alerted.Clear();
             _available.Clear();
             _checked.Clear();
             foreach (var key in _restores.Where(kv => kv.Value.Status != ActionStatus.RestoreFailed || !_owned.ContainsKey(kv.Key)).Select(kv => kv.Key).ToList())
@@ -168,6 +177,8 @@ internal sealed class ModeReconciler(ModuleRegistry registry, ModeJournal journa
     {
         string key = intent.Key;
         if (_relinquished.Contains(key)) return (ActionStatus.Relinquished, $"{key} changed by hand");
+        if (_failing.TryGetValue(key, out var failing) && time.GetUtcNow() < failing.RetryAt)
+            return (ActionStatus.Failed, $"{key}: {failing.Error} - next try at {failing.RetryAt.ToString("HH:mm", CultureInfo.InvariantCulture)} UTC");
         var read = await ReadAsync(m, key, ct);
         if (!read.Ok) return (ActionStatus.Failed, $"{key}: {read.Error}");
         if (_owned.TryGetValue(key, out var own))
@@ -211,9 +222,16 @@ internal sealed class ModeReconciler(ModuleRegistry registry, ModeJournal journa
         catch (Exception e) when (e is not OperationCanceledException) { res = ApplyResult.Failed(e.Message); }
         if (!res.Ok)
         {
-            onEvent?.Invoke("action-failed", $"{intent.Key}: {res.Error}");
+            // Each failure doubles the pause before the next try: a write that cannot succeed costs a few journal lines
+            // an hour, not two a poll.
+            int fails = _failing.TryGetValue(intent.Key, out var was) ? was.Fails + 1 : 1;
+            var pause = TimeSpan.FromMinutes(Math.Min(MaxRetryPause.TotalMinutes, Math.Pow(2, Math.Min(fails - 1, 16))));
+            _failing[intent.Key] = (fails, now + pause, res.Error);
+            if (_alerted.Add(intent.Key)) onEvent?.Invoke("action-failed", $"{intent.Key}: {res.Error}");
             return (ActionStatus.Failed, $"{intent.Key}: {res.Error}");   // stays open: the next pass reads what it did
         }
+        _failing.Remove(intent.Key);
+        _alerted.Remove(intent.Key);
         Record(open, res.ReadBack, modeId);
         return Same(m, intent.Key, res.ReadBack, intent.Target)
             ? (ActionStatus.Applied, "")

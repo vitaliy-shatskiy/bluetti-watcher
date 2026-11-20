@@ -164,13 +164,14 @@ public sealed class ModeReconcilerTests : IDisposable
     }
 
     [Fact]
-    public async Task Reconcile_FailedWrite_IsRetriedNextPoll()
+    public async Task Reconcile_FailedWrite_IsRetriedAfterItsPause()
     {
         _m.FailWrite.Add("gpu/0");
         var r = New();
         await r.ReconcileAsync(Eco(), TestContext.Current.CancellationToken);
         Assert.Equal(ActionStatus.Failed, r.Snapshot.Actions[1].Status);
         _m.FailWrite.Clear();
+        _clock.Now = _clock.Now.AddMinutes(1);   // the first pause after a failure
 
         await r.ReconcileAsync(Eco(), TestContext.Current.CancellationToken);
 

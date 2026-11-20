@@ -361,7 +361,9 @@ least every `batteryRefreshSec` (600 s); this write is best effort.
   Still at or under the level on battery, the PC hibernates again once they hold; this is intended.
 - A failing action backs off: 1, 2, 4, 8 minutes, then every 10 minutes, each failure an event shown on the page; no
   retry loop at the poll rate.
-- Kill switch: a file `no-hibernate` in the data directory turns hibernation off. It is checked on every poll and only
+- Kill switch: under the modes v2 the `autoHibernate` setting (§12); the file `no-hibernate` it replaces is carried
+  into it at start (`autoHibernate` false) and renamed `no-hibernate.migrated`, so turning the setting on hibernates
+  again. On the legacy switch path a file `no-hibernate` in the data directory turns hibernation off. It is checked on every poll and only
   its `hibernate-refused` event backs off, so removing the file is heard at the next poll. A dry run (`--dry-run`)
   logs every command and hibernation instead of running it; its `hibernate-skipped` attempt backs off whole.
 
@@ -707,7 +709,9 @@ in [api.md](api.md), Power modes.
    - `windows.cpuPolicy` (reversible): the processor's maximum state and boost mode of a plan, on mains and on battery
      (`plan`: a GUID or `active`; with `active` a plan switch during the mode leaves the old plan holding the mode's values).
    - `display.offTimeout` (reversible): the display-off timeout of the active plan, on battery and on mains.
-   - `gpu.powerLimit`* (reversible): the NVIDIA board power limit (`min`, `default` or watts within the GPU's range).
+   - `gpu.powerLimit`* (reversible): the NVIDIA board power limit of one GPU (`gpu`: its index), set as exactly one of
+     `percent` of its default limit, `watts`, or `limit: "min"` (the card's own minimum, read from nvidia-smi: a percent
+     cannot name it portably); the broker checks the card's min..max again. Eco's built-in GPU action is `limit: "min"`.
    - `display.refreshRate` (reversible), `display.brightness` (reversible, DDC/CI monitors).
    - `nvidia.profile`* (compensatable): a Profile Inspector `.nip` imported, the customised profiles exported first
      and imported back on leaving. Its read is a broker export, so it is read and written on entering and leaving the
@@ -727,7 +731,8 @@ in [api.md](api.md), Power modes.
    hysteresis (SoC points, minutes; a mains rule for its whole spell); when no rule matches, the last mode stays.
    Unknown inputs match nothing. The default rules reproduce §5: `eco` after `mainsLostSec` off, `normal` after
    `mainsBackSec` on. A battery emergency (§6) overrides both: the mode's actions stay and the engine never writes
-   over the flag's `emergency`.
+   over the flag's `emergency` while the station's emergency level holds in the cut that is on (the decision's state,
+   not the flag); once mains is back the engine writes the mode's word over the emergency left in the flag.
 4. **Reconciler.** Each poll, and at once after an API change, for every resource of the active mode: read; a failed
    read writes nothing and claims nothing (status `failed`); equivalent to the target = `satisfied`, nothing to undo;
    else `Prepared(before, target)` is journaled, the module writes and reads back, `Applied(written)` is journaled and
@@ -737,18 +742,22 @@ in [api.md](api.md), Power modes.
    set to its baseline (the value before the first write), only while it is still ours; a failed restore is retried on
    later polls, at most 3 times, then reported (`restore-failed`, event `action-failed`) and given up. A resource the
    next mode also sets keeps its first baseline. Irreversible actions (closing apps) are never undone. One action's
-   failure never stops the others.
+   failure never stops the others. A failed write is tried again after 1, 2, 4 ... minutes, at most 30 apart, and
+   alerted once (event `action-failed`) per resource and mode entry; entering a mode or a write that succeeds starts
+   afresh.
 5. **Journal** `modes-journal.jsonl` in the data directory: one JSON line per record, written and flushed to disk
    before the step it records goes on. Replayed at start before any write: a `Prepared` with no outcome is settled by
    reading (the target = owned, the baseline = dropped, anything else = relinquished; an unreadable resource stays
    open and is never written over); a token resource (a pause) written before the last boot is let go. A torn last line
    (a crash mid-write; never acted on) is cut off. Any other unreadable line: the journal is moved aside
    (`.corrupt-<unix>`), nothing is restored, the fallback mode (`normal`) is held as a manual pick until Auto is
-   pressed, and the problem is shown in `/api/modes` and as event `modes-problem`.
+   pressed, and the problem is shown in `/api/modes` and as event `modes-problem`. Compacted at each start and past
+   5000 records: kept are the records a replay rebuilds each owned resource from, the last mode entered and the last
+   200 records (sequence numbers unchanged); written to a temporary file and moved over the journal.
 6. **Settings** `modes.json` in the data directory, versioned, replaced atomically. First start: an install that ran
    the switch before (its flag or `power-mode.config.json` exists) is migrated: `returnPlan` becomes Normal's plan
    (`previous` = no plan action, so leaving Eco restores whatever plan was active before it), `gpuCap` turns Eco's GPU
-   limit on or off, the `no-hibernate` file turns `autoHibernate` off; a fresh install gets the public defaults (Eco =
+   limit on or off; a fresh install gets the public defaults (Eco =
    Power saver, its GPU limit, a command pair, services, Phone Link and the GPU idle watcher listed but off; Max = High
    performance). The config's `actions.eco` / `actions.normal` become the commands `eco` / `normal` and the built-in
    Eco's command pair runs them on entering and leaving Eco (configuration.md, Power mode and actions); under `v2` the

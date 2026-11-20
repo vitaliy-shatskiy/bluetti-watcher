@@ -43,16 +43,47 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
             : BuiltInModes.Defaults(config.MainsLostSec, config.MainsBackSec), now);
         _settings = settings;
         if (problem is not null) Problem(problem);
+        CarryNoHibernate();
         var load = journal.Load();
         if (load.Problem is null)
         {
             _reconciler.Replay(load.Records, bootAt);
+            CompactJournal();
             return;
         }
         string aside = journal.Quarantine(now);
         _settings = _settings with { Selection = new Selection { Kind = SelectionKind.Manual, ManualModeId = _settings.FallbackModeId } };
         SaveQuietly();
         Problem($"{load.Problem}: moved to {Path.GetFileName(aside)}; nothing restored, {_settings.FallbackModeId} held until Auto");
+    }
+
+    /// <summary>
+    /// The legacy <c>no-hibernate</c> file becomes autoHibernate false and is renamed once that is saved: the setting is
+    /// then the only switch, so turning it on in the page hibernates again.
+    /// </summary>
+    private void CarryNoHibernate()
+    {
+        string file = BuiltInModes.NoHibernatePath(config);
+        if (!File.Exists(file)) return;
+        _settings = _settings with { AutoHibernate = false };
+        if (!store.Writable) return;
+        try
+        {
+            store.Save(_settings);
+            File.Move(file, file + ".migrated", overwrite: true);
+            log("modes: no-hibernate carried into autoHibernate false and renamed no-hibernate.migrated");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { Problem($"no-hibernate not carried: {e.Message}"); }
+    }
+
+    private void CompactJournal()
+    {
+        try
+        {
+            int dropped = journal.Compact();
+            if (dropped > 0) log($"modes: journal compacted, {dropped.ToString(CultureInfo.InvariantCulture)} old records dropped");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { log($"modes: journal not compacted: {e.Message}"); }
     }
 
     private void Problem(string text)
@@ -69,6 +100,8 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
         try
         {
             _input = input;
+            // The emergency writes the flag outside the engine: once it is over the mode's word is written again.
+            if (emergency) _flagWritten = null;
             _emergency = emergency;
             await ReconcileAsync(ct);
         }
@@ -92,6 +125,7 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
         }
         _reason = d.Reason;
         await _reconciler.ReconcileAsync(mode, ct);
+        if (journal.Count > ModeJournal.CompactAbove) CompactJournal();
         if (_emergency || _flagWritten == mode.FlagWord) return;
         string why = await flag.WriteAsync(mode.FlagWord, ct);
         if (why.Length == 0) _flagWritten = mode.FlagWord;

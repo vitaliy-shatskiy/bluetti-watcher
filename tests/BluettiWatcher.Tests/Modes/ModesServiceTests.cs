@@ -89,6 +89,43 @@ public sealed class ModesServiceTests : IDisposable
         Assert.Equal(hibernates, h.Calls > 0);
     }
 
+    [Fact]
+    public async Task Poll_AutoHibernateTurnedOnWhileTheLegacyFileExists_Hibernates()
+    {
+        // A 1.7.0 install that had no-hibernate: migrated to autoHibernate false, then the user turns it on in the page.
+        await File.WriteAllTextAsync(Path.Combine(_dir, "no-hibernate"), "", TestContext.Current.CancellationToken);
+        Assert.Equal((0, ""), await _engine.SetAutoHibernateAsync(true, TestContext.Current.CancellationToken));
+        var h = new FakeHibernator(true);
+        var cfg = new StationConfig { DataDir = _dir, MainsLostSec = 300, MainsBackSec = 300 };
+        using var s = new StationService(cfg, _reader, _actions, h, new FixedFlag(Flag()), _store, _clock, _ => { }) { Modes = _engine };
+        _reader.Default = Bat(4);
+        for (int i = 0; i < 15; i++)
+        {
+            await s.PollAsync(TestContext.Current.CancellationToken);
+            _clock.Now = _clock.Now.AddMinutes(2);
+        }
+
+        Assert.True(_engine.AutoHibernate);
+        Assert.True(h.Calls > 0, "the API says autoHibernate true, the PC never hibernates");
+    }
+
+    [Fact]
+    public void Start_LegacyNoHibernateFile_CarriedIntoTheSettingAndRenamed()
+    {
+        string sub = Directory.CreateDirectory(Path.Combine(_dir, "carry")).FullName;
+        File.WriteAllText(Path.Combine(sub, "no-hibernate"), "");
+        var cfg = new StationConfig { DataDir = sub };
+        using var engine = new ModesEngine(cfg, new ModuleRegistry([new FakeModule(BuiltInModes.PowerPlanType, _m)]), new ModesStore(sub),
+            new ModeJournal(Path.Combine(sub, ModeJournal.FileName)), _flag, _clock, _ => { });
+
+        engine.Start(T0.AddDays(-1));
+
+        Assert.False(engine.AutoHibernate);
+        Assert.False(File.Exists(Path.Combine(sub, "no-hibernate")));
+        Assert.True(File.Exists(Path.Combine(sub, "no-hibernate.migrated")));
+        Assert.False(new ModesStore(sub).Load(() => new ModesSettings(), T0).Settings.AutoHibernate);
+    }
+
     private static List<Rule> CutRule() => [new() { Condition = new RuleCondition { Kind = ConditionKind.CutWithin, Minutes = 30 }, ModeId = BuiltInModes.Eco }];
 
     [Fact]
