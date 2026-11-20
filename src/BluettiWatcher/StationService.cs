@@ -172,6 +172,9 @@ internal sealed class StationService(StationConfig config, IStationReader reader
             {
                 switch (a)
                 {
+                    case StationAction.EcoOn or StationAction.MainsBack when Modes is not null:
+                        ModesTransition(a, now);
+                        break;
                     case StationAction.EcoOn:
                         var eco = await Gated("eco-on", now, () => actions.StationEcoAsync(ct));
                         if (eco is { Ok: true })
@@ -214,6 +217,8 @@ internal sealed class StationService(StationConfig config, IStationReader reader
                 }
             }
 
+            await StepModesAsync(now, ct);
+
             // The reading goes into the flag after the mode and before a hibernation: the level is what sessions hear.
             // Best effort: a failure is an event and backs off; no level waits for it.
             if (d.Battery is { } b && BatteryWritePolicy.ShouldWrite(_battery, b, now, config))
@@ -243,7 +248,7 @@ internal sealed class StationService(StationConfig config, IStationReader reader
     private async Task<(Reading Reading, bool Accepted)?> HibernateAsync(StationDecisionResult d, CancellationToken ct)
     {
         var now = time.GetLocalNow();
-        bool killSwitch = File.Exists(KillSwitch);
+        bool killSwitch = HibernateOff;
         string? why = HibernateGuard.BeforeRead(d, killSwitch);
         if (KillSwitchHolds(killSwitch, why ?? "", now)) return null;
         Reading? fresh = null;
@@ -289,7 +294,7 @@ internal sealed class StationService(StationConfig config, IStationReader reader
     private async Task RehibernateAsync(WakeStep step, CancellationToken ct)
     {
         var now = time.GetLocalNow();
-        if (KillSwitchHolds(File.Exists(KillSwitch), "disabled by the kill switch", now)) return;
+        if (KillSwitchHolds(HibernateOff, "disabled by the kill switch", now)) return;
         double? soc = _state.LastSoc;
         if (step == WakeStep.LowOnBattery)
         {
@@ -474,6 +479,42 @@ internal sealed class StationService(StationConfig config, IStationReader reader
     /// <summary>An emergency is on (the flag says so) or the station's emergency level is reached in this cut.</summary>
     public bool EmergencyHolds(PowerModeFlag? flag) =>
         flag?.Mode == "emergency" || (_state.Cut && _state.Reached[(int)LevelStep.Emergency]);
+
+    // ---- power modes v2 (modes.engine = v2) ---------------------------------------------------------------------------
+
+    /// <summary>The modes engine; null = the legacy switch path (eco / off commands, the page's Auto / Eco / Max).</summary>
+    public BluettiWatcher.Modes.ModesEngine? Modes { get; init; }
+
+    /// <summary>Hibernation is off: the <c>no-hibernate</c> file (kept for compatibility) or the modes' autoHibernate setting.</summary>
+    private bool HibernateOff => File.Exists(KillSwitch) || Modes is { AutoHibernate: false };
+
+    /// <summary>
+    /// Under v2 the station's eco and mains-back run no switch command (the modes own the plan and the flag word); the
+    /// state is completed and the config's <c>actions</c> entries still fire on the transition.
+    /// </summary>
+    private void ModesTransition(StationAction a, DateTimeOffset now)
+    {
+        bool eco = a == StationAction.EcoOn;
+        store.AddEvent(now, eco ? "eco-on" : "mains-back", "modes v2: the Auto rules choose the mode");
+        if (!eco) Complete(a, now);
+        onState?.Enter(eco ? StateActions.Eco : StateActions.Normal);
+    }
+
+    /// <summary>The modes' poll: the Auto rules see mains and battery as this poll left them. A failure never stops the poll.</summary>
+    private async Task StepModesAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        if (Modes is null) return;
+        (bool? on, TimeSpan? since) = _state switch
+        {
+            { Grid: Grid.Off, OffSince: { } off } => (false, now - off),
+            { Grid: Grid.On, OnSince: { } back } => (true, now - back),
+            _ => ((bool?)null, (TimeSpan?)null),
+        };
+        // yagni: no outage-schedule input yet (cutWithin never matches); the DTEK module's next cut feeds it once wired.
+        var input = new BluettiWatcher.Modes.SelectorInput(on, since, _state.LastSoc, null, now);
+        try { await Modes.StepAsync(input, EmergencyHolds(_flag), ct); }
+        catch (Exception e) when (e is not OperationCanceledException) { log($"modes: step failed: {e.GetType().Name}: {e.Message}"); }
+    }
 
     public void Compact()
     {

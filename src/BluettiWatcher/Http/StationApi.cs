@@ -17,8 +17,22 @@ namespace BluettiWatcher.Http;
 /// from / to: ISO 8601 or Unix milliseconds; step: seconds (default 60).
 /// </summary>
 internal sealed class StationApi(StationConfig config, StationService service, StationStore store, TimeProvider time, DateTimeOffset startedAt, IDtekWatcher? dtek = null, Action<string>? log = null,
-    Func<bool>? bluetoothEncrypted = null, Func<bool>? bluetoothStalled = null, Func<(string Guid, string Name)>? activePlan = null)
+    Func<bool>? bluetoothEncrypted = null, Func<bool>? bluetoothStalled = null, Func<(string Guid, string Name)>? activePlan = null,
+    ModesApi? modes = null)
 {
+    /// <summary>The modes routes; under v2 also the old POST /api/mode. Null = not a modes request.</summary>
+    private async Task<HttpResponse?> ModesRouteAsync(HttpRequest r, CancellationToken ct)
+    {
+        if (modes is not null && r.Path == "/api/mode")
+        {
+            if (r.Method != "POST") return HttpResponse.Text(405, "POST only");
+            if (RequestGuard.WriteRefusal(r, config.Port) is { } why) return HttpResponse.Text(403, "forbidden: " + why);
+            return await modes.LegacyModeAsync(r, ct);
+        }
+        if (!ModesApi.Owns(r.Path)) return null;
+        return modes is null ? HttpResponse.Text(409, "the modes engine is off (config modes.engine is legacy)") : await modes.HandleAsync(r, ct);
+    }
+
     /// <summary>The page, read once; encoded once per coding on first use; a reload with its ETag is a 304.</summary>
     private static readonly Lazy<StaticAsset> Page = new(() =>
     {
@@ -35,6 +49,7 @@ internal sealed class StationApi(StationConfig config, StationService service, S
     public async Task<HttpResponse> HandleAsync(HttpRequest r, CancellationToken ct)
     {
         if (!RequestGuard.HostOk(r, config.Port)) return HttpResponse.Text(403, "forbidden: foreign Host");
+        if (await ModesRouteAsync(r, ct) is { } routed) return routed;
         if (r.Path == "/api/mode")
         {
             if (r.Method != "POST") return HttpResponse.Text(405, "POST only");

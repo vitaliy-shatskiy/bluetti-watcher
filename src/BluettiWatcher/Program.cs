@@ -63,9 +63,16 @@ using var historyReader = new CloudHistoryReader(historyHttp);
 using var backfill = new CloudBackfill(config, historyReader, cloud.HistorySessionAsync, store, time, Log, cloud.ForgetSerial);
 // Bluetooth: the built-in WinRT reader, IoT V1 and V2 models, read only (Io/Ble).
 var bluetooth = new NativeBleReader(config, new WinRtBleConnector(), Log);
+// Power modes v2 (modes.engine = v2): settings and journal in the data directory; the journal is replayed before any write.
+if (!config.Modes.V2On && !string.Equals(config.Modes.Engine, BluettiWatcher.Modes.ModesConfig.Legacy, StringComparison.OrdinalIgnoreCase))
+    Log($"CONFIG - modes.engine \"{config.Modes.Engine}\" is not legacy or v2: legacy is used");
+using var modes = config.Modes.V2On ? new BluettiWatcher.Modes.ModesEngine(config, new BluettiWatcher.Modes.ModuleRegistry(BluettiWatcher.Modes.ModuleCatalog.Production(config)),
+    new BluettiWatcher.Modes.ModesStore(config.DataDir), new BluettiWatcher.Modes.ModeJournal(Path.Combine(config.DataDir, BluettiWatcher.Modes.ModeJournal.FileName)),
+    new BluettiWatcher.Modes.SwitchFlagWordWriter(config, Log), time, Log, (kind, detail) => store.AddEvent(time.GetLocalNow(), kind, detail)) : null;
+modes?.Start(time.GetUtcNow() - TimeSpan.FromMilliseconds(Environment.TickCount64));
 using var service = new StationService(config, new FallbackReader(bluetooth, cloud, () => config.CloudOn, r => StationDecision.Check(r, new StationState(), time.GetUtcNow(), config), Log), new PowerModeAdapter(config, runner, Log, new BluettiWatcher.PowerMode.InProcessPowerMode()),
     config.DryRun ? new DryRunHibernator(Log) : new ShutdownHibernator(runner, Log),
-    new FlagFileReader(config.FlagFile, Log, config.PowerModeMutex), store, time, Log, wake, new StateActions(config, runner, store, time, Log));
+    new FlagFileReader(config.FlagFile, Log, config.PowerModeMutex), store, time, Log, wake, new StateActions(config, runner, store, time, Log)) { Modes = modes };
 service.Compact();
 
 var started = time.GetLocalNow();
@@ -77,7 +84,7 @@ var api = new StationApi(config, service, store, time, started, dtek, Log, () =>
         {
             using var planSwitch = new BluettiWatcher.PowerMode.PowerModeSwitch([.. BluettiWatcher.PowerMode.PowerModeSwitch.ProcessEnvironment(), .. config.PowerModeEnvironment], TextWriter.Null);
             return planSwitch.ActivePlan();
-        });
+        }, modes is null ? null : new ModesApi(config, modes));
 using var http = new MiniHttpServer(IPAddress.Loopback, config.Port, api.HandleAsync, Log);
 try { http.Start(); }
 catch (SocketException e) { Log($"DID NOT RUN - 127.0.0.1:{config.Port} is taken ({e.SocketErrorCode})"); return 2; }

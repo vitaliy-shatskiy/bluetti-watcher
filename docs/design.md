@@ -593,3 +593,53 @@ those three calls and the `dtekWatcher` config property.
     window would otherwise fit it (both ends within 20 minutes). A cut of exactly `minCutMin` counts. Short cuts stay
     in the cut history and on the chart, and a running cut is overdue and shown as before: the minimum applies when
     the cut ends.
+
+## 12. Power modes (`modes.engine` = `v2`)
+
+Off by default (`legacy`: §5's fixed eco). Code in `src/BluettiWatcher/Modes/`; API in [api.md](api.md), Power modes.
+
+1. A **mode** is a named list of actions (`{ typeId, enabled, enforce, settings }`) plus the flag word it maps to
+   (`normal`, `eco`, `emergency`). Exactly one mode is active. Built-ins `normal`, `eco`, `max` are editable, never
+   deletable; a missing one is re-added at start.
+2. An **action module** (`IActionModule`) is one capability: its descriptor (type id, settings JSON Schema, UI hints,
+   discovery list names, restoration class, needs-admin, default settings) and an adapter that discovers choices,
+   validates settings, expands them into **resource intents** (one per field: `windows.activePlan`, `gpu/0/powerLimit`,
+   `service/<name>/running`), reads, compares and writes one resource, answering with the value read back. Modules
+   are registered by hand (`ModuleCatalog`, no reflection: NativeAOT); the registry refuses a duplicate type id or
+   defaults that fail their own schema. Settings are checked against the schema (type, properties, required,
+   additionalProperties, enum, minimum, maximum, minLength, maxLength, items, maxItems) and the module's own checks
+   before they are saved.
+3. **Selection.** A manual pick holds until Auto. Auto takes the first rule (in order) whose condition holds:
+   `mainsOffFor` / `mainsOnFor` N s (mains as the decision confirmed it), `socBelow` X %, `cutWithin` N min (no input
+   yet: never matches), `timeWindow` from-to local time (may wrap midnight). A rule in force keeps matching within its
+   hysteresis (SoC points, minutes; a mains rule for its whole spell); when no rule matches, the last mode stays.
+   Unknown inputs match nothing. The default rules reproduce §5: `eco` after `mainsLostSec` off, `normal` after
+   `mainsBackSec` on. A battery emergency (§6) overrides both: the mode's actions stay and the engine never writes
+   over the flag's `emergency`.
+4. **Reconciler.** Each poll, and at once after an API change, for every resource of the active mode: read; a failed
+   read writes nothing and claims nothing (status `failed`); equivalent to the target = `satisfied`, nothing to undo;
+   else `Prepared(before, target)` is journaled, the module writes and reads back, `Applied(written)` is journaled and
+   the resource is owned. A resource is ours only while it reads what we wrote. A resource the person changed is let go
+   (`relinquished`, event `mode-drift`) and not touched again while the mode stays active, unless its action has
+   `enforce`: then it is written back on that poll. Leaving a mode restores each owned resource the new mode does not
+   set to its baseline (the value before the first write), only while it is still ours; a failed restore is retried on
+   later polls, at most 3 times, then reported (`restore-failed`, event `action-failed`) and given up. A resource the
+   next mode also sets keeps its first baseline. Irreversible actions (closing apps) are never undone. One action's
+   failure never stops the others.
+5. **Journal** `modes-journal.jsonl` in the data directory: one JSON line per record, written and flushed to disk
+   before the step it records goes on. Replayed at start before any write: a `Prepared` with no outcome is settled by
+   reading (the target = owned, the baseline = dropped, anything else = relinquished; an unreadable resource stays
+   open and is never written over); a token resource (a pause) written before the last boot is let go. A torn last line
+   (a crash mid-write; never acted on) is cut off. Any other unreadable line: the journal is moved aside
+   (`.corrupt-<unix>`), nothing is restored, the fallback mode (`normal`) is held as a manual pick until Auto is
+   pressed, and the problem is shown in `/api/modes` and as event `modes-problem`.
+6. **Settings** `modes.json` in the data directory, versioned, replaced atomically. First start: an install that ran
+   the switch before (its flag or `power-mode.config.json` exists) is migrated: `returnPlan` becomes Normal's plan
+   (`previous` = no plan action, so leaving Eco restores whatever plan was active before it), `gpuCap` turns Eco's GPU
+   limit on or off, the `no-hibernate` file turns `autoHibernate` off; a fresh install gets the public defaults (Eco =
+   Power saver, its GPU limit listed but off; Max = High performance). The config's `actions` are not migrated: they
+   still fire on the station's eco and mains-back transitions. A file this build cannot parse is moved aside and
+   replaced; one from a newer build is left alone and the defaults run in memory.
+7. **Flag.** The active mode's flag word is written through the switch's own flag code (same lock, same format; the
+   battery fields and any plan or GPU limit an older eco still owes are carried over), so its readers are unchanged.
+   Under `v2` the station's eco and mains-back run no switch command; the station emergency still does (§6).
