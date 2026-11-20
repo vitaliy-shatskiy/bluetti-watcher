@@ -39,6 +39,10 @@ The release notes on GitHub are this file's section for the tag.
 
 - A command pair entered before a service restart runs its leave command when the mode is left (the journal, not the
   process's memory, says it was entered).
+- The cloud fallback reads the station's live state where the official app does (`getDeviceLastAlive`): the Home
+  Assistant device list answered every value 0 for an AC200PL while it was online. A live state counts while its
+  timestamp is at most `cloudLiveMaxAgeSec` (new, 120) seconds old; an empty or older one falls to the cloud history's
+  newest point as before. The device list is read only for the station's serial.
 
 ## [1.7.0] - 2026-11-20
 

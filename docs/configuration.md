@@ -81,6 +81,7 @@ Every key with its default, except `mac`, `actions` and the DTEK address, which 
   "staleAfterMin": 30,
   "cloudHistory": null,
   "cloudHistoryMaxAgeMin": 10,
+  "cloudLiveMaxAgeSec": 120,
 
   "port": 18940,
   "lockWaitSec": 30,
@@ -229,7 +230,8 @@ Hibernation off: create an empty file `no-hibernate` in the data directory. It i
 | `staleLoadW` | number | 100 | A cloud reading off mains with at least this AC load whose SOC has not moved for `staleAfterMin` is stale (a miss). |
 | `staleAfterMin` | int | 30 | Minutes for the stale check; 0 or less = no check. |
 | `cloudHistory` | bool or null | null | Gaps in the history filled from the cloud's 5-minute power curve ([design.md §4a](design.md#4a-cloud-history-back-fill)): null or `true` = on while the reading source allows the cloud (`auto` with the cloud fallback on, or `cloud`) and the token file exists; `false` off (also off for the live use below). |
-| `cloudHistoryMaxAgeMin` | int | 10 | When the cloud's device list holds no live state (every value 0), the history's newest point is the reading while it is at most this many minutes old (design.md §4 AC2b); older is a miss; 0 or less = never. |
+| `cloudHistoryMaxAgeMin` | int | 10 | When the cloud's live state is no reading (every field null, no SOC, too old or all zero), the history's newest point is the reading while it is at most this many minutes old (design.md §4 AC2b); older is a miss; 0 or less = never. |
+| `cloudLiveMaxAgeSec` | int | 120 | The cloud's live state (getDeviceLastAlive) is a reading while its timestamp, the station's local time read in this PC's time zone, is at most this many seconds off the clock either way (design.md §4 AC2); otherwise the history stand-in above is asked; 0 or less = never a live reading. |
 
 ## Service
 
