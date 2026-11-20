@@ -13,11 +13,13 @@ namespace BluettiWatcher.Http;
 /// <summary>
 /// The routes. GET /, /api/now, /api/history?from&amp;to&amp;step, /api/events?from&amp;to, /api/health;
 /// POST /api/mode { "mode": "auto" | "eco" | "max" } behind <see cref="RequestGuard"/>; GET /api/return-plan and, behind the
-/// same guard, POST /api/return-plan { "returnPlan": "high" | "balanced" | "previous" }.
+/// same guard, POST /api/return-plan { "returnPlan": "high" | "balanced" | "previous" }; GET and, behind the guard, PUT
+/// /api/settings/notifications (<see cref="Tray.NotificationSettingsApi"/>).
 /// from / to: ISO 8601 or Unix milliseconds; step: seconds (default 60).
 /// </summary>
 internal sealed class StationApi(StationConfig config, StationService service, StationStore store, TimeProvider time, DateTimeOffset startedAt, IDtekWatcher? dtek = null, Action<string>? log = null,
-    Func<bool>? bluetoothEncrypted = null, Func<bool>? bluetoothStalled = null, Func<(string Guid, string Name)>? activePlan = null)
+    Func<bool>? bluetoothEncrypted = null, Func<bool>? bluetoothStalled = null, Func<(string Guid, string Name)>? activePlan = null,
+    Tray.NotificationSettingsStore? notificationSettings = null)
 {
     /// <summary>The page, read once; encoded once per coding on first use; a reload with its ETag is a 304.</summary>
     private static readonly Lazy<StaticAsset> Page = new(() =>
@@ -46,6 +48,7 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             if (RequestGuard.WriteRefusal(r, config.Port) is { } why) return HttpResponse.Text(403, "forbidden: " + why);
             return SetReturnPlan(r);
         }
+        if (r.Path == Tray.NotificationSettingsApi.Route && notificationSettings is not null) return Tray.NotificationSettingsApi.Handle(r, notificationSettings, config.Port);
         if (r.Method != "GET") return HttpResponse.Text(405, "GET only");
         // /api/now?settle=1: answers once the saved page choice is applied, refused or failed (bounded under the server's 10 s).
         if (r.Path == "/api/now" && r.Query.TryGetValue("settle", out var settle) && settle == "1") await service.WaitModeSettledAsync(SettleWait, ct);

@@ -89,6 +89,8 @@ internal sealed class StationConfig
     /// commit is unchanged and the pages fault back in at the next poll. false = keep them.
     /// </summary>
     public bool TrimWorkingSet { get; set; } = true;
+    /// <summary>The notification-area icon and the Windows notifications (README, Tray); false or <c>--no-tray</c> = none.</summary>
+    public bool Tray { get; set; } = true;
 
     /// <summary>
     /// A hibernation during a cut arms the wake task this many minutes ahead (10 to 1440); 0 = off, the default until the
@@ -263,10 +265,11 @@ internal sealed class StationConfig
         if (flags.TryGetValue("flag", out var flag)) cfg.PowerMode.FlagPath = flag;
         if (flags.TryGetValue("power-mode", out var pm)) cfg.PowerMode.Script = pm;
         if (flags.ContainsKey("dry-run")) cfg.DryRun = true;
+        if (flags.ContainsKey("no-tray")) cfg.Tray = false;
         return cfg;
     }
 
-    private static readonly HashSet<string> SwitchFlags = new(["dry-run", "cloud-login", "version", "help"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> SwitchFlags = new(["dry-run", "no-tray", "cloud-login", "version", "help"], StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ValueFlags = new(["config", "data-dir", "port", "reader", "flag", "power-mode"], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Flags to values; a switch maps to "1". An unknown flag, a stray word or a value that is itself a flag is refused.</summary>
