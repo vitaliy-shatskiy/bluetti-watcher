@@ -20,6 +20,6 @@ internal static class DisplayGpuModules
         new RefreshRateModule(new WindowsDisplayConfig()),
         new BrightnessModule(new WindowsDdcMonitors()),
         new NvidiaProfileModule(new NvidiaProfileFiles(inspectorPath, policyFolder), broker),
-        new GpuIdleWatcherModule(new NvidiaSmi(runner), time, addEvent, log),
+        new GpuIdleWatcherModule(new NvidiaSmiSampler(runner), time, addEvent, log),
     ];
 }

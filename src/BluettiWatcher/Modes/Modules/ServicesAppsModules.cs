@@ -17,7 +17,7 @@ internal static class ServicesAppsModules
         var processes = new WindowsProcessControl();
         return
         [
-            new ServiceStateModule(new WindowsServiceControl(), broker, time),
+            new ServiceStateModule(new WindowsServiceReader(), broker, time),
             new ProcessCloseModule(processes, time),
             new CommandPairModule(commands, runner, log),
             new PhoneLinkModule(processes, time),

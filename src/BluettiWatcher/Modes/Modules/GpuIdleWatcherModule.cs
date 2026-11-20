@@ -12,7 +12,7 @@ namespace BluettiWatcher.Modes.Modules;
 /// Restoration is Token: the resource <c>gpu/idleWatcher</c> is the watcher's own arming, released (disarmed) when the
 /// mode is left and never resurrected after a restart. Pattern: Observer over a polled source.
 /// </remarks>
-internal sealed class GpuIdleWatcherModule(INvidiaSmi smi, TimeProvider time, Action<DateTimeOffset, string, string> addEvent, Action<string> log)
+internal sealed class GpuIdleWatcherModule(IGpuSampler smi, TimeProvider time, Action<DateTimeOffset, string, string> addEvent, Action<string> log)
     : IActionModule
 {
     public const string TypeId = "gpu.idleWatcher";

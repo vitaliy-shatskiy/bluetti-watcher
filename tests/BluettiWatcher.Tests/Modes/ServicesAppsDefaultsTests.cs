@@ -17,7 +17,7 @@ public sealed class ServicesAppsDefaultsTests
         var broker = new FakeBroker();
         return
         [
-            new ServiceStateModule(new FakeServiceControl(), broker, clock),
+            new ServiceStateModule(new FakeServiceReader(), broker, clock),
             new ProcessCloseModule(processes, clock),
             new CommandPairModule(new Dictionary<string, CommandSpec>(StringComparer.Ordinal), new FakeRunner(), _ => { }),
             new PhoneLinkModule(processes, clock),

@@ -3,10 +3,10 @@ using System.Runtime.InteropServices;
 namespace BluettiWatcher.Modes.Modules;
 
 /// <summary>
-/// <see cref="IServiceControl"/> over the service manager API (advapi32) with query-only access rights, which every
+/// <see cref="IServiceReader"/> over the service manager API (advapi32) with query-only access rights, which every
 /// interactive user holds: nothing here can start, stop or reconfigure a service.
 /// </summary>
-internal sealed partial class WindowsServiceControl : IServiceControl
+internal sealed partial class WindowsServiceReader : IServiceReader
 {
     private const uint ScManagerConnect = 0x0001;
     private const uint ScManagerEnumerateService = 0x0004;

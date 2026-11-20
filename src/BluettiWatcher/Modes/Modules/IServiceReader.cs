@@ -22,7 +22,7 @@ internal sealed record ServiceQuery(ServiceInfo? Info, string Error);
 /// Read-only access to the service manager with the user's own rights (query and enumerate need no elevation). Every
 /// change goes through the admin broker, never through this port.
 /// </summary>
-internal interface IServiceControl
+internal interface IServiceReader
 {
     ServiceQuery Query(string name);
 

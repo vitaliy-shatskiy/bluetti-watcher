@@ -10,7 +10,7 @@ namespace BluettiWatcher.Modes.Modules;
 /// and is read back once the service has settled. Reversible: the reconciler restores the baseline it journaled.
 /// </summary>
 /// <remarks>Pattern: Adapter.</remarks>
-internal sealed class ServiceStateModule(IServiceControl services, IAdminBroker broker, TimeProvider time) : IActionModule
+internal sealed class ServiceStateModule(IServiceReader services, IAdminBroker broker, TimeProvider time) : IActionModule
 {
     public const string Id = "service.state";
     private const string Prefix = "service/";

@@ -113,10 +113,10 @@ public sealed class GpuIdleWatcherModuleTests
     [Fact]
     public void The_csv_query_parses_and_a_malformed_row_is_no_reading()
     {
-        var ok = NvidiaSmi.ParseSamples(["0, P0, 1965, 52.31, 0", "1, P8, 210, [N/A], 3"]);
+        var ok = NvidiaSmiSampler.ParseSamples(["0, P0, 1965, 52.31, 0", "1, P8, 210, [N/A], 3"]);
         Assert.Equal([new GpuSample(0, "P0", 1965, 52.31, 0), new GpuSample(1, "P8", 210, null, 3)], ok);
-        Assert.Null(NvidiaSmi.ParseSamples(["0, P0, 1965, 52.31"]));
-        Assert.Null(NvidiaSmi.ParseSamples(["NVIDIA-SMI has failed because it couldn't communicate with the NVIDIA driver."]));
+        Assert.Null(NvidiaSmiSampler.ParseSamples(["0, P0, 1965, 52.31"]));
+        Assert.Null(NvidiaSmiSampler.ParseSamples(["NVIDIA-SMI has failed because it couldn't communicate with the NVIDIA driver."]));
     }
 
     [Fact]
@@ -135,10 +135,10 @@ public sealed class GpuIdleWatcherModuleTests
         ];
         Assert.Equal(
             [new GpuProcess(0, 1234, "C+G", @"C:\Windows\System32\dwm.exe"), new GpuProcess(0, 5678, "C", @"...\Programs\Some App\app.exe")],
-            NvidiaSmi.ParseProcesses(report));
+            NvidiaSmiSampler.ParseProcesses(report));
     }
 
-    private sealed class FakeSmi : INvidiaSmi
+    private sealed class FakeSmi : IGpuSampler
     {
         public IReadOnlyList<GpuSample>? Next { get; set; }
         public int Samples { get; private set; }

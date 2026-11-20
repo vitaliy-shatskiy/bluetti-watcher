@@ -52,7 +52,7 @@ internal sealed class FakeBroker : IAdminBroker
     }
 }
 
-internal sealed class FakeServiceControl : IServiceControl
+internal sealed class FakeServiceReader : IServiceReader
 {
     public Dictionary<string, ServiceInfo> Services { get; } = new(StringComparer.OrdinalIgnoreCase);
     public bool Broken { get; set; }

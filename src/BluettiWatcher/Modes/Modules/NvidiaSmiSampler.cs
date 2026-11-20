@@ -7,7 +7,7 @@ namespace BluettiWatcher.Modes.Modules;
 
 /// <summary>System32 nvidia-smi, queries only (no option that changes the GPU is ever passed).</summary>
 /// <remarks>Pattern: Adapter.</remarks>
-internal sealed partial class NvidiaSmi(IProcessRunner runner) : INvidiaSmi
+internal sealed partial class NvidiaSmiSampler(IProcessRunner runner) : IGpuSampler
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
     private static readonly string Exe = Path.Combine(Environment.SystemDirectory, "nvidia-smi.exe");

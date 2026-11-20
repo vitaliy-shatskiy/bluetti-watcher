@@ -7,7 +7,7 @@ namespace BluettiWatcher.Tests.Modes;
 
 public sealed class ServiceStateModuleTests
 {
-    private readonly FakeServiceControl _services = new();
+    private readonly FakeServiceReader _services = new();
     private readonly FakeBroker _broker = new();
     private readonly ServiceStateModule _module;
 
