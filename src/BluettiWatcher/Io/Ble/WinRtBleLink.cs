@@ -115,29 +115,12 @@ internal sealed class WinRtBleLink(BluetoothLEDevice device) : IBleLink
     /// <summary>Null when the link is ready; otherwise why not.</summary>
     internal async Task<string?> InitAsync(int attempts, Action<string> stage, CancellationToken ct)
     {
-        GattDeviceServicesResult? services = null;
-        for (int i = 1; i <= attempts; i++)
-        {
-            // The first try is where Windows makes the connection; a later one names what the last answered.
-            stage(services is null ? "GATT services (connecting)"
-                : string.Create(CultureInfo.InvariantCulture, $"GATT services, try {i} (the last answered {services.Status})"));
-            services = await device.GetGattServicesAsync(BluetoothCacheMode.Uncached).AsTask(ct);
-            if (services.Status == GattCommunicationStatus.Success) break;
-            if (i < attempts) await Task.Delay(TimeSpan.FromSeconds(1), ct);
-        }
-        if (services is null || services.Status != GattCommunicationStatus.Success)
-            return string.Create(CultureInfo.InvariantCulture, $"GATT {services?.Status} after {attempts} tries{(services?.ProtocolError is { } pe ? $" (protocol error {pe})" : "")}");
-        _services.AddRange(services.Services);
-        stage("the ff01/ff02 characteristics");
-        foreach (var s in _services)
-        {
-            _notify ??= await Find(s, WinRtBleConnector.NotifyUuid, ct);
-            _write ??= await Find(s, WinRtBleConnector.WriteUuid, ct);
-        }
-        if (_notify is null || _write is null) return "the station has no ff01/ff02 characteristic";
-        _notify.ValueChanged += OnValueChanged;
-        stage("the notification subscription");
-        var sub = await _notify.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify).AsTask(ct);
+        var found = await GattDiscovery.RunAsync<GattDeviceService, GattCharacteristic>(ServicesAsync, FindAsync, attempts, TimeSpan.FromSeconds(1), stage, ct);
+        if (found is not { Notify: { } notify, Write: { } write }) return found.Failure ?? "the station has no ff01/ff02 characteristic";
+        (_notify, _write) = (notify, write);
+        notify.ValueChanged += OnValueChanged;
+        stage(found.Mode == BluetoothCacheMode.Cached ? "the notification subscription (cached characteristics)" : "the notification subscription (uncached characteristics)");
+        var sub = await notify.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify).AsTask(ct);
         if (sub != GattCommunicationStatus.Success) return $"notification subscription: {sub}";
         // Windows raises Disconnected during the GATT setup above while the link goes on working: watched only from here on.
         // A link really gone by now ends as a later disconnect does, so none is lost.
@@ -147,9 +130,17 @@ internal sealed class WinRtBleLink(BluetoothLEDevice device) : IBleLink
         return null;
     }
 
-    private static async Task<GattCharacteristic?> Find(GattDeviceService service, Guid uuid, CancellationToken ct)
+    /// <summary>Every service either lookup returns is kept and disposed with the link.</summary>
+    private async Task<(GattCommunicationStatus Status, byte? ProtocolError, IReadOnlyList<GattDeviceService> Services)> ServicesAsync(BluetoothCacheMode mode, CancellationToken ct)
     {
-        var r = await service.GetCharacteristicsForUuidAsync(uuid, BluetoothCacheMode.Uncached).AsTask(ct);
+        var r = await device.GetGattServicesAsync(mode).AsTask(ct);
+        _services.AddRange(r.Services);
+        return (r.Status, r.ProtocolError, r.Services is { } list ? [.. list] : []);
+    }
+
+    private static async Task<GattCharacteristic?> FindAsync(GattDeviceService service, Guid uuid, BluetoothCacheMode mode, CancellationToken ct)
+    {
+        var r = await service.GetCharacteristicsForUuidAsync(uuid, mode).AsTask(ct);
         return r.Status == GattCommunicationStatus.Success && r.Characteristics.Count > 0 ? r.Characteristics[0] : null;
     }
 

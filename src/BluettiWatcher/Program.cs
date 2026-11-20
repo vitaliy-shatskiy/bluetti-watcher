@@ -127,12 +127,12 @@ void ShowTray()
     tray.ReportAlarms(StationAlarm.ListOf(service.StationAlarmsNow));
 }
 ShowTray();
-// A broker older than this service (its copy is refreshed only by the elevated install step) is said at start: event, log, tray notice.
-if (modes is not null && BrokerState() is { State: "stale", Problem: { } staleBroker })
-{
-    Log($"WARNING - {staleBroker}");
-    store.AddEvent(time.GetLocalNow(), BluettiWatcher.Modes.Broker.BrokerVersion.StaleEvent, staleBroker);
-}
+// A broker older than this service (its copy is refreshed only by the elevated install step) is said when it still is
+// after a grace (an upgrade refreshes it seconds after this start), once per version: event, log, tray notice.
+var brokerNotice = modes is null ? Task.CompletedTask
+    : new BluettiWatcher.Modes.Broker.BrokerStaleNotice(BrokerState, (typeof(StationService).Assembly.GetName().Version ?? new Version(0, 0, 0)).ToString(3),
+        Path.Combine(config.DataDir, "broker-stale-noticed"), (d, c) => Task.Delay(d, time, c),
+        (kind, detail) => store.AddEvent(time.GetLocalNow(), kind, detail), Log).RunAsync(stop.Token);
 using var http = new MiniHttpServer(IPAddress.Loopback, config.Port, api.HandleAsync, Log);
 try { http.Start(); }
 catch (SocketException e) { Log($"DID NOT RUN - 127.0.0.1:{config.Port} is taken ({e.SocketErrorCode})"); return 2; }
@@ -197,5 +197,7 @@ await historyRuns;
 await keepAlive;
 try { await presses; }
 catch (OperationCanceledException) { /* the press loop ends with the stop */ }
+try { await brokerNotice; }
+catch (OperationCanceledException) { /* a stop within the grace ends the wait */ }
 Log("stopped");
 return 0;
