@@ -114,7 +114,7 @@ internal sealed class StaticAsset(byte[] body, string contentType)
 
 /// <summary>
 /// A minimal HTTP/1.1 server on a TcpListener: one request per connection (Connection: close), headers up to 16 KB, a body
-/// up to 4 KB, the request head within 5 s (an idle connection is closed), 10 s per connection, at most 32 at a time; a
+/// up to 4 KB (64 KB on the power-modes routes), the request head within 5 s (an idle connection is closed), 10 s per connection, at most 32 at a time; a
 /// handler exception is answered 400 (bad input) or 500 and logged. No URL ACL and no admin rights: it binds 127.0.0.1 only.
 /// </summary>
 internal sealed class MiniHttpServer(IPAddress address, int port, Func<HttpRequest, CancellationToken, Task<HttpResponse>> handler, Action<string> log,
@@ -128,6 +128,10 @@ internal sealed class MiniHttpServer(IPAddress address, int port, Func<HttpReque
 
     private const int MaxHead = 16 * 1024;
     private const int MaxBody = 4 * 1024;
+    private const int MaxModesBody = 64 * 1024;
+
+    /// <summary>A body's limit: 64 KB for the power-modes routes (a whole mode or rule list), 4 KB elsewhere.</summary>
+    internal static int MaxBodyFor(string path) => ModesApi.Owns(path) ? MaxModesBody : MaxBody;
     private const int Slots = 32;
     private readonly SemaphoreSlim _slots = new(Slots, Slots);
     private readonly TimeSpan _headTimeout = headTimeout ?? TimeSpan.FromSeconds(5);
@@ -229,7 +233,7 @@ internal sealed class MiniHttpServer(IPAddress address, int port, Func<HttpReque
             int bodyLen = 0;
             if (req!.Headers.TryGetValue("content-length", out var cl) && (!int.TryParse(cl, out bodyLen) || bodyLen < 0))
                 return (null, HttpResponse.Text(400, "bad content-length"));
-            if (bodyLen > MaxBody) return (null, HttpResponse.Text(413, "body too large"));
+            if (bodyLen > MaxBodyFor(req.Path)) return (null, HttpResponse.Text(413, "body too large"));
             if (bodyLen == 0) return (req, null);
             int have = len - (headEnd + 4);
             var body = new byte[bodyLen];

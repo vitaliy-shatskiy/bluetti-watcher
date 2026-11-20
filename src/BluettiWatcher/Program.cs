@@ -88,6 +88,8 @@ var started = time.GetLocalNow();
 // The outage schedule: its own task and cadence, never on the poll path; off (no source, no request) unless dtekWatcher.enabled.
 // The guard is the module's whole boundary: no call into it ever throws into this loop or into /api/now.
 using var dtek = DtekWatcherGuard.Create(config, store, time, Log);
+// The Auto rules' cutWithin reads the schedule's next planned outage (the guard never throws; off = no outage known).
+service.NextCut = () => dtek.View(service.State.Cut, null).NextStart;
 using var stop = new CancellationTokenSource();
 // The page's sign-in: the --cloud-login flow inside the service, its catcher on a port the OS assigns; the token is written through the reader's lock.
 using var signInHttp = new SocketsHttpHandler();

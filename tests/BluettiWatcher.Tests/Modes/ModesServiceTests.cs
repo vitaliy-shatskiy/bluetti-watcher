@@ -88,4 +88,36 @@ public sealed class ModesServiceTests : IDisposable
         }
         Assert.Equal(hibernates, h.Calls > 0);
     }
+
+    private static List<Rule> CutRule() => [new() { Condition = new RuleCondition { Kind = ConditionKind.CutWithin, Minutes = 30 }, ModeId = BuiltInModes.Eco }];
+
+    [Fact]
+    public async Task Poll_CutWithinRuleAndANearCut_EntersEcoOnMains()
+    {
+        Assert.Equal((0, ""), await _engine.PutRulesAsync(CutRule(), TestContext.Current.CancellationToken));
+        _service.NextCut = () => _clock.Now.AddMinutes(20);
+
+        await Feed(Grid(80));
+
+        Assert.Equal("eco", _engine.Snapshot.ModeId);
+    }
+
+    [Fact]
+    public async Task Poll_CutWithinRuleAndAFailingSchedule_StaysNormal()
+    {
+        Assert.Equal((0, ""), await _engine.PutRulesAsync(CutRule(), TestContext.Current.CancellationToken));
+        _service.NextCut = () => throw new InvalidOperationException("schedule module down");
+
+        await Feed(Grid(80));
+
+        Assert.Equal("normal", _engine.Snapshot.ModeId);
+    }
+
+    [Theory]
+    [InlineData(false, 20.0, 20.0)]
+    [InlineData(false, -5.0, 0.0)]
+    [InlineData(true, 90.0, 0.0)]
+    [InlineData(false, null, null)]
+    public void MinutesToCut_ScheduleAndCut_AreMinutesOrUnknown(bool cutOn, double? inMinutes, double? expected) =>
+        Assert.Equal(expected, StationService.MinutesToCut(cutOn, inMinutes is { } m ? T0.AddMinutes(m) : null, T0));
 }

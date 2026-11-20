@@ -586,7 +586,20 @@ internal sealed class StationService(StationConfig config, IStationReader reader
         if (!eco) Complete(a, now);
     }
 
-    /// <summary>The modes' poll: the Auto rules see mains and battery as this poll left them. A failure never stops the poll.</summary>
+    /// <summary>The start of the next planned outage (the DTEK module's schedule); null or unset = unknown, so cutWithin rules match nothing.</summary>
+    public Func<DateTimeOffset?>? NextCut { get; set; }
+
+    private DateTimeOffset? ReadNextCut()
+    {
+        try { return NextCut?.Invoke(); }
+        catch (Exception e) when (e is not OperationCanceledException) { log($"modes: next cut unknown: {e.GetType().Name}: {e.Message}"); return null; }
+    }
+
+    /// <summary>Minutes until the next planned outage: 0 while a cut is on, null when no outage is known.</summary>
+    internal static double? MinutesToCut(bool cutOn, DateTimeOffset? nextStart, DateTimeOffset now) =>
+        cutOn ? 0 : nextStart is { } at ? Math.Max(0, (at - now).TotalMinutes) : null;
+
+    /// <summary>The modes' poll: the Auto rules see mains, battery and the outage schedule as this poll left them. A failure never stops the poll.</summary>
     private async Task StepModesAsync(DateTimeOffset now, CancellationToken ct)
     {
         if (Modes is null) return;
@@ -596,8 +609,7 @@ internal sealed class StationService(StationConfig config, IStationReader reader
             { Grid: Grid.On, OnSince: { } back } => (true, now - back),
             _ => ((bool?)null, (TimeSpan?)null),
         };
-        // yagni: no outage-schedule input yet (cutWithin never matches); the DTEK module's next cut feeds it once wired.
-        var input = new BluettiWatcher.Modes.SelectorInput(on, since, _state.LastSoc, null, now);
+        var input = new BluettiWatcher.Modes.SelectorInput(on, since, _state.LastSoc, MinutesToCut(_state.Cut, ReadNextCut(), now), now);
         try { await Modes.StepAsync(input, EmergencyHolds(_flag), ct); }
         catch (Exception e) when (e is not OperationCanceledException) { log($"modes: step failed: {e.GetType().Name}: {e.Message}"); }
     }

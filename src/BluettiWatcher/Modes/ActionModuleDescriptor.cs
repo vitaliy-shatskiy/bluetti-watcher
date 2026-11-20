@@ -10,7 +10,7 @@ namespace BluettiWatcher.Modes;
 /// <param name="Version">Settings version; a module that changes its settings shape bumps it.</param>
 /// <param name="Title">Short English name for the UI.</param>
 /// <param name="SettingsSchema">JSON Schema (draft 2020-12 subset: type, properties, required, enum, minimum, maximum, items, additionalProperties) of the settings object.</param>
-/// <param name="UiHints">Per-field hints: <c>{ "field": { "widget": "select", "list": "plans", "label": "..." } }</c>; empty when none.</param>
+/// <param name="UiHints">Per-field hints: <c>{ "field": { "widget": "select", "discovery": "plans", "label": "..." } }</c> (<c>list</c> is read as <c>discovery</c>); empty when none.</param>
 /// <param name="DiscoveryLists">Names of the lists <see cref="IActionModule.DiscoverAsync"/> returns.</param>
 /// <param name="Restoration">How leaving a mode undoes this module's writes.</param>
 /// <param name="NeedsAdmin">The writes go through the admin broker.</param>

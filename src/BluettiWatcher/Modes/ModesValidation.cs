@@ -5,6 +5,8 @@ namespace BluettiWatcher.Modes;
 /// <summary>The API's checks on a mode or a rule list before anything is saved; each problem names its field.</summary>
 internal static class ModesValidation
 {
+    /// <summary>The selection value that means the Auto rules (POST /api/modes/select): never a mode id.</summary>
+    public const string AutoChoice = "auto";
     public const int MaxModes = 32;
     public const int MaxActions = 32;
     public const int MaxRules = 32;
@@ -15,6 +17,7 @@ internal static class ModesValidation
         ArgumentNullException.ThrowIfNull(registry);
         var p = new List<string>();
         if (!ValidId(mode.Id)) p.Add("id: 1 to 32 lower-case letters, digits or -");
+        else if (mode.Id == AutoChoice) p.Add("id: auto is reserved (it selects the Auto rules)");
         if (mode.Name.Trim().Length is 0 or > 64) p.Add("name: 1 to 64 characters");
         if (!Enum.IsDefined(mode.FlagWord)) p.Add("flagWord: normal, eco or emergency");
         if (mode.Actions.Count > MaxActions) p.Add($"actions: at most {MaxActions.ToString(CultureInfo.InvariantCulture)}");
