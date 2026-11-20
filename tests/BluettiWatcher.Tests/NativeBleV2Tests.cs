@@ -198,8 +198,10 @@ public class NativeBleV2ReaderTests
         var cfg = new StationConfig { Mac = "AA:BB:CC:DD:EE:FF", Type = model, BleBackend = "native", ReaderTimeoutSec = 10 };
         var r = await new NativeBleReader(cfg, conn, log.Add, TimeSpan.FromMilliseconds(300)).ReadAsync(CancellationToken.None);
         // The AC50B declares no DC input power (devices/ac50b.py): null there, as the Python path gives.
-        Assert.Equal(new Reading(64, inAc, 345, "BLE_MAINS", model == "AC50B" ? null : 120, outDc, null, null), r);
-        Assert.Equal(["0103006600010000", "0103008C00070000"], link.Written.Select(w => Convert.ToHexString(w[..6]) + "0000"));
+        Assert.Equal(new Reading(64, inAc, 345, "BLE_MAINS", model == "AC50B" ? null : 120, outDc, null, null), r! with { Extras = null });
+        // The reading's own two reads, then the optional V2 blocks (V2Extras.Blocks).
+        Assert.Equal(["0103006600010000", "0103008C00070000", "0103006400020000", "0103006800020000", "0103007A00110000", "0103047F00030000"],
+            link.Written.Select(w => Convert.ToHexString(w[..6]) + "0000"));
         Assert.Empty(log);
     }
 

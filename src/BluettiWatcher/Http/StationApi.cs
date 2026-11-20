@@ -17,7 +17,8 @@ namespace BluettiWatcher.Http;
 /// from / to: ISO 8601 or Unix milliseconds; step: seconds (default 60).
 /// </summary>
 internal sealed class StationApi(StationConfig config, StationService service, StationStore store, TimeProvider time, DateTimeOffset startedAt, IDtekWatcher? dtek = null, Action<string>? log = null,
-    Func<bool>? bluetoothEncrypted = null, Func<bool>? bluetoothStalled = null, Func<(string Guid, string Name)>? activePlan = null)
+    Func<bool>? bluetoothEncrypted = null, Func<bool>? bluetoothStalled = null, Func<(string Guid, string Name)>? activePlan = null,
+    Func<IReadOnlyList<KeyValuePair<string, string>>>? stationBlocks = null)
 {
     /// <summary>The page, read once; encoded once per coding on first use; a reload with its ETag is a 304.</summary>
     private static readonly Lazy<StaticAsset> Page = new(() =>
@@ -479,6 +480,7 @@ internal sealed class StationApi(StationConfig config, StationService service, S
                 Num(w, "gridVolt", last.GridVolt);
                 Num(w, "gridHz", last.GridHz);
                 w.WriteBoolean("mains", last.InAc > 0);
+                WriteStationExtras(w, last.Extras, runtime.HoursLeft);
                 w.WriteEndObject();
             }
             else w.WriteNull("last");
@@ -646,7 +648,30 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             w.WriteBoolean("silent", s.Silent);
             w.WriteNumber("rawRows", raw);
             w.WriteNumber("aggregateRows", agg);
+            // The station's optional register blocks (V2 stations) and whether it serves them: the live check after an install.
+            w.WriteStartObject("stationBlocks");
+            foreach (var (name, support) in stationBlocks?.Invoke() ?? []) w.WriteString(name, support);
+            w.WriteEndObject();
             w.WriteEndObject();
         });
+    }
+
+    /// <summary>The station's own extras of the last reading (V2 stations); the station's time to empty beside the watcher's.</summary>
+    private static void WriteStationExtras(Utf8JsonWriter w, StationExtras? x, double? hoursLeft)
+    {
+        if (x is null) { w.WriteNull("station"); return; }
+        w.WriteStartObject("station");
+        Num(w, "packVolt", x.PackVolt);
+        Num(w, "packAmp", x.PackAmp);
+        Num(w, "minutesToFull", x.StationMinutesToFull, 0);
+        Num(w, "minutesToEmpty", x.StationMinutesToEmpty, 0);
+        // Station minus watcher, hours: positive = the station expects longer than the watcher's estimate.
+        Num(w, "emptyGapHours", x.StationMinutesToEmpty is { } m && hoursLeft is { } h ? m / 60.0 - h : null, 2);
+        if (x.Warnings is { } warnings) Strings(w, "warnings", warnings); else w.WriteNull("warnings");
+        if (x.Faults is { } faults) Strings(w, "faults", faults); else w.WriteNull("faults");
+        Num(w, "tempAmbient", x.TempAmbient, 0);
+        Num(w, "tempInverter", x.TempInverter, 0);
+        Num(w, "tempPvDcDc", x.TempPvDcDc, 0);
+        w.WriteEndObject();
     }
 }
