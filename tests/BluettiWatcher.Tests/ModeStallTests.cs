@@ -90,13 +90,16 @@ public sealed class ModeStallTests : IDisposable
         Assert.Equal(logged, _log.Contains($"slow: the mode change held the station gate for {seconds} s"));
     }
 
-    [Fact]
+    // drainMs 1: the drain wait ends before the reader thread has delivered the line; the kill must not lose it.
+    [Theory]
+    [InlineData(500)]
+    [InlineData(1)]
     [SupportedOSPlatform("windows")]
-    public async Task RunTimed_tool_that_exits_while_a_child_keeps_its_output_open_returns_with_its_output()
+    public async Task RunTimed_tool_that_exits_while_a_child_keeps_its_output_open_returns_with_its_output(int drainMs)
     {
         // cmd exits at once; the ping it started in the background keeps the output pipe open for about 30 s
         string cmd = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
-        var run = Task.Run(() => PowerModeSwitch.RunTimed(cmd, ["/c", "start /b ping -n 30 127.0.0.1 >nul & echo started"], 10000, drainMs: 500),
+        var run = Task.Run(() => PowerModeSwitch.RunTimed(cmd, ["/c", "start /b ping -n 30 127.0.0.1 >nul & echo started"], 10000, drainMs),
             TestContext.Current.CancellationToken);
         var r = await run.WaitAsync(TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken);
         Assert.Equal(0, r.Code);

@@ -82,6 +82,8 @@ internal sealed partial class PowerModeSwitch
         {
             try { p.Kill(entireProcessTree: true); }
             catch (Exception e) when (e is Win32Exception or InvalidOperationException or AggregateException) { Skip(e); }
+            // The kill closes the pipes: the lines the readers have not delivered yet still come, up to both ends, bounded.
+            _ = Task.WaitAll([outEnd.Task, errEnd.Task], DrainMs);
         }
         lock (stdout) lock (stderr) return new(p.ExitCode, [.. stdout.Concat(stderr).Where(l => l.Trim().Length > 0)]);
     }
