@@ -252,7 +252,7 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
     /// machine in the new mode's state while the view still names the old one. <paramref name="ct"/> only ends the
     /// caller's wait (an HTTP request's limit, a client gone). It starts on the thread pool, never on the caller's thread:
     /// a module's validation and actions may block their thread (ChangeDisplaySettingsEx while the screens resync, a
-    /// service query), and run inline they held the caller past its bounded wait (a dropped request).
+    /// service query), and run inline they would hold the caller past its bounded wait (a dropped request).
     /// </remarks>
     private Task<(int Status, string Error)> ChangeAsync(Func<ModesSettings, (ModesSettings Next, string Error)> change, CancellationToken ct)
     {

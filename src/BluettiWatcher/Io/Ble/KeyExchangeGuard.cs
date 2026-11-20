@@ -93,7 +93,7 @@ internal sealed class KeyExchangeGuardLink(IBleLink inner) : IBleLink
     /// <summary>
     /// The first notifications of a link are held while they could still be the start of a pre-key message (it may arrive split over
     /// notifications: "**" alone, then the rest); the first byte of a Modbus answer is 0x01, so a plain answer is never held. Held notifications
-    /// that turn out plain are passed on in order. A whole pre-key message anywhere later is caught as before.
+    /// that turn out plain are passed on in order. A whole pre-key message anywhere later is caught too.
     /// </summary>
     private sealed class GuardedReader(ChannelReader<byte[]> notes) : ChannelReader<byte[]>
     {

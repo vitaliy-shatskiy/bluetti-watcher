@@ -28,7 +28,7 @@ internal interface IPowerModeActions
 /// Each runs in this process (<c>BluettiWatcher.exe power-mode ... -Path &lt;flag&gt;</c>, <paramref name="inProcess"/>), only
 /// at a transition, with POWER_MODE_FILE, POWER_MODE_MUTEX, POWER_MODE_TASK_PREFIX and POWER_MODE_EXTRA_READERS in its
 /// environment. A configured script (<c>powerMode.script</c>, <c>--power-mode</c>) or no in-process runner = the script
-/// through <c>pwsh -NoProfile -File &lt;script&gt;</c>, windowless, as before.
+/// through <c>pwsh -NoProfile -File &lt;script&gt;</c>, windowless.
 /// </summary>
 internal sealed class PowerModeAdapter(StationConfig config, IProcessRunner runner, Action<string> log, IPowerModeRunner? inProcess = null) : IPowerModeActions
 {

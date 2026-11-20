@@ -2,7 +2,7 @@ namespace BluettiWatcher.Tray;
 
 /// <summary>
 /// The modes the tray menu lists and switches: a port, so the menu does not depend on which engine runs the modes
-/// (<see cref="ManualTrayModes"/> over today's Auto / Eco / Max).
+/// (<see cref="ManualTrayModes"/>, <see cref="ModesTrayModes"/>).
 /// </summary>
 internal interface ITrayModes
 {
