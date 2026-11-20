@@ -19,7 +19,7 @@ internal static class Cli
           BluettiWatcher.exe power-mode <args>  the power-mode switch: on|off|status|eco|end|battery|prev-plan|gpu-task (power-mode\README.md)
           BluettiWatcher.exe hook               the Claude Code hook: a hook event on stdin, the power mode on stdout
           BluettiWatcher.exe --broker           the admin broker's run (the SYSTEM task BluettiWatcherBroker starts it)
-          BluettiWatcher.exe --broker-allow service|profile|inspector <name>   allow a target in the broker policy (elevated)
+          BluettiWatcher.exe --broker-allow service|task|profile|inspector <name>   allow a target in the broker policy (elevated)
           BluettiWatcher.exe --help | --version
 
         Options:

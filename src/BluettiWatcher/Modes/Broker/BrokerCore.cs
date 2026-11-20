@@ -28,15 +28,17 @@ internal sealed partial class BrokerCore
 
     private readonly BrokerPaths _paths;
     private readonly IServiceControl _services;
+    private readonly ITaskControl _tasks;
     private readonly INvidiaSmi _gpu;
     private readonly IProfileImporter _importer;
     private readonly TimeProvider _time;
     private readonly Dictionary<string, Operation> _operations;
 
-    public BrokerCore(BrokerPaths paths, IServiceControl services, INvidiaSmi gpu, IProfileImporter importer, TimeProvider time)
+    public BrokerCore(BrokerPaths paths, IServiceControl services, ITaskControl tasks, INvidiaSmi gpu, IProfileImporter importer, TimeProvider time)
     {
         _paths = paths;
         _services = services;
+        _tasks = tasks;
         _gpu = gpu;
         _importer = importer;
         _time = time;
@@ -45,9 +47,13 @@ internal sealed partial class BrokerCore
             ["service.query"] = new(["name"], (a, p, ct) => ServiceAsync(a, p, _services.QueryAsync, ct)),
             ["service.start"] = new(["name"], (a, p, ct) => ServiceAsync(a, p, _services.StartAsync, ct)),
             ["service.stop"] = new(["name"], (a, p, ct) => ServiceAsync(a, p, _services.StopAsync, ct)),
+            ["service.setStartType"] = new(["name", "startType"], SetStartTypeAsync),
+            ["task.enable"] = new(["name"], (a, p, ct) => TaskAsync(a, p, true, ct)),
+            ["task.disable"] = new(["name"], (a, p, ct) => TaskAsync(a, p, false, ct)),
             ["gpu.query"] = new([], (_, _, ct) => GpuQueryAsync(ct)),
             ["gpu.setPowerLimit"] = new(["gpu", "watts"], SetPowerLimitAsync),
-            ["nvidia.applyProfile"] = new(["profile"], ApplyProfileAsync),
+            ["nvidia.applyProfile"] = new(["file"], ApplyProfileAsync),
+            ["nvidia.exportProfiles"] = new([], ExportProfilesAsync),
         };
     }
 
@@ -105,13 +111,35 @@ internal sealed partial class BrokerCore
 
     private static string? Text(JsonObject args, string key) => args[key] is JsonValue v && v.TryGetValue(out string? s) ? s : null;
 
-    private static async Task<BrokerResult> ServiceAsync(JsonObject args, BrokerPolicy policy, Func<string, CancellationToken, Task<BrokerResult>> call, CancellationToken ct)
+    /// <summary>The policy's own spelling of the requested service (what reaches the SCM, never the request's), or the refusal.</summary>
+    private static (string? Name, BrokerResult? Refusal) ListedService(JsonObject args, BrokerPolicy policy)
     {
         string? name = Text(args, "name");
-        if (name is null || !BrokerPolicy.ServiceNamePattern().IsMatch(name)) return Refused("the service name is not a service key name");
-        if (!policy.AllowsService(name)) return Refused($"the service '{name}' is not in the policy");
-        // The policy's own spelling goes to the SCM, never the request's.
-        return await call(policy.Services.First(s => string.Equals(s, name, StringComparison.OrdinalIgnoreCase)), ct);
+        if (name is null || !BrokerPolicy.ServiceNamePattern().IsMatch(name)) return (null, Refused("the service name is not a service key name"));
+        if (!policy.AllowsService(name)) return (null, Refused($"the service '{name}' is not in the policy"));
+        return (policy.Services.First(s => string.Equals(s, name, StringComparison.OrdinalIgnoreCase)), null);
+    }
+
+    private static async Task<BrokerResult> ServiceAsync(JsonObject args, BrokerPolicy policy, Func<string, CancellationToken, Task<BrokerResult>> call, CancellationToken ct)
+    {
+        var (name, refusal) = ListedService(args, policy);
+        return refusal ?? await call(name!, ct);   // ListedService gives a name or a refusal
+    }
+
+    private async Task<BrokerResult> SetStartTypeAsync(JsonObject args, BrokerPolicy policy, CancellationToken ct)
+    {
+        string? type = Text(args, "startType");
+        if (type is null || !ScmServiceControl.StartTypes.ContainsKey(type)) return Refused("startType is not automatic, delayedAutomatic, manual or disabled");
+        var (name, refusal) = ListedService(args, policy);
+        return refusal ?? await _services.SetStartTypeAsync(name!, type, ct);   // ListedService gives a name or a refusal
+    }
+
+    private async Task<BrokerResult> TaskAsync(JsonObject args, BrokerPolicy policy, bool enable, CancellationToken ct)
+    {
+        string? name = Text(args, "name");
+        if (name is null || !BrokerPolicy.TaskNamePattern().IsMatch(name)) return Refused("the task name is not a task name");
+        // The policy's own spelling goes to the Task Scheduler.
+        return policy.ListedTask(name) is { } listed ? await _tasks.SetEnabledAsync(listed, enable, ct) : Refused($"the task '{name}' is not in the policy");
     }
 
     private async Task<BrokerResult> GpuQueryAsync(CancellationToken ct)
@@ -148,6 +176,30 @@ internal sealed partial class BrokerCore
         return now is null ? new(false, $"the limit was set but could not be read back ({back.Error})", null) : new(true, null, GpuJson(now));
     }
 
+    private const string ExportsPrefix = "exports/";
+
+    private BrokerResult? RefuseInspector(BrokerPolicy policy)
+    {
+        if (policy.ProfileInspector.Length == 0) return Refused("the policy names no NVIDIA Profile Inspector");
+        if (!AdminOnlyLocation(policy.ProfileInspector, _paths.Root))
+            return Refused($"NVIDIA Profile Inspector at {policy.ProfileInspector} is not under Program Files or the broker folder (SYSTEM never runs an exe the user can replace)");
+        return null;
+    }
+
+    private async Task<BrokerResult> ExportProfilesAsync(JsonObject args, BrokerPolicy policy, CancellationToken ct)
+    {
+        if (RefuseInspector(policy) is { } bad) return bad;
+        string folder = Path.GetFullPath(_paths.Exports);
+        var export = await _importer.ExportAsync(policy.ProfileInspector, folder, ct);
+        if (export.File.Length == 0) return new(false, export.Error, null);
+        string file = Path.GetFullPath(export.File);
+        if (!string.Equals(Path.GetDirectoryName(file), folder.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+            return new(false, $"the export landed outside {folder}", null);
+        await using var stream = File.OpenRead(file);
+        string hash = Convert.ToHexStringLower(await System.Security.Cryptography.SHA256.HashDataAsync(stream, ct));
+        return new(true, null, new JsonObject { ["file"] = ExportsPrefix + Path.GetFileName(file), ["sha256"] = hash });
+    }
+
     /// <summary>A path under Program Files (both) or the broker folder: places only administrators write by default.</summary>
     internal static bool AdminOnlyLocation(string path, string brokerRoot)
     {
@@ -160,14 +212,15 @@ internal sealed partial class BrokerCore
 
     private async Task<BrokerResult> ApplyProfileAsync(JsonObject args, BrokerPolicy policy, CancellationToken ct)
     {
-        string? name = Text(args, "profile");
-        if (name is null || !BrokerPolicy.ProfileNamePattern().IsMatch(name)) return Refused("the profile is not a .nip file name");
-        if (!policy.AllowsProfile(name)) return Refused($"the profile '{name}' is not in the policy");
-        if (policy.ProfileInspector.Length == 0) return Refused("the policy names no NVIDIA Profile Inspector");
-        if (!AdminOnlyLocation(policy.ProfileInspector, _paths.Root))
-            return Refused($"NVIDIA Profile Inspector at {policy.ProfileInspector} is not under Program Files or the broker folder (SYSTEM never runs an exe the user can replace)");
-        string folder = Path.GetFullPath(_paths.Profiles);
-        string file = Path.GetFullPath(Path.Combine(folder, name));
+        // Two shapes only: a listed profile name (profiles\), or exports/<name> (a file this broker exported).
+        string? name = Text(args, "file");
+        bool exported = name is not null && name.StartsWith(ExportsPrefix, StringComparison.Ordinal);
+        string? bare = exported ? name![ExportsPrefix.Length..] : name;
+        if (bare is null || !BrokerPolicy.ProfileNamePattern().IsMatch(bare)) return Refused("the file is not a .nip file name in profiles or exports");
+        if (!exported && !policy.AllowsProfile(bare)) return Refused($"the profile '{bare}' is not in the policy");
+        if (RefuseInspector(policy) is { } bad) return bad;
+        string folder = Path.GetFullPath(exported ? _paths.Exports : _paths.Profiles);
+        string file = Path.GetFullPath(Path.Combine(folder, bare));
         if (!string.Equals(Path.GetDirectoryName(file), folder.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
             return Refused($"the profile '{name}' is outside the profiles folder");
         if (!File.Exists(file)) return new(false, $"the profile file {file} is missing", null);

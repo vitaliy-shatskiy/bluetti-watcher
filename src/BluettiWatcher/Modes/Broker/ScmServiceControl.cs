@@ -75,6 +75,72 @@ internal sealed partial class ScmServiceControl(TimeProvider time) : IServiceCon
         finally { CloseServiceHandle(scm); }
     }
 
+    /// <summary>The start types a request may name, with their SERVICE_*_START value and the delayed flag.</summary>
+    internal static readonly IReadOnlyDictionary<string, (uint Start, bool Delayed)> StartTypes = new Dictionary<string, (uint, bool)>(StringComparer.Ordinal)
+    {
+        ["automatic"] = (2, false),
+        ["delayedAutomatic"] = (2, true),
+        ["manual"] = (3, false),
+        ["disabled"] = (4, false),
+    };
+
+    private const uint ServiceQueryConfig = 0x0001, ServiceChangeConfig = 0x0002, NoChange = 0xFFFFFFFF, DelayedAutoStartInfo = 3;
+
+    public Task<BrokerResult> SetStartTypeAsync(string name, string startType, CancellationToken ct)
+    {
+        if (!StartTypes.TryGetValue(startType, out var want)) return Task.FromResult(new BrokerResult(false, $"unknown start type {startType}", null));
+        nint scm = OpenSCManagerW(null, null, ScManagerConnect);
+        if (scm == 0) return Task.FromResult(WinError("the Service Control Manager could not be opened"));
+        try
+        {
+            nint svc = OpenServiceW(scm, name, ServiceQueryConfig | ServiceChangeConfig);
+            if (svc == 0) return Task.FromResult(WinError($"the service {name} could not be opened"));
+            try
+            {
+                if (!ChangeServiceConfigW(svc, NoChange, want.Start, NoChange, null, null, 0, null, null, null, null))
+                    return Task.FromResult(WinError($"the start type of {name} could not be set"));
+                int delayed = want.Delayed ? 1 : 0;
+                if (want.Start == 2 && !ChangeServiceConfig2W(svc, DelayedAutoStartInfo, ref delayed))
+                    return Task.FromResult(WinError($"the delayed start of {name} could not be set"));
+                return Task.FromResult(ReadStartType(svc, name));
+            }
+            finally { CloseServiceHandle(svc); }
+        }
+        finally { CloseServiceHandle(scm); }
+    }
+
+    private static BrokerResult ReadStartType(nint svc, string name)
+    {
+        // QUERY_SERVICE_CONFIGW: dwServiceType, then dwStartType; the strings after them are not read.
+        var buffer = new byte[8192];
+        if (!QueryServiceConfigW(svc, buffer, (uint)buffer.Length, out _)) return WinError($"the start type of {name} could not be read");
+        uint start = BitConverter.ToUInt32(buffer, 4);
+        int delayed = 0;
+        if (start == 2 && !QueryServiceConfig2W(svc, DelayedAutoStartInfo, ref delayed, 4, out _)) return WinError($"the delayed start of {name} could not be read");
+        var match = StartTypes.FirstOrDefault(p => p.Value == (start, start == 2 && delayed != 0));
+        return new(true, null, match.Key ?? $"start type {start.ToString(CultureInfo.InvariantCulture)}");
+    }
+
+    [LibraryImport("advapi32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool ChangeServiceConfigW(nint service, uint type, uint start, uint errorControl, string? binary, string? group, nint tag, string? dependencies, string? account, string? password, string? displayName);
+
+    [LibraryImport("advapi32.dll", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool ChangeServiceConfig2W(nint service, uint level, ref int info);
+
+    [LibraryImport("advapi32.dll", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool QueryServiceConfigW(nint service, [Out] byte[] buffer, uint size, out uint needed);
+
+    [LibraryImport("advapi32.dll", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool QueryServiceConfig2W(nint service, uint level, ref int buffer, uint size, out uint needed);
+
     [LibraryImport("advapi32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static partial nint OpenSCManagerW(string? machine, string? database, uint access);

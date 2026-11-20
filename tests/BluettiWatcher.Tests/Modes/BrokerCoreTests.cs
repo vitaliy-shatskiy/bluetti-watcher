@@ -15,6 +15,7 @@ public sealed class BrokerCoreTests : IDisposable
     private readonly FakeServiceControl _services = new();
     private readonly FakeNvidiaSmi _gpu = new();
     private readonly FakeProfileImporter _importer = new();
+    private readonly FakeTaskControl _tasks = new();
     private readonly ManualClock _clock = new(T0);
     private readonly BrokerCore _core;
 
@@ -24,14 +25,16 @@ public sealed class BrokerCoreTests : IDisposable
         _services.State["OtherService"] = "running";
         Directory.CreateDirectory(Path.Combine(_root, "profiles"));
         File.WriteAllText(Path.Combine(_root, "profiles", "eco.nip"), "<profiles/>");
-        _core = new BrokerCore(new BrokerPaths(_root), _services, _gpu, _importer, _clock);
+        _tasks.Enabled["\\Vendor\\SomeTask"] = true;
+        _tasks.Enabled["\\Vendor\\OtherTask"] = true;
+        _core = new BrokerCore(new BrokerPaths(_root), _services, _tasks, _gpu, _importer, _clock);
     }
 
     public void Dispose() => Directory.Delete(_root, recursive: true);
 
     private string Inspector => Path.Combine(_root, "npi", "nvidiaProfileInspector.exe");
 
-    private BrokerPolicy Policy() => new(User, ["SomeService"], ["eco.nip"], Inspector);
+    private BrokerPolicy Policy() => new(User, ["SomeService"], ["\\Vendor\\SomeTask"], ["eco.nip"], Inspector);
 
     private static string Id => "0123456789abcdef0123456789abcdef";
 
@@ -155,7 +158,7 @@ public sealed class BrokerCoreTests : IDisposable
     [Fact]
     public async Task Handle_ListedProfile_ImportsFromProfilesFolder()
     {
-        var a = await Run("nvidia.applyProfile", new JsonObject { ["profile"] = "eco.nip" });
+        var a = await Run("nvidia.applyProfile", new JsonObject { ["file"] = "eco.nip" });
         Assert.True(a.Result.Ok, a.Result.Error);
         Assert.Equal([$"{Inspector} {Path.Combine(_root, "profiles", "eco.nip")}"], _importer.Calls);
     }
@@ -169,7 +172,7 @@ public sealed class BrokerCoreTests : IDisposable
     {
         // A name the policy lists (written past Parse) is still refused when it is no plain .nip name.
         var policy = profile == "other.nip" ? Policy() : Policy() with { Profiles = ["eco.nip", profile] };
-        AssertRefused(await Run("nvidia.applyProfile", new JsonObject { ["profile"] = profile }, policy), why);
+        AssertRefused(await Run("nvidia.applyProfile", new JsonObject { ["file"] = profile }, policy), why);
         Assert.Empty(_importer.Calls);
     }
 
@@ -177,7 +180,109 @@ public sealed class BrokerCoreTests : IDisposable
     public async Task Handle_InspectorWhereUserWrites_Refused()
     {
         var policy = Policy() with { ProfileInspector = Path.Combine(Path.GetTempPath(), "npi.exe") };
-        AssertRefused(await Run("nvidia.applyProfile", new JsonObject { ["profile"] = "eco.nip" }, policy), "not under Program Files");
+        AssertRefused(await Run("nvidia.applyProfile", new JsonObject { ["file"] = "eco.nip" }, policy), "not under Program Files");
+        Assert.Empty(_importer.Calls);
+    }
+
+    // ---- service.setStartType, task.enable / task.disable, nvidia.exportProfiles, exports ------------------------------
+
+    [Fact]
+    public async Task Handle_SetStartTypeListedService_SetsAndReadsBack()
+    {
+        var a = await Run("service.setStartType", new JsonObject { ["name"] = "SomeService", ["startType"] = "disabled" });
+        Assert.True(a.Result.Ok, a.Result.Error);
+        Assert.Equal("disabled", a.Result.Value!.GetValue<string>());
+        Assert.Equal(["startType SomeService disabled"], _services.Calls);
+    }
+
+    [Fact]
+    public async Task Handle_SetStartTypeUnlistedService_Refused()
+    {
+        AssertRefused(await Run("service.setStartType", new JsonObject { ["name"] = "OtherService", ["startType"] = "disabled" }), "not in the policy");
+        Assert.Empty(_services.Calls);
+    }
+
+    [Theory]
+    [InlineData("boot")]
+    [InlineData("system")]
+    [InlineData("Disabled ")]
+    public async Task Handle_SetStartTypeUnknownType_Refused(string startType)
+    {
+        AssertRefused(await Run("service.setStartType", new JsonObject { ["name"] = "SomeService", ["startType"] = startType }), "startType");
+        Assert.Empty(_services.Calls);
+    }
+
+    [Theory]
+    [InlineData("task.disable", false)]
+    [InlineData("task.enable", true)]
+    public async Task Handle_ListedTask_SwitchedAndReadBack(string op, bool enabled)
+    {
+        var a = await Run(op, new JsonObject { ["name"] = "\\vendor\\sometask" });
+        Assert.True(a.Result.Ok, a.Result.Error);
+        Assert.Equal(enabled, _tasks.Enabled["\\Vendor\\SomeTask"]);
+        Assert.Equal([$"{(enabled ? "enable" : "disable")} \\Vendor\\SomeTask"], _tasks.Calls);   // the policy's spelling
+    }
+
+    [Fact]
+    public async Task Handle_UnlistedTask_Refused()
+    {
+        AssertRefused(await Run("task.disable", new JsonObject { ["name"] = "\\Vendor\\OtherTask" }), "not in the policy");
+        Assert.Empty(_tasks.Calls);
+    }
+
+    [Theory]
+    [InlineData("\\Vendor\\..\\SomeTask")]
+    [InlineData("\\Vendor\\SomeTask\" /tr calc")]
+    [InlineData("\\Vendor\\*")]
+    [InlineData("")]
+    public async Task Handle_MalformedTaskName_Refused(string name)
+    {
+        var policy = Policy() with { Tasks = ["\\Vendor\\SomeTask", name] };
+        AssertRefused(await Run("task.enable", new JsonObject { ["name"] = name }, policy), "not a task name");
+        Assert.Empty(_tasks.Calls);
+    }
+
+    [Fact]
+    public async Task Handle_ExportProfiles_MovedIntoExportsWithHash()
+    {
+        var a = await Run("nvidia.exportProfiles", []);
+        Assert.True(a.Result.Ok, a.Result.Error);
+        Assert.Equal("exports/customized_20261120.nip", a.Result.Value!["file"]!.GetValue<string>());
+        Assert.Equal(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData("<profiles/>"u8)), a.Result.Value["sha256"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Handle_ExportProfilesWithArgument_Refused()
+    {
+        AssertRefused(await Run("nvidia.exportProfiles", new JsonObject { ["to"] = "C:\\Windows" }), "unexpected argument 'to'");
+        Assert.Empty(_importer.Calls);
+    }
+
+    [Fact]
+    public async Task Handle_ExportProfilesWithoutInspector_Refused()
+    {
+        AssertRefused(await Run("nvidia.exportProfiles", [], Policy() with { ProfileInspector = "" }), "no NVIDIA Profile Inspector");
+        Assert.Empty(_importer.Calls);
+    }
+
+    [Fact]
+    public async Task Handle_ApplyExportedProfile_ImportsFromExports()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "exports"));
+        await File.WriteAllTextAsync(Path.Combine(_root, "exports", "before.nip"), "<profiles/>", TestContext.Current.CancellationToken);
+        var a = await Run("nvidia.applyProfile", new JsonObject { ["file"] = "exports/before.nip" });
+        Assert.True(a.Result.Ok, a.Result.Error);
+        Assert.Equal([$"{Inspector} {Path.Combine(_root, "exports", "before.nip")}"], _importer.Calls);
+    }
+
+    [Theory]
+    [InlineData("exports/../policy.json")]
+    [InlineData("exports/sub/x.nip")]
+    [InlineData("policy.json")]
+    [InlineData("requests/x.nip")]
+    public async Task Handle_ApplyProfileOutsideTheTwoFolders_Refused(string file)
+    {
+        AssertRefused(await Run("nvidia.applyProfile", new JsonObject { ["file"] = file }), "not a .nip file name");
         Assert.Empty(_importer.Calls);
     }
 

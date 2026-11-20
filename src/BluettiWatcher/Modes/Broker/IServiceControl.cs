@@ -9,4 +9,7 @@ internal interface IServiceControl
     Task<BrokerResult> StartAsync(string name, CancellationToken ct);
 
     Task<BrokerResult> StopAsync(string name, CancellationToken ct);
+
+    /// <summary><paramref name="startType"/>: automatic, delayedAutomatic, manual or disabled; answers the start type read back.</summary>
+    Task<BrokerResult> SetStartTypeAsync(string name, string startType, CancellationToken ct);
 }

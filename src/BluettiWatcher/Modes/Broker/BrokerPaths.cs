@@ -15,5 +15,6 @@ internal sealed record BrokerPaths(string Root)
     public string Requests => Path.Combine(Root, "requests");
     public string Responses => Path.Combine(Root, "responses");
     public string Profiles => Path.Combine(Root, "profiles");
+    public string Exports => Path.Combine(Root, "exports");
     public string Log => Path.Combine(Root, "broker.log");
 }

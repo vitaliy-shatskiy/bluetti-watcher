@@ -21,6 +21,16 @@ internal sealed class FakeServiceControl : IServiceControl
         return Answer(name);
     }
 
+    public Dictionary<string, string> StartType { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public Task<BrokerResult> SetStartTypeAsync(string name, string startType, CancellationToken ct)
+    {
+        Calls.Add($"startType {name} {startType}");
+        if (!State.ContainsKey(name)) return Answer(name);
+        StartType[name] = startType;
+        return Task.FromResult(new BrokerResult(true, null, startType));
+    }
+
     public Task<BrokerResult> StopAsync(string name, CancellationToken ct)
     {
         Calls.Add($"stop {name}");
@@ -53,6 +63,22 @@ internal sealed class FakeNvidiaSmi : INvidiaSmi
     }
 }
 
+/// <summary>Scheduled tasks by full name, enabled or not.</summary>
+internal sealed class FakeTaskControl : ITaskControl
+{
+    public Dictionary<string, bool> Enabled { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<string> Calls { get; } = [];
+
+    public Task<BrokerResult> SetEnabledAsync(string name, bool enabled, CancellationToken ct)
+    {
+        Calls.Add($"{(enabled ? "enable" : "disable")} {name}");
+        if (!Enabled.ContainsKey(name)) return Task.FromResult(new BrokerResult(false, $"no task {name}", null));
+        Enabled[name] = enabled;
+        return Task.FromResult(new BrokerResult(true, null, enabled ? "enabled" : "disabled"));
+    }
+}
+
+/// <summary>Imports are recorded; an export writes a small .nip into the exports folder as Profile Inspector's move would.</summary>
 internal sealed class FakeProfileImporter : IProfileImporter
 {
     public List<string> Calls { get; } = [];
@@ -61,6 +87,15 @@ internal sealed class FakeProfileImporter : IProfileImporter
     {
         Calls.Add($"{inspectorExe} {nipFile}");
         return Task.FromResult<string?>(null);
+    }
+
+    public async Task<ProfileExport> ExportAsync(string inspectorExe, string exportsFolder, CancellationToken ct)
+    {
+        Calls.Add($"export {inspectorExe}");
+        Directory.CreateDirectory(exportsFolder);
+        string file = Path.Combine(exportsFolder, "customized_20261120.nip");
+        await File.WriteAllTextAsync(file, "<profiles/>", ct);
+        return new ProfileExport(file, "");
     }
 }
 

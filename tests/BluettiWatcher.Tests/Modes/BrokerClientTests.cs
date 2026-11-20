@@ -50,14 +50,14 @@ public sealed class BrokerClientTests : IDisposable
     {
         Directory.CreateDirectory(_paths.Requests);
         Directory.CreateDirectory(_paths.Responses);
-        File.WriteAllText(_paths.Policy, new BrokerPolicy(User, ["SomeService"], [], "").ToJson());
+        File.WriteAllText(_paths.Policy, new BrokerPolicy(User, ["SomeService"], [], [], "").ToJson());
         _services.State["SomeService"] = "running";
     }
 
     public void Dispose() => Directory.Delete(_paths.Root, recursive: true);
 
     private BrokerRunner Runner(string owner = User) =>
-        new(new DirectoryInbox(_paths, owner), new BrokerCore(_paths, _services, new FakeNvidiaSmi(), new FakeProfileImporter(), TimeProvider.System), _log.Add);
+        new(new DirectoryInbox(_paths, owner), new BrokerCore(_paths, _services, new FakeTaskControl(), new FakeNvidiaSmi(), new FakeProfileImporter(), TimeProvider.System), _log.Add);
 
     [Fact]
     public async Task Run_AllowedStop_AnsweredWithReadBack()

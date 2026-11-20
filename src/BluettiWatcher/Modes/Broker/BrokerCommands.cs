@@ -18,7 +18,7 @@ internal static class BrokerCommands
     }
 
     private static BrokerCore NewCore(BrokerPaths paths, IProcessRunner runner) =>
-        new(paths, new ScmServiceControl(TimeProvider.System), new NvidiaSmi(runner), new ProfileImporter(runner), TimeProvider.System);
+        new(paths, new ScmServiceControl(TimeProvider.System), new SchTasksTaskControl(runner), new NvidiaSmi(runner), new ProfileImporter(runner, TimeProvider.System), TimeProvider.System);
 
     public static async Task<int> RunBrokerAsync(TextWriter error)
     {
@@ -32,7 +32,7 @@ internal static class BrokerCommands
 
     public static async Task<int> AllowAsync(string[] args, TextWriter output, TextWriter error)
     {
-        if (args.Length != 3) { await error.WriteLineAsync("Bluetti Watcher: usage: --broker-allow service|profile|inspector <name>"); return 2; }
+        if (args.Length != 3) { await error.WriteLineAsync("Bluetti Watcher: usage: --broker-allow service|task|profile|inspector <name>"); return 2; }
         if (!Elevated()) { await error.WriteLineAsync("Bluetti Watcher: --broker-allow edits the admin-only policy: run it elevated"); return 2; }
         var paths = BrokerPaths.Default;
         string? problem = Allow(paths, args[1], args[2], out string done);
@@ -54,6 +54,10 @@ internal static class BrokerCommands
                 if (!BrokerPolicy.ServiceNamePattern().IsMatch(name)) return $"'{name}' is not a service key name";
                 next = policy.AllowsService(name) ? policy : policy with { Services = [.. policy.Services, name] };
                 break;
+            case "task":
+                if (!BrokerPolicy.TaskNamePattern().IsMatch(name)) return $"'{name}' is not a scheduled task's full name";
+                next = policy.ListedTask(name) is not null ? policy : policy with { Tasks = [.. policy.Tasks, name] };
+                break;
             case "profile":
                 if (!BrokerPolicy.ProfileNamePattern().IsMatch(name)) return $"'{name}' is not a .nip file name";
                 if (!File.Exists(Path.Combine(paths.Profiles, name))) return $"put {name} into {paths.Profiles} first";
@@ -64,7 +68,7 @@ internal static class BrokerCommands
                 next = policy with { ProfileInspector = Path.GetFullPath(name) };
                 break;
             default:
-                return $"unknown kind '{kind}': service, profile or inspector";
+                return $"unknown kind '{kind}': service, task, profile or inspector";
         }
         string tmp = paths.Policy + ".tmp";
         File.WriteAllText(tmp, next.ToJson());

@@ -10,9 +10,9 @@ namespace BluettiWatcher.Modes.Broker;
 /// Profile Inspector exe. Parsed strictly: an unknown key, a wrong type or a malformed name makes the whole file invalid,
 /// and an invalid policy refuses everything.
 /// </summary>
-internal sealed partial record BrokerPolicy(string UserSid, IReadOnlyList<string> Services, IReadOnlyList<string> Profiles, string ProfileInspector)
+internal sealed partial record BrokerPolicy(string UserSid, IReadOnlyList<string> Services, IReadOnlyList<string> Tasks, IReadOnlyList<string> Profiles, string ProfileInspector)
 {
-    private static readonly HashSet<string> Keys = new(["version", "userSid", "services", "profiles", "profileInspector"], StringComparer.Ordinal);
+    private static readonly HashSet<string> Keys = new(["version", "userSid", "services", "tasks", "profiles", "profileInspector"], StringComparer.Ordinal);
 
     [GeneratedRegex(@"^S-1-5(-[0-9]{1,10}){1,14}$", RegexOptions.CultureInvariant)]
     private static partial Regex SidPattern();
@@ -25,7 +25,18 @@ internal sealed partial record BrokerPolicy(string UserSid, IReadOnlyList<string
     [GeneratedRegex(@"^[A-Za-z0-9_\-][A-Za-z0-9 _.\-]{0,95}\.nip$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     internal static partial Regex ProfileNamePattern();
 
+    /// <summary>
+    /// A scheduled task's full name: folders and name of letters, digits, space, '_', '.', '-', separated by '\'; no '..'
+    /// segment, no wildcard, no quote.
+    /// </summary>
+    [GeneratedRegex(@"^\\?(?:(?!\.\.?\\)[A-Za-z0-9_\-.][A-Za-z0-9 _.\-]{0,99}\\){0,8}(?!\.\.?$)[A-Za-z0-9_\-.][A-Za-z0-9 _.\-]{0,199}$", RegexOptions.CultureInvariant)]
+    internal static partial Regex TaskNamePattern();
+
     public bool AllowsService(string name) => Services.Contains(name, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The policy's own spelling of a task name (a leading '\' optional on both sides) · null = not listed.</summary>
+    public string? ListedTask(string name) =>
+        Tasks.FirstOrDefault(t => string.Equals(t.TrimStart('\\'), name.TrimStart('\\'), StringComparison.OrdinalIgnoreCase));
 
     public bool AllowsProfile(string name) => Profiles.Contains(name, StringComparer.OrdinalIgnoreCase);
 
@@ -42,6 +53,8 @@ internal sealed partial record BrokerPolicy(string UserSid, IReadOnlyList<string
         if (o["userSid"] is not JsonValue s || !s.TryGetValue(out string? sid) || !SidPattern().IsMatch(sid)) { error = "the policy userSid is not a SID"; return null; }
         var services = Names(o["services"], ServiceNamePattern(), "services", out error);
         if (services is null) return null;
+        var tasks = Names(o["tasks"], TaskNamePattern(), "tasks", out error);
+        if (tasks is null) return null;
         var profiles = Names(o["profiles"], ProfileNamePattern(), "profiles", out error);
         if (profiles is null) return null;
         string inspector = "";
@@ -52,7 +65,7 @@ internal sealed partial record BrokerPolicy(string UserSid, IReadOnlyList<string
             inspector = path;
         }
         error = "";
-        return new BrokerPolicy(sid, services, profiles, inspector);
+        return new BrokerPolicy(sid, services, tasks, profiles, inspector);
     }
 
     private static List<string>? Names(JsonNode? node, Regex pattern, string key, out string error)
@@ -77,6 +90,7 @@ internal sealed partial record BrokerPolicy(string UserSid, IReadOnlyList<string
             ["version"] = 1,
             ["userSid"] = UserSid,
             ["services"] = new JsonArray([.. Services.Select(s => (JsonNode?)JsonValue.Create(s))]),
+            ["tasks"] = new JsonArray([.. Tasks.Select(s => (JsonNode?)JsonValue.Create(s))]),
             ["profiles"] = new JsonArray([.. Profiles.Select(s => (JsonNode?)JsonValue.Create(s))]),
             ["profileInspector"] = ProfileInspector,
         };
