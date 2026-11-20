@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Globalization;
 using System.Text.Json.Nodes;
 using BluettiWatcher.Io;
@@ -5,56 +6,68 @@ using BluettiWatcher.Io;
 namespace BluettiWatcher.Modes.Modules;
 
 /// <summary>
-/// <c>command.pair</c>: runs one command when a mode is entered and another when it is left (pause a backup task and
-/// resume it, unload a local model). Each command is an executable plus an argument list (no shell, nothing
-/// interpolated), started windowless, killed at <c>timeoutSec</c>; a non-zero exit is a failed write, and every run is
-/// logged with its exit code and the start of its output. Key <c>command/{name}/entered</c> (bool).
+/// <c>command.pair</c>: runs one configured command when a mode is entered and another when it is left (pause a backup
+/// task and resume it, unload a local model). The commands are defined only in config.json (<see cref="CommandSpec"/>,
+/// by name); the settings, and so the localhost API, can only pick names, never an executable or an argument. Each run is
+/// windowless, killed at the command's time limit; a non-zero exit is a failed write, and every run is logged with its
+/// exit code and the start of its output. Key <c>command/{name}/entered</c> (bool).
 /// </summary>
 /// <remarks>
 /// Pattern: Adapter. Compensatable: the module cannot read what the commands changed, so the value it reads is what it
-/// last ran (left until the enter command succeeded). A write of <c>true</c> carries the pair
-/// (<c>{ "entered": true, "enter": {...}, "leave": {...}, "timeoutSec": n }</c>) and the leave half is kept for the
-/// restore, which writes the bare baseline <c>false</c>. That memory is runtime state: after a restart the pair reads
-/// left again, so the leave command is not run for an enter made before the restart.
+/// last ran (left until the enter command succeeded). A write of <c>true</c> carries the pair's command names
+/// (<c>{ "entered": true, "enter": "name", "leave": "name" }</c>) and the leave name is kept for the restore, which writes
+/// the bare baseline <c>false</c>. That memory is runtime state: after a restart the pair reads left again, so the leave
+/// command is not run for an enter made before the restart.
 /// </remarks>
-internal sealed class CommandPairModule(IProcessRunner runner, Action<string> log) : IActionModule
+internal sealed class CommandPairModule : IActionModule
 {
     public const string Id = "command.pair";
-    public const int DefaultTimeoutSec = 30;
-    public const int MaxTimeoutSec = 600;
     public const int OutputChars = 300;
+    public const int MaxTimeoutSec = 600;
     private const string Prefix = "command/";
     private const string Suffix = "/entered";
 
+    private readonly FrozenDictionary<string, CommandSpec> _commands;
+    private readonly IProcessRunner _runner;
+    private readonly Action<string> _log;
     private readonly Lock _lock = new();
     private readonly Dictionary<string, JsonObject> _entered = new(StringComparer.Ordinal);
+
+    /// <summary>config.json's named commands are copied: a later config change needs a new module.</summary>
+    public CommandPairModule(IReadOnlyDictionary<string, CommandSpec> commands, IProcessRunner runner, Action<string> log)
+    {
+        _commands = commands.ToFrozenDictionary(StringComparer.Ordinal);
+        _runner = runner;
+        _log = log;
+    }
 
     public ActionModuleDescriptor Descriptor { get; } = new(
         Id, 1, "Run a command on enter and on leave",
         JsonFields.Parse("""
             {"type":"object","additionalProperties":false,"required":["name","enter","leave"],"properties":{
               "name":{"type":"string"},
-              "enter":{"type":"object","additionalProperties":false,"required":["exe","args"],"properties":{
-                "exe":{"type":"string"},"args":{"type":"array","items":{"type":"string"}}}},
-              "leave":{"type":"object","additionalProperties":false,"required":["exe","args"],"properties":{
-                "exe":{"type":"string"},"args":{"type":"array","items":{"type":"string"}}}},
-              "timeoutSec":{"type":"integer","minimum":1,"maximum":600}}}
+              "enter":{"type":"string"},
+              "leave":{"type":"string"}}}
             """),
         JsonFields.Parse("""
             {"name":{"widget":"text","label":"Name (unique per mode)"},
-             "enter.exe":{"widget":"text","label":"On enter: executable"},
-             "enter.args":{"widget":"list","label":"On enter: arguments"},
-             "leave.exe":{"widget":"text","label":"On leave: executable"},
-             "leave.args":{"widget":"list","label":"On leave: arguments"},
-             "timeoutSec":{"widget":"number","label":"Time limit per command, seconds"}}
+             "enter":{"widget":"select","list":"commands","label":"On enter: command (empty = none)"},
+             "leave":{"widget":"select","list":"commands","label":"On leave: command (empty = none)"}}
             """),
-        [], RestorationClass.Compensatable, NeedsAdmin: false,
-        JsonFields.Parse("""{"name":"command","enter":{"exe":"","args":[]},"leave":{"exe":"","args":[]},"timeoutSec":30}"""));
+        ["commands"], RestorationClass.Compensatable, NeedsAdmin: false,
+        JsonFields.Parse("""{"name":"command","enter":"","leave":""}"""));
 
-    public Task<ModuleAvailability> AvailableAsync(CancellationToken ct) => Task.FromResult(ModuleAvailability.Yes);
+    public Task<ModuleAvailability> AvailableAsync(CancellationToken ct) => Task.FromResult(_commands.Count > 0
+        ? ModuleAvailability.Yes
+        : ModuleAvailability.No("no commands are defined in config.json (modes.commands)"));
 
-    public Task<IReadOnlyDictionary<string, IReadOnlyList<DiscoveredItem>>> DiscoverAsync(CancellationToken ct) =>
-        Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<DiscoveredItem>>>(new Dictionary<string, IReadOnlyList<DiscoveredItem>>(StringComparer.Ordinal));
+    public Task<IReadOnlyDictionary<string, IReadOnlyList<DiscoveredItem>>> DiscoverAsync(CancellationToken ct)
+    {
+        IReadOnlyList<DiscoveredItem> names = [.. _commands.Keys.Order(StringComparer.Ordinal)
+            .Select(n => new DiscoveredItem(n, $"{n} ({Path.GetFileName(_commands[n].Exe)})"))];
+        return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<DiscoveredItem>>>(
+            new Dictionary<string, IReadOnlyList<DiscoveredItem>>(StringComparer.Ordinal) { ["commands"] = names });
+    }
 
     public IReadOnlyList<string> Validate(JsonObject settings)
     {
@@ -62,9 +75,8 @@ internal sealed class CommandPairModule(IProcessRunner runner, Action<string> lo
         JsonFields.CheckNames([JsonFields.Str(settings["name"])], "command pair", problems);
         foreach (string side in (string[])["enter", "leave"])
         {
-            if (settings[side] is not JsonObject c) { problems.Add($"{side} must be an object with exe and args"); continue; }
-            if (JsonFields.Str(c["exe"]) is null) problems.Add($"{side}.exe must be a string (empty = no command)");
-            if (c["args"] is not JsonArray args || args.Any(a => JsonFields.Str(a) is null)) problems.Add($"{side}.args must be a list of strings");
+            if (JsonFields.Str(settings[side]) is not { } command) problems.Add($"{side} must be the name of a configured command (empty = none)");
+            else if (command.Length > 0 && !_commands.ContainsKey(command)) problems.Add($"{side} '{command}' is not a configured command (config.json modes.commands)");
         }
         return problems;
     }
@@ -75,9 +87,8 @@ internal sealed class CommandPairModule(IProcessRunner runner, Action<string> lo
         var target = new JsonObject
         {
             ["entered"] = true,
-            ["enter"] = settings["enter"]?.DeepClone(),
-            ["leave"] = settings["leave"]?.DeepClone(),
-            ["timeoutSec"] = JsonFields.Int(settings["timeoutSec"]) ?? DefaultTimeoutSec,
+            ["enter"] = JsonFields.Str(settings["enter"]) ?? "",
+            ["leave"] = JsonFields.Str(settings["leave"]) ?? "",
         };
         return [new ResourceIntent(Prefix + name + Suffix, target)];
     }
@@ -100,16 +111,16 @@ internal sealed class CommandPairModule(IProcessRunner runner, Action<string> lo
 
         if (want)
         {
-            if (intent.Target is not JsonObject enter) return ApplyResult.Failed($"command pair '{name}': entering needs the pair's commands");
-            string? error = await RunAsync(name, "enter", enter["enter"], Timeout(enter), ct);
+            if (intent.Target is not JsonObject enter) return ApplyResult.Failed($"command pair '{name}': entering needs the pair's command names");
+            string? error = await RunAsync(name, "enter", enter["enter"], ct);
             if (error is not null) return ApplyResult.Failed(error);
             lock (_lock) _entered[intent.Key] = (JsonObject)enter.DeepClone();
             return ApplyResult.Written(JsonValue.Create(true));
         }
 
-        // Leaving: the pair given with the target wins, else the one kept when it was entered.
+        // Leaving: the names given with the target win, else the ones kept when the pair was entered.
         var source = intent.Target as JsonObject ?? pair!; // pair is non-null here: (pair is not null) != want, want is false
-        string? leaveError = await RunAsync(name, "leave", source["leave"], Timeout(source), ct);
+        string? leaveError = await RunAsync(name, "leave", source["leave"], ct);
         if (leaveError is not null) return ApplyResult.Failed(leaveError);
         lock (_lock) _entered.Remove(intent.Key);
         return ApplyResult.Written(JsonValue.Create(false));
@@ -117,21 +128,19 @@ internal sealed class CommandPairModule(IProcessRunner runner, Action<string> lo
 
     private static bool? EnteredOf(JsonNode? value) => value is JsonObject o ? JsonFields.Bool(o["entered"]) : JsonFields.Bool(value);
 
-    private static TimeSpan Timeout(JsonObject pair) =>
-        TimeSpan.FromSeconds(Math.Clamp(JsonFields.Int(pair["timeoutSec"]) ?? DefaultTimeoutSec, 1, MaxTimeoutSec));
-
-    /// <summary>Runs one side; null when it succeeded or has no command, else the failure text (also logged).</summary>
-    private async Task<string?> RunAsync(string name, string side, JsonNode? command, TimeSpan timeout, CancellationToken ct)
+    /// <summary>Runs one side by its configured name; null when it succeeded or names no command, else the failure text.</summary>
+    private async Task<string?> RunAsync(string name, string side, JsonNode? commandName, CancellationToken ct)
     {
-        string exe = JsonFields.Str(command?["exe"])?.Trim() ?? "";
-        if (exe.Length == 0) return null;
-        IReadOnlyList<string> args = JsonFields.Strings(command?["args"]);
-        string what = $"command.pair '{name}' {side}: {exe}";
+        if (JsonFields.Str(commandName) is not { } command) return $"command pair '{name}' {side}: not a command name";
+        if (command.Length == 0) return null;
+        if (!_commands.TryGetValue(command, out var spec)) return $"command pair '{name}' {side}: '{command}' is not a configured command";
+        var timeout = TimeSpan.FromSeconds(Math.Clamp(spec.TimeoutSec, 1, MaxTimeoutSec));
+        string what = $"command.pair '{name}' {side}: {command}";
         string detail;
         bool ok = false;
         try
         {
-            var r = await runner.RunAsync(exe, args, timeout, ct);
+            var r = await _runner.RunAsync(spec.Exe, spec.Args, timeout, ct);
             string output = string.Join('\n', r.Lines);
             if (output.Length > OutputChars) output = output[..OutputChars];
             ok = !r.TimedOut && r.ExitCode == 0;
@@ -143,7 +152,7 @@ internal sealed class CommandPairModule(IProcessRunner runner, Action<string> lo
         {
             detail = $"could not run: {e.GetType().Name}: {e.Message}";
         }
-        log($"{what} -> {detail}");
+        _log($"{what} -> {detail}");
         return ok ? null : $"{what} -> {detail}";
     }
 }

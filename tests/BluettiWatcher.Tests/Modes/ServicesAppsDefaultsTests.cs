@@ -19,7 +19,7 @@ public sealed class ServicesAppsDefaultsTests
         [
             new ServiceStateModule(new FakeServiceControl(), broker, clock),
             new ProcessCloseModule(processes, clock),
-            new CommandPairModule(new FakeRunner(), _ => { }),
+            new CommandPairModule(new Dictionary<string, CommandSpec>(StringComparer.Ordinal), new FakeRunner(), _ => { }),
             new PhoneLinkModule(processes, clock),
             new ScheduledTaskModule(new FakeTaskScheduler(), broker),
         ];
@@ -30,7 +30,7 @@ public sealed class ServicesAppsDefaultsTests
     [Fact]
     public void All_RealFactory_ListsTheFiveModulesOnce()
     {
-        var all = ServicesAppsModules.All(new FakeBroker(), new FakeRunner(), new JumpClock(), _ => { });
+        var all = ServicesAppsModules.All(new FakeBroker(), new FakeRunner(), new Dictionary<string, CommandSpec>(StringComparer.Ordinal), new JumpClock(), _ => { });
 
         Assert.Equal(["service.state", "process.close", "command.pair", "windows.phoneLink", "scheduledTask.state"], all.Select(m => m.Descriptor.TypeId));
     }

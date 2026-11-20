@@ -11,17 +11,24 @@ public sealed class CommandPairModuleTests
     private readonly List<string> _log = [];
     private readonly CommandPairModule _module;
 
-    public CommandPairModuleTests() => _module = new CommandPairModule(_runner, _log.Add);
+    public CommandPairModuleTests() => _module = new CommandPairModule(Commands, _runner, _log.Add);
 
-    private const string Pair = """
-        {"name":"backup","enter":{"exe":"schtasks.exe","args":["/change","/tn","\\Backup run","/disable"]},
-         "leave":{"exe":"schtasks.exe","args":["/change","/tn","\\Backup run","/enable"]},"timeoutSec":20}
-        """;
+    /// <summary>The commands config.json defines; the module's settings can only name them.</summary>
+    private static readonly Dictionary<string, CommandSpec> Commands = new(StringComparer.Ordinal)
+    {
+        ["backup-off"] = new("schtasks.exe", ["/change", "/tn", "\\Backup run", "/disable"], 20),
+        ["backup-on"] = new("schtasks.exe", ["/change", "/tn", "\\Backup run", "/enable"], 20),
+        ["unload-model"] = new("unload.exe", ["--all"], 30),
+    };
 
-    private ResourceIntent Enter(string json = Pair) => Assert.Single(_module.Expand((JsonObject)JsonNode.Parse(json)!));
+    private const string Pair = """{"name":"backup","enter":"backup-off","leave":"backup-on"}""";
+
+    private static JsonObject Settings(string json) => (JsonObject)JsonNode.Parse(json)!;
+
+    private ResourceIntent Enter(string json = Pair) => Assert.Single(_module.Expand(Settings(json)));
 
     [Fact]
-    public async Task EnterThenLeave_RunsEachCommandOnceWithItsArgumentList()
+    public async Task EnterThenLeave_RunsEachConfiguredCommandOnceWithItsArgumentList()
     {
         var intent = Enter();
         var baseline = await _module.ReadAsync(intent.Key, CancellationToken.None);
@@ -35,6 +42,50 @@ public sealed class CommandPairModuleTests
         Assert.Equal(["/change", "/tn", "\\Backup run", "/disable"], _runner.Runs[0].Args);
         Assert.Equal(["/change", "/tn", "\\Backup run", "/enable"], _runner.Runs[1].Args);
         Assert.Equal(2, _log.Count);
+    }
+
+    [Theory]
+    [InlineData("""{"name":"x","enter":"C:\\Windows\\System32\\cmd.exe","leave":""}""")]
+    [InlineData("""{"name":"x","enter":"","leave":"powershell.exe"}""")]
+    [InlineData("""{"name":"x","enter":{"exe":"cmd.exe","args":["/c","del"]},"leave":""}""")]
+    public void Validate_SettingsNamingAnExecutableOrAnUnconfiguredCommand_AreRejected(string json) =>
+        Assert.NotEmpty(_module.Validate(Settings(json)));
+
+    [Fact]
+    public async Task Apply_TargetCarryingAnExecutable_RunsNothing()
+    {
+        var crafted = new JsonObject { ["entered"] = true, ["enter"] = new JsonObject { ["exe"] = "cmd.exe", ["args"] = new JsonArray("/c", "del") }, ["leave"] = "" };
+
+        var r = await _module.ApplyAsync(new ResourceIntent("command/x/entered", crafted), CancellationToken.None);
+
+        Assert.False(r.Ok);
+        Assert.Empty(_runner.Runs);
+    }
+
+    [Fact]
+    public async Task Apply_CommandRemovedFromTheConfig_FailsAndRunsNothing()
+    {
+        var r = await _module.ApplyAsync(Enter("""{"name":"x","enter":"gone","leave":""}"""), CancellationToken.None);
+
+        Assert.False(r.Ok);
+        Assert.Contains("not a configured command", r.Error, StringComparison.Ordinal);
+        Assert.Empty(_runner.Runs);
+    }
+
+    [Fact]
+    public async Task Discover_ListsTheConfiguredCommandNames()
+    {
+        var lists = await _module.DiscoverAsync(CancellationToken.None);
+
+        Assert.Equal(["backup-off", "backup-on", "unload-model"], lists["commands"].Select(i => i.Id));
+    }
+
+    [Fact]
+    public async Task Available_NoCommandsConfigured_IsUnavailable()
+    {
+        var empty = new CommandPairModule(new Dictionary<string, CommandSpec>(StringComparer.Ordinal), _runner, _log.Add);
+
+        Assert.False((await empty.AvailableAsync(CancellationToken.None)).Available);
     }
 
     [Fact]
@@ -95,22 +146,14 @@ public sealed class CommandPairModuleTests
     }
 
     [Fact]
-    public async Task Enter_EmptyEnterCommand_RunsNothingAndLeaveStillRuns()
+    public async Task Enter_NoEnterCommand_RunsNothingAndLeaveStillRuns()
     {
-        var intent = Enter("""{"name":"model","enter":{"exe":"","args":[]},"leave":{"exe":"unload.exe","args":["--all"]}}""");
+        var intent = Enter("""{"name":"model","enter":"","leave":"unload-model"}""");
 
         await _module.ApplyAsync(intent, CancellationToken.None);
         Assert.Empty(_runner.Runs);
         await _module.ApplyAsync(new ResourceIntent(intent.Key, false), CancellationToken.None);
 
         Assert.Equal("unload.exe", Assert.Single(_runner.Runs).Exe);
-    }
-
-    [Fact]
-    public void Validate_ArgsNotStrings_IsReported()
-    {
-        var problems = _module.Validate((JsonObject)JsonNode.Parse("""{"name":"x","enter":{"exe":"a.exe","args":[1]},"leave":{"exe":"","args":[]}}""")!);
-
-        Assert.Contains(problems, p => p.Contains("enter.args", StringComparison.Ordinal));
     }
 }
