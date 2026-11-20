@@ -6,6 +6,25 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-11-20
+
+### Fixed
+
+- A mode change from the page, the API or the tray runs to its end. A mode whose actions took longer than the
+  server's 10 s request limit (a slow command pair) used to stop half-way: some actions applied, the rest not run, the
+  page still naming the old mode and the request dropped. A change now runs on the service's own lifetime (only the
+  service stopping ends one); a write waits at most 5 s, then answers 202 with `pending` and `switching`, and the
+  Power modes panel says "Switching to ..." until the view shows the mode in force.
+- A scheduled task the user may not change (an administrator's or SYSTEM's) is changed through the admin broker again:
+  the request named the task in a field the broker does not take, so every such change was refused.
+
+### Added
+
+- An entry of a mode the admin broker's policy does not list (a service, a scheduled task, a driver profile) is said
+  where you act: saving the mode answers with a warning per entry and the exact elevated `--broker-allow` command, shown
+  under the action with a copy button, and while the mode is active the panel's problems name it. The service never
+  elevates: you run the command in an elevated PowerShell.
+
 ## [1.8.0] - 2026-11-20
 
 ### Added
