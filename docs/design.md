@@ -870,7 +870,7 @@ no trigger, which it starts on demand (`schtasks /run`), and waits up to 10 s fo
    service started at logon.
 6. Notifications are WinRT toasts under the app id `BluettiWatcher`, which the installer sets on the Start-menu
    shortcut (`tools/shortcut.ps1`): Windows keeps them in the notification centre for three days, so a missed banner
-   leaves a trace. The WinRT notification projection is the one the Bluetooth reader already uses (+28 KB of exe). A
+   leaves a trace. The WinRT notification projection is the one the Bluetooth reader already uses (+29 KB of exe). A
    click opens the page by protocol activation: no COM activation server. Windows accepts a toast for an app id no
    shortcut names and shows it nowhere, so each notice first asks the apps folder (`shell:AppsFolder\BluettiWatcher`,
    about 15 ms); without the shortcut (a run without the installer) or when the toast fails, the notice is a shell
