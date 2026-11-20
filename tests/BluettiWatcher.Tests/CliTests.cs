@@ -177,4 +177,37 @@ public sealed class CliTests
         Assert.Equal(0, run.Logins);
         Assert.Equal("", run.Out.ToString() + run.Err);
     }
+
+    /// <summary>The PE optional header's Subsystem field: 2 = Windows GUI, 3 = console.</summary>
+    private static int Subsystem(string exe)
+    {
+        byte[] image = File.ReadAllBytes(exe);
+        int pe = BitConverter.ToInt32(image, 0x3C);
+        return BitConverter.ToUInt16(image, pe + 24 + 68);
+    }
+
+    // A terminal (pwsh, cmd) waits only for a console program: a GUI-subsystem exe prints --help after the prompt is back.
+    [WindowsFact]
+    public void The_exe_is_a_console_program_so_a_terminal_waits_for_it()
+    {
+        string exe = Path.Combine(AppContext.BaseDirectory, "BluettiWatcher.exe");
+        Assert.True(File.Exists(exe), $"no apphost at {exe}");
+        Assert.Equal(3, Subsystem(exe));
+    }
+
+    [Fact]
+    public void The_end_task_runs_the_windowless_service_twin_when_it_is_installed()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "bluetti-cli-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string console = Path.Combine(dir, "BluettiWatcher.exe");
+            Assert.Equal(console, BluettiWatcher.PowerMode.PowerModeSwitch.EndTaskExe(console));
+            string twin = Path.Combine(dir, BluettiWatcher.PowerMode.PowerModeSwitch.ServiceExeName);
+            File.WriteAllText(twin, "");
+            Assert.Equal(twin, BluettiWatcher.PowerMode.PowerModeSwitch.EndTaskExe(console));
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
 }

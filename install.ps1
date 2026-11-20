@@ -18,8 +18,11 @@ enabled and started, a bin that never passed the health check replaced by bin.ol
      as its battery capacity in Wh, both required then); an existing one is never changed. No station MAC in it blocks
      the install.
   2. the exe into the staging directory <data dir>\bin.new, never into the live bin: copied from the release, or
-     published (tools/publish.ps1; -Fallback = trimmed self-contained single file instead of NativeAOT). The service
-     keeps running; a failure here changes nothing
+     published (tools/publish.ps1; -Fallback = trimmed self-contained single file instead of NativeAOT), then its
+     service twin BluettiWatcherService.exe written beside it (the same exe with the Windows GUI subsystem: the task
+     starts it, so no console window opens; BluettiWatcher.exe is a console program for the commands typed in a
+     terminal). The live bin gets its twin too when it has none, so a swap undone still has what the task starts. The
+     service keeps running; a failure here changes nothing
   3. the swap (tools/swap.ps1), the only downtime, seconds: the task disabled and stopped, a bounded wait until no
      process runs from bin and its files are unlocked, bin -> bin.old, bin.new -> bin; then the logon task
      "BluettiWatcher": as the current user, Interactive (the user's session, never session 0: the power-mode mutex is
@@ -57,6 +60,8 @@ $repo = $PSScriptRoot
 $root = Join-Path $env:LOCALAPPDATA 'bluetti-watcher'
 $bin = Join-Path $root 'bin'
 $exe = Join-Path $bin 'BluettiWatcher.exe'
+# What the logon task starts: the windowless twin of the console exe (tools/swap.ps1 New-WatcherServiceExe).
+$serviceExe = Join-Path $bin $script:WatcherServiceExe
 # Same volume as bin: the swap is two renames.
 $staging = Join-Path $root 'bin.new'
 $previous = Join-Path $root 'bin.old'
@@ -177,7 +182,7 @@ if (-not $browser) { $problems += 'neither Chrome nor Edge found (the shortcut n
 $holder = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($holder) {
     $owner = (Get-Process -Id $holder.OwningProcess -ErrorAction SilentlyContinue).Path
-    if ($owner -ne $exe) { $problems += "127.0.0.1:$Port is taken by $owner (pass -Port)" }
+    if ($owner -notin @($exe, $serviceExe)) { $problems += "127.0.0.1:$Port is taken by $owner (pass -Port)" }
 }
 if ($problems) { $problems | ForEach-Object { Write-Output "blocked: $_" }; if ($Apply) { exit 2 } }
 
@@ -185,8 +190,9 @@ Step "config: $configNote"
 
 if ($fromRelease) { Step "copy the release's $releaseBin to the staging directory $staging (one left by a failed run is removed first)" }
 else { Step "publish $(if ($Fallback) { 'trimmed self-contained single file' } else { 'NativeAOT' }) to the staging directory $staging (one left by a failed run is removed first); Bluetti Watcher keeps running through the build, a failed publish changes nothing" }
+Step "write the service twin $script:WatcherServiceExe (the exe with the Windows GUI subsystem, what the task starts: no console window) in $staging, and in $bin when it has none"
 Step "swap, the only downtime (seconds): disable and stop the task '$task', wait up to 30 s until no process runs from $bin and its files are unlocked, move $bin to $previous and $staging to $bin"
-Step "register the logon task '$task': $exe --port $Port as $env:USERDOMAIN\$env:USERNAME, Interactive, Limited, hidden, restart on failure, also every 5 minutes (one instance); start it and wait for ${url}api/health"
+Step "register the logon task '$task': $serviceExe --port $Port as $env:USERDOMAIN\$env:USERNAME, Interactive, Limited, hidden, restart on failure, also every 5 minutes (one instance); start it and wait for ${url}api/health"
 Step "after the health check passed: remove $previous. A failed swap or no health answer: $previous is $bin again, the task '$task' enabled and started, exit 1"
 Step "copy the power-mode switch $powerModeFrom\*.ps1 to $powerModeTo (after the health check: the scripts forward to BluettiWatcher.exe power-mode)"
 if (Test-Path -LiteralPath $oldVenv) { Step "remove the 1.0.0 Python venv $oldVenv (after the health check; the built-in reader does not use it)" }
@@ -210,6 +216,8 @@ try {
 
     # ---- 2. exe, into the staging directory: the service keeps running
     Clear-WatcherStaging -Staging $staging -Log $log
+    # The live bin first: a swap that is undone puts it back under a task that starts the twin.
+    if ((Test-Path -LiteralPath $exe) -and (New-WatcherServiceExe -Dir $bin)) { Write-Output "install: wrote $serviceExe" }
     if ($fromRelease) {
         Copy-Item -LiteralPath $releaseBin -Destination $staging -Recurse
     }
@@ -220,10 +228,11 @@ try {
         $code = $LASTEXITCODE
         if ($code -ne 0) { throw "the publish failed (exit $code); $bin was not touched; the task '$task' is $(Get-WatcherTaskState -TaskName $task -Ops $ops)" }
     }
+    $null = New-WatcherServiceExe -Dir $staging
 
     # ---- 3. swap, logon task, health
     # The logon trigger plus one every 5 minutes, one instance (tools/swap.ps1)
-    $def = New-WatcherTaskDefinition -Exe $exe -Port $Port -WorkingDirectory $root -User "$env:USERDOMAIN\$env:USERNAME"
+    $def = New-WatcherTaskDefinition -Exe $serviceExe -Port $Port -WorkingDirectory $root -User "$env:USERDOMAIN\$env:USERNAME"
     $register = {
         Register-ScheduledTask -TaskName $task -Action $def.Action -Trigger $def.Trigger -Principal $def.Principal -Settings $def.Settings `
             -Description 'Bluetti Watcher: reads the BLUETTI power station once a minute, read only; dashboard on 127.0.0.1' -Force | Out-Null

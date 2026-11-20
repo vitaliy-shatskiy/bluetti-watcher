@@ -50,6 +50,11 @@ if (config.MutexWarning is { } mutexWarning)
     Log($"WARNING - {mutexWarning}");
     store.AddEvent(time.GetLocalNow(), "config-warning", mutexWarning);
 }
+// An eco end task registered for the console exe would open a console window when it fires: it starts the windowless twin.
+using (var endTaskSwitch = new BluettiWatcher.PowerMode.PowerModeSwitch([.. BluettiWatcher.PowerMode.PowerModeSwitch.ProcessEnvironment(), .. config.PowerModeEnvironment], TextWriter.Null))
+{
+    if (!config.DryRun && endTaskSwitch.RepointEndTask() is { } repointed) Log(repointed);
+}
 // The wake of a PC hibernated in a cut: armed only with wakeEveryMinutes > 0; turned off at the first reading on mains whatever it says.
 var wake = new WakeKeeper(config, new ScheduledWakeTask(config, runner, Log), store, Log);
 // The page's reading-source choice, saved in the data directory, wins over the config key (design.md §4 Reading source).

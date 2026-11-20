@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- WinExe: no console window when the logon task starts it. -->
-    <OutputType>WinExe</OutputType>
+    <!-- A console program: a terminal waits for it and gets its exit code. The logon task never starts this file: it starts
+         BluettiWatcherService.exe, the same exe with the Windows (GUI) subsystem, which install.ps1 writes beside it
+         (tools/swap.ps1 New-WatcherServiceExe), so the service never opens a window. -->
+    <OutputType>Exe</OutputType>
     <AssemblyName>BluettiWatcher</AssemblyName>
     <RootNamespace>BluettiWatcher</RootNamespace>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>

@@ -382,7 +382,7 @@ internal sealed partial class PowerModeSwitch
         .Replace("&lt;", "<", StringComparison.Ordinal).Replace("&gt;", ">", StringComparison.Ordinal).Replace("&amp;", "&", StringComparison.Ordinal);
 
     /// <summary>
-    /// The eco end task: this exe (a WinExe: no window) with <paramref name="arguments"/>, as the interactive user, least
+    /// The eco end task: <see cref="ExePath"/> (the windowless twin once installed) with <paramref name="arguments"/>, as the interactive user, least
     /// privilege, only while they are logged on - never SYSTEM; a run missed while they were logged off starts at the next logon.
     /// </summary>
     internal static string EndTaskXml(string userSid, string exe, string arguments, DateTimeOffset at) => $"""
@@ -429,6 +429,40 @@ internal sealed partial class PowerModeSwitch
     }
 
     private void RemoveEndTask() => _ = SchTasks("/delete", "/tn", EndTask, "/f");
+
+    /// <summary>
+    /// A pending end task that starts the console BluettiWatcher.exe would open a console window when it fires: pointed at
+    /// <see cref="ExePath"/> when that is the windowless twin, its trigger and arguments kept. Only BluettiWatcher.exe is
+    /// replaced, never another command. Null = nothing to do, else one line for the log.
+    /// </summary>
+    internal string? RepointEndTask()
+    {
+        if (!string.Equals(Path.GetFileName(ExePath), ServiceExeName, StringComparison.OrdinalIgnoreCase)) return null;
+        // The task's name comes from POWER_MODE_TASK_PREFIX, as for every command.
+        try { LoadNames(); }
+        catch (InvalidOperationException e) { return $"eco end task: not checked ({e.Message})"; }
+        var q = SchTasks("/query", "/tn", EndTask, "/xml");
+        if (q.Code != 0) return null;
+        string xml = string.Join('\n', q.Out).TrimStart('﻿');
+        var command = CommandPattern().Match(xml);
+        if (!command.Success) return null;
+        string current = XmlUnescape(command.Groups[1].Value).Trim();
+        if (!string.Equals(Path.GetFileName(current), "BluettiWatcher.exe", StringComparison.OrdinalIgnoreCase)) return null;
+        var value = command.Groups[1];
+        string repointed = string.Concat(xml.AsSpan(0, value.Index), XmlEscape(ExePath), xml.AsSpan(value.Index + value.Length));
+        string xmlFile = Path.Combine(Path.GetTempPath(), $"power-mode-end-task-{Num(Environment.ProcessId)}-{Guid.NewGuid():N}.xml");
+        try
+        {
+            File.WriteAllText(xmlFile, repointed, Encoding.Unicode);
+            var r = SchTasks("/create", "/tn", EndTask, "/xml", xmlFile, "/f");
+            return r.Code == 0 ? $"eco end task {EndTask}: now starts {ExePath} (no console window)" : $"eco end task {EndTask}: still starts {current} ({r.LastLine})";
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return $"eco end task {EndTask}: still starts {current} ({e.Message})"; }
+        finally
+        {
+            if (File.Exists(xmlFile)) File.Delete(xmlFile);
+        }
+    }
 
     private bool EndTaskPresent() => SchTasks("/query", "/tn", EndTask).Code == 0;
 

@@ -3,7 +3,10 @@ using System.Runtime.InteropServices;
 
 namespace BluettiWatcher.Io;
 
-/// <summary>The exe has no console of its own (WinExe): a command run from a terminal prints into the terminal it came from.</summary>
+/// <summary>
+/// BluettiWatcher.exe is a console program and has its standard handles; its service twin BluettiWatcherService.exe (the
+/// same exe with the GUI subsystem, what the logon task starts) has none: run by hand from a terminal it still prints there.
+/// </summary>
 internal static partial class ConsoleOut
 {
     private const int AttachParentProcess = -1;
