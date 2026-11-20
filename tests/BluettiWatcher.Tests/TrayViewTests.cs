@@ -9,7 +9,7 @@ namespace BluettiWatcher.Tests;
 public sealed class TrayViewTests
 {
     private static TraySnapshot Snap(double? soc, TrayPower power, bool stale = false) =>
-        new(soc, power, 0, 230, "eco · Auto", 2.5, T0, stale, power == TrayPower.Battery);
+        new(soc, power, 0, 230, "eco", ManualMode.Auto, 2.5, T0, stale, power == TrayPower.Battery);
 
     private static uint At(uint[] px, int size, int x, int y) => px[y * size + x];
 
@@ -82,28 +82,28 @@ public sealed class TrayViewTests
     [Fact]
     public void The_tooltip_names_charge_watts_mode_and_time_left()
     {
-        string tip = TrayText.Tooltip(Snap(45, TrayPower.Battery), TimeZoneInfo.Utc);
-        Assert.Equal("Battery 45 % · on battery\nIn 0 W · out 230 W\nMode: eco · Auto\nTime left 2 h 30 min", tip);
+        string tip = TrayText.Tooltip(Snap(45, TrayPower.Battery), TimeZoneInfo.Utc, TrayWords.En);
+        Assert.Equal("Battery 45 %\nOn battery\nIn 0 W\nOut 230 W\nMode Eco, auto\nTime left 2 h 30 min", tip);
         Assert.True(tip.Length <= TrayText.TooltipMax);
     }
 
     [Fact]
     public void A_stale_tooltip_says_since_when_and_shows_no_watts()
     {
-        string tip = TrayText.Tooltip(Snap(45, TrayPower.Unknown, stale: true) with { HoursLeft = null }, TimeZoneInfo.Utc);
-        Assert.StartsWith("Battery 45 % · no reading since ", tip, StringComparison.Ordinal);
+        string tip = TrayText.Tooltip(Snap(45, TrayPower.Unknown, stale: true) with { HoursLeft = null }, TimeZoneInfo.Utc, TrayWords.En);
+        Assert.StartsWith("Battery 45 %\nNo reading since ", tip, StringComparison.Ordinal);
         Assert.DoesNotContain(" W", tip, StringComparison.Ordinal);
     }
 
     [Fact]
     public void A_long_tooltip_is_cut_to_the_shell_limit() =>
-        Assert.Equal(TrayText.TooltipMax, TrayText.Tooltip(Snap(45, TrayPower.Battery) with { Mode = new string('m', 200) }, TimeZoneInfo.Utc).Length);
+        Assert.Equal(TrayText.TooltipMax, TrayText.Tooltip(Snap(45, TrayPower.Battery) with { Mode = new string('m', 200) }, TimeZoneInfo.Utc, TrayWords.En).Length);
 
     [Theory]
     [InlineData(0.75, "45 min")]
     [InlineData(3.34, "3 h 20 min")]
     [InlineData(0.999, "1 h 0 min")]
-    public void Durations_read_as_hours_and_minutes(double hours, string text) => Assert.Equal(text, TrayText.Duration(hours));
+    public void Durations_read_as_hours_and_minutes(double hours, string text) => Assert.Equal(text, TrayWords.En.Duration(hours));
 
     [Fact]
     public void A_fresh_reading_on_battery_carries_the_time_left_and_the_cut()
@@ -114,7 +114,7 @@ public sealed class TrayViewTests
         Assert.False(s.Stale);
         Assert.True(s.Cut);
         Assert.Equal(3.5, s.HoursLeft);
-        Assert.Equal("eco · Eco", s.Mode);
+        Assert.Equal(("eco", ManualMode.Eco), (s.Mode, s.Choice));
         Assert.Equal(220, s.OutWatts);
     }
 
@@ -125,7 +125,7 @@ public sealed class TrayViewTests
         Assert.True(s.Stale);
         Assert.Equal(TrayPower.Unknown, s.Power);
         Assert.Null(s.HoursLeft);
-        Assert.Equal("unknown · Auto", s.Mode);
+        Assert.Equal(("unknown", ManualMode.Auto), (s.Mode, s.Choice));
     }
 
     [Fact]

@@ -38,10 +38,47 @@ public sealed class PageSettingsTests : IDisposable
         Assert.Empty(_log);
     }
 
+    [Fact]
+    public void Put_Lang_IsSavedReadBackAfterARestartAndKeepsTheOtherField()
+    {
+        var store = new PageSettingsStore(FilePath, _log.Add);
+        Assert.Equal("en", store.Lang);
+        Assert.Equal(200, store.Handle(Req("PUT", """{"hideSourcePanel":true}"""), Port).Status);
+
+        var r = store.Handle(Req("PUT", """{"lang":"uk"}"""), Port);
+        Assert.Equal(200, r.Status);
+        Assert.Equal("uk", store.Lang);
+        var body = JsonElement.Parse(r.Body);
+        Assert.Equal(("uk", true), (body.GetProperty("lang").GetString(), body.GetProperty("hideSourcePanel").GetBoolean()));
+
+        Assert.Equal(200, store.Handle(Req("PUT", """{"hideSourcePanel":false}"""), Port).Status);
+        var restarted = new PageSettingsStore(FilePath, _log.Add);
+        Assert.Equal("uk", restarted.Lang);
+        Assert.False(JsonElement.Parse(restarted.Handle(Req("GET"), Port).Body).GetProperty("hideSourcePanel").GetBoolean());
+        Assert.Empty(_log);
+    }
+
+    [Fact]
+    public void Load_AnOlderFileWithoutLang_IsEnglishAndKeepsTheBoolean()
+    {
+        File.WriteAllText(FilePath, """{"hideSourcePanel":true}""");
+        var store = new PageSettingsStore(FilePath, _log.Add);
+        var body = JsonElement.Parse(store.Handle(Req("GET"), Port).Body);
+        Assert.Equal(("en", true), (body.GetProperty("lang").GetString(), body.GetProperty("hideSourcePanel").GetBoolean()));
+        Assert.Empty(_log);
+    }
+
     [Theory]
     [InlineData("PUT", """{"hideSourcePanel":true}""", false, 403)]
+    [InlineData("PUT", """{"lang":"uk"}""", false, 403)]
     [InlineData("PUT", """{"hideSourcePanel":"yes"}""", true, 400)]
     [InlineData("PUT", """{"other":true}""", true, 400)]
+    [InlineData("PUT", """{"lang":"ru"}""", true, 400)]
+    [InlineData("PUT", """{"lang":"UK"}""", true, 400)]
+    [InlineData("PUT", """{"lang":1}""", true, 400)]
+    [InlineData("PUT", """{"lang":"uk","other":true}""", true, 400)]
+    [InlineData("PUT", "{}", true, 400)]
+    [InlineData("PUT", "[]", true, 400)]
     [InlineData("PUT", "not json", true, 400)]
     [InlineData("POST", """{"hideSourcePanel":true}""", true, 405)]
     public void Put_Refused_ChangesNothing(string method, string body, bool guarded, int status)

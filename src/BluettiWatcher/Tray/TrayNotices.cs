@@ -5,62 +5,70 @@ namespace BluettiWatcher.Tray;
 /// <summary>
 /// Which happenings become a notification, and its words. Stored events by their kind (<see cref="FromEvent"/>), the
 /// confirmed cut's start and end (<see cref="FromCut"/>), station alarms (<see cref="FromAlarm"/>). Pure: the switches
-/// are applied by <see cref="TrayController"/>.
+/// are applied by <see cref="TrayController"/>; the language comes in as <see cref="TrayWords"/>.
 /// </summary>
 internal static class TrayNotices
 {
     /// <summary>
     /// The notice for a stored event; null for a kind that shows none. <paramref name="soc"/> is the last fresh charge,
-    /// named where the event's own detail carries a command line instead of the battery.
+    /// named where the event's own detail carries a command line instead of the battery. The engine's details stay in
+    /// its English.
     /// </summary>
-    public static TrayNotice? FromEvent(string kind, string detail, double? soc)
+    public static TrayNotice? FromEvent(string kind, string detail, double? soc, TrayWords w)
     {
         ArgumentNullException.ThrowIfNull(kind);
+        ArgumentNullException.ThrowIfNull(w);
         detail ??= "";
-        string battery = soc is { } v ? $"Battery {TrayIconRenderer.Text(v)} %. " : "";
+        string battery = w.BatteryLead(soc);
         return kind switch
         {
             // Under the modes v2 the mode change that follows is the one notice of the transition.
             "eco-on" or "mains-back" when detail == StationService.ModesV2Detail => null,
-            "eco-on" => Make(NotificationKind.ModeChanges, "Eco mode on", $"{battery}The PC runs on the battery: eco is on.", NoticeLevel.Info),
-            "mains-back" => Make(NotificationKind.ModeChanges, "Modes lifted", "Mains is back: eco and the battery levels are lifted.", NoticeLevel.Info),
-            Modes.Broker.BrokerVersion.StaleEvent => Make(NotificationKind.Failures, "Admin broker out of date", Sentence(detail), NoticeLevel.Warning),
-            "mode-changed" =>Make(NotificationKind.ModeChanges, "Power mode", detail, NoticeLevel.Info),
-            "mode-dropped" =>Make(NotificationKind.ModeChanges, "Mode choice dropped", detail, NoticeLevel.Info),
-            "emergency-on" => Make(NotificationKind.LowBattery, "Battery emergency", $"{battery}Emergency mode is on.", NoticeLevel.Warning),
-            "stop" => Make(NotificationKind.LowBattery, "Battery critical", Sentence(detail), NoticeLevel.Error),
-            "hibernate-warning" => Make(NotificationKind.LowBattery, "The PC will hibernate", Sentence(detail), NoticeLevel.Error),
-            "action-failed" => Make(NotificationKind.Failures, "Action failed", detail, NoticeLevel.Error),
-            "mode-refused" => Make(NotificationKind.Failures, "Mode refused", detail, NoticeLevel.Warning),
-            StateActions.GridHigh => Make(NotificationKind.Faults, "Grid voltage high", Sentence(detail), NoticeLevel.Warning),
+            "eco-on" => Make(NotificationKind.ModeChanges, w.EcoOnTitle, battery + w.EcoOnText, NoticeLevel.Info),
+            "mains-back" => Make(NotificationKind.ModeChanges, w.ModesLiftedTitle, w.ModesLiftedText, NoticeLevel.Info),
+            Modes.Broker.BrokerVersion.StaleEvent => Make(NotificationKind.Failures, w.BrokerStaleTitle, Sentence(detail), NoticeLevel.Warning),
+            "mode-changed" => Make(NotificationKind.ModeChanges, w.PowerModeTitle, w.ModeChange(detail), NoticeLevel.Info),
+            "mode-dropped" => Make(NotificationKind.ModeChanges, w.ModeDroppedTitle, detail, NoticeLevel.Info),
+            "emergency-on" => Make(NotificationKind.LowBattery, w.EmergencyTitle, battery + w.EmergencyText, NoticeLevel.Warning),
+            "stop" => Make(NotificationKind.LowBattery, w.CriticalTitle, Sentence(detail), NoticeLevel.Error),
+            "hibernate-warning" => Make(NotificationKind.LowBattery, w.HibernateTitle, Sentence(detail), NoticeLevel.Error),
+            "action-failed" => Make(NotificationKind.Failures, w.ActionFailedTitle, detail, NoticeLevel.Error),
+            "mode-refused" => Make(NotificationKind.Failures, w.ModeRefusedTitle, detail, NoticeLevel.Warning),
+            StateActions.GridHigh => Make(NotificationKind.Faults, w.GridHighTitle, Sentence(detail), NoticeLevel.Warning),
             _ => null,
         };
     }
 
     /// <summary>The confirmed cut started or ended; null when it did not change or nothing came before (the first poll).</summary>
-    public static TrayNotice? FromCut(TraySnapshot? before, TraySnapshot after)
+    public static TrayNotice? FromCut(TraySnapshot? before, TraySnapshot after, TrayWords w)
     {
         ArgumentNullException.ThrowIfNull(after);
+        ArgumentNullException.ThrowIfNull(w);
         if (before is null || before.Cut == after.Cut) return null;
-        string battery = after.Soc is { } v && !after.Stale ? $"Battery {TrayIconRenderer.Text(v)} %." : "";
+        string battery = after.Stale ? "" : w.BatteryLead(after.Soc);
         return after.Cut
-            ? Make(NotificationKind.Mains, "Mains lost", $"The station runs on its battery. {battery}".Trim(), NoticeLevel.Warning)
-            : Make(NotificationKind.Mains, "Mains is back", $"The station is on mains again. {battery}".Trim(), NoticeLevel.Info);
+            ? Make(NotificationKind.Mains, w.MainsLostTitle, $"{w.MainsLostText} {battery}".Trim(), NoticeLevel.Warning)
+            : Make(NotificationKind.Mains, w.MainsBackTitle, $"{w.MainsBackText} {battery}".Trim(), NoticeLevel.Info);
     }
 
-    public static TrayNotice FromAlarm(StationAlarm alarm)
+    public static TrayNotice FromAlarm(StationAlarm alarm, TrayWords w)
     {
         ArgumentNullException.ThrowIfNull(alarm);
+        ArgumentNullException.ThrowIfNull(w);
         return alarm.Kind switch
         {
-            StationAlarmKind.OverTemperature => Make(NotificationKind.OverTemperature, "Station over temperature", alarm.Text, NoticeLevel.Error),
-            StationAlarmKind.Fault => Make(NotificationKind.Faults, "Station fault", alarm.Text, NoticeLevel.Error),
-            _ => Make(NotificationKind.Faults, "Station warning", alarm.Text, NoticeLevel.Warning),
+            StationAlarmKind.OverTemperature => Make(NotificationKind.OverTemperature, w.OverTemperatureTitle, w.OverTemperatureText(alarm.Value), NoticeLevel.Error),
+            StationAlarmKind.Fault => Make(NotificationKind.Faults, w.FaultTitle, w.FaultText(alarm.Value), NoticeLevel.Error),
+            _ => Make(NotificationKind.Faults, w.WarningTitle, w.WarningText(alarm.Value), NoticeLevel.Warning),
         };
     }
 
     /// <summary>The page's test notification.</summary>
-    public static readonly TrayNotice Test = Make(NotificationKind.ModeChanges, "Test notification", "Bluetti Watcher notifications reach this PC.", NoticeLevel.Info);
+    public static TrayNotice Test(TrayWords w)
+    {
+        ArgumentNullException.ThrowIfNull(w);
+        return Make(NotificationKind.ModeChanges, w.TestTitle, w.TestText, NoticeLevel.Info);
+    }
 
     private static string Sentence(string detail) => detail.Length == 0 ? "" : char.ToUpperInvariant(detail[0]) + detail[1..] + ".";
 

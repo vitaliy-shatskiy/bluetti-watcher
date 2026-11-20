@@ -29,7 +29,7 @@ public sealed class BrokerVersionTests
     [Fact]
     public void FromEvent_BrokerStale_IsAFailureNotice()
     {
-        var n = TrayNotices.FromEvent(BrokerVersion.StaleEvent, "the admin broker is 1.7.0, older than the service (1.8.0)", null);
+        var n = TrayNotices.FromEvent(BrokerVersion.StaleEvent, "the admin broker is 1.7.0, older than the service (1.8.0)", null, TrayWords.En);
         Assert.NotNull(n);
         Assert.Equal(NotificationKind.Failures, n.Kind);
     }

@@ -12,17 +12,18 @@ internal static class TrayMenu
     /// <summary>Mode ids run from <c>AutoId + 1</c>; the range stays under <see cref="OpenPanelId"/>.</summary>
     public const int MaxModes = OpenPanelId - AutoId - 1;
 
-    public static IReadOnlyList<TrayMenuItem> Build(IReadOnlyList<TrayMode> modes, string? current)
+    public static IReadOnlyList<TrayMenuItem> Build(IReadOnlyList<TrayMode> modes, string? current, TrayWords w)
     {
         ArgumentNullException.ThrowIfNull(modes);
+        ArgumentNullException.ThrowIfNull(w);
         if (modes.Count > MaxModes) throw new ArgumentOutOfRangeException(nameof(modes), modes.Count, $"at most {MaxModes} modes");
         // A current id no mode carries (a mode removed meanwhile) checks nothing rather than a wrong line.
-        var items = new List<TrayMenuItem>(modes.Count + 4) { new(AutoId, "Auto", true, current is null) };
+        var items = new List<TrayMenuItem>(modes.Count + 4) { new(AutoId, w.Auto, true, current is null) };
         for (int i = 0; i < modes.Count; i++)
-            items.Add(new TrayMenuItem(AutoId + 1 + i, modes[i].Name, true, string.Equals(modes[i].Id, current, StringComparison.Ordinal)));
+            items.Add(new TrayMenuItem(AutoId + 1 + i, w.MenuModeName(modes[i].Name), true, string.Equals(modes[i].Id, current, StringComparison.Ordinal)));
         items.Add(new TrayMenuItem(0, "", false, false));
-        items.Add(new TrayMenuItem(OpenPanelId, "Open panel", false, false));
-        items.Add(new TrayMenuItem(ExitTrayId, "Exit tray", false, false));
+        items.Add(new TrayMenuItem(OpenPanelId, w.OpenPanel, false, false));
+        items.Add(new TrayMenuItem(ExitTrayId, w.ExitTray, false, false));
         return items;
     }
 

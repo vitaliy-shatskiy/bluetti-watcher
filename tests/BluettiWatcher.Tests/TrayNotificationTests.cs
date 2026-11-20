@@ -31,7 +31,7 @@ public sealed class TrayNotificationTests : IDisposable
     }
 
     private static TraySnapshot Snap(bool cut, double soc = 40, bool stale = false) =>
-        new(soc, cut ? TrayPower.Battery : TrayPower.Mains, 0, 200, "normal · Auto", null, T0, stale, cut);
+        new(soc, cut ? TrayPower.Battery : TrayPower.Mains, 0, 200, "normal", Decision.ManualMode.Auto, null, T0, stale, cut);
 
     [Theory]
     [InlineData("eco-on", "ModeChanges", "Eco mode on", "Info")]
@@ -45,7 +45,7 @@ public sealed class TrayNotificationTests : IDisposable
     [InlineData(StateActions.GridHigh, "Faults", "Grid voltage high", "Warning")]
     public void Each_notified_event_maps_to_its_group_title_and_icon(string kind, string group, string title, string level)
     {
-        var n = TrayNotices.FromEvent(kind, "battery 9 % - the flag says critical", 9);
+        var n = TrayNotices.FromEvent(kind, "battery 9 % - the flag says critical", 9, TrayWords.En);
         Assert.NotNull(n);
         Assert.Equal(group, n.Kind.ToString());
         Assert.Equal(title, n.Title);
@@ -60,7 +60,7 @@ public sealed class TrayNotificationTests : IDisposable
     [InlineData("hibernate-refused")]
     [InlineData("config-warning")]
     [InlineData("")]
-    public void Other_events_notify_nothing(string kind) => Assert.Null(TrayNotices.FromEvent(kind, "x", 50));
+    public void Other_events_notify_nothing(string kind) => Assert.Null(TrayNotices.FromEvent(kind, "x", 50, TrayWords.En));
 
     [Theory]
     [InlineData("eco-on", "eco (mains off for 5 min)")]
@@ -68,7 +68,7 @@ public sealed class TrayNotificationTests : IDisposable
     public void Under_the_modes_v2_a_station_transition_notifies_once_by_its_mode_change(string station, string mode)
     {
         // The two events StationService stores for one transition under v2.
-        var notices = new[] { TrayNotices.FromEvent(station, StationService.ModesV2Detail, 50), TrayNotices.FromEvent("mode-changed", mode, 50) };
+        var notices = new[] { TrayNotices.FromEvent(station, StationService.ModesV2Detail, 50, TrayWords.En), TrayNotices.FromEvent("mode-changed", mode, 50, TrayWords.En) };
 
         Assert.Equal("Power mode", Assert.Single(notices, n => n is not null)!.Title);
     }
@@ -76,8 +76,8 @@ public sealed class TrayNotificationTests : IDisposable
     [Fact]
     public void The_events_text_is_the_detail_and_never_a_command_line_for_eco_or_emergency()
     {
-        Assert.Equal("Battery 9 % - the flag says critical.", TrayNotices.FromEvent("stop", "battery 9 % - the flag says critical", 9)!.Text);
-        string eco = TrayNotices.FromEvent("eco-on", @"pwsh.exe -File C:\x\power-mode.ps1 eco", 42)!.Text;
+        Assert.Equal("Battery 9 % - the flag says critical.", TrayNotices.FromEvent("stop", "battery 9 % - the flag says critical", 9, TrayWords.En)!.Text);
+        string eco = TrayNotices.FromEvent("eco-on", @"pwsh.exe -File C:\x\power-mode.ps1 eco", 42, TrayWords.En)!.Text;
         Assert.StartsWith("Battery 42 %.", eco, StringComparison.Ordinal);
         Assert.DoesNotContain("pwsh", eco, StringComparison.Ordinal);
     }
@@ -85,7 +85,7 @@ public sealed class TrayNotificationTests : IDisposable
     [Fact]
     public void A_long_detail_is_cut_to_the_shell_limit()
     {
-        var n = TrayNotices.FromEvent("action-failed", new string('x', 1000), null)!;
+        var n = TrayNotices.FromEvent("action-failed", new string('x', 1000), null, TrayWords.En)!;
         Assert.Equal(TrayNotice.TextMax, n.Text.Length);
         Assert.EndsWith("…", n.Text, StringComparison.Ordinal);
     }
@@ -93,7 +93,7 @@ public sealed class TrayNotificationTests : IDisposable
     [Fact]
     public void Mains_lost_and_back_follow_the_confirmed_cut_not_the_first_snapshot()
     {
-        var tray = new TrayController(_view, Store());
+        var tray = new TrayController(_view, Store(), () => TrayWords.En);
         tray.Update(Snap(cut: true));                 // the first snapshot after a start: a cut already on says nothing
         tray.Update(Snap(cut: true, soc: 39));        // no change
         tray.Update(Snap(cut: false, soc: 39));
@@ -107,7 +107,7 @@ public sealed class TrayNotificationTests : IDisposable
     [Fact]
     public void A_stale_charge_is_not_named_in_a_notice()
     {
-        var tray = new TrayController(_view, Store());
+        var tray = new TrayController(_view, Store(), () => TrayWords.En);
         tray.Update(Snap(cut: false));
         tray.Update(Snap(cut: true, soc: 77, stale: true));
         tray.OnEvent("eco-on", "cmd");
@@ -118,7 +118,7 @@ public sealed class TrayNotificationTests : IDisposable
     public void A_switched_off_group_shows_nothing_and_the_others_still_show()
     {
         File.WriteAllText(SettingsFile, """{ "failures": false }""");
-        var tray = new TrayController(_view, Store());
+        var tray = new TrayController(_view, Store(), () => TrayWords.En);
         tray.OnEvent("action-failed", "eco-on failed");
         tray.OnEvent("mode-refused", "Max held back");
         tray.OnEvent("stop", "battery 9 %");
@@ -129,7 +129,7 @@ public sealed class TrayNotificationTests : IDisposable
     public void A_switch_change_applies_to_the_next_notice_without_a_restart()
     {
         var store = Store();
-        var tray = new TrayController(_view, store);
+        var tray = new TrayController(_view, store, () => TrayWords.En);
         using (var off = JsonDocument.Parse("""{ "lowBattery": false }""")) Assert.Null(store.Update(off.RootElement));
         tray.OnEvent("stop", "battery 9 %");
         Assert.Empty(_view.Notices);
@@ -138,7 +138,7 @@ public sealed class TrayNotificationTests : IDisposable
     [Fact]
     public void An_alarm_notifies_when_it_appears_not_while_it_stays_and_again_after_it_cleared()
     {
-        var tray = new TrayController(_view, Store());
+        var tray = new TrayController(_view, Store(), () => TrayWords.En);
         var hot = new StationAlarm("temp", "Battery 61 °C", StationAlarmKind.OverTemperature);
         var fault = new StationAlarm("f12", "Inverter fault 12", StationAlarmKind.Fault);
         tray.ReportAlarms([hot]);
@@ -154,7 +154,7 @@ public sealed class TrayNotificationTests : IDisposable
     public void Over_temperature_has_its_own_switch()
     {
         File.WriteAllText(SettingsFile, """{ "overTemperature": false }""");
-        var tray = new TrayController(_view, Store());
+        var tray = new TrayController(_view, Store(), () => TrayWords.En);
         tray.ReportAlarms([new StationAlarm("temp", "hot", StationAlarmKind.OverTemperature), new StationAlarm("w1", "fan", StationAlarmKind.Warning)]);
         Assert.Equal(["Station warning"], _view.Notices.Select(n => n.Title));
     }
@@ -162,7 +162,7 @@ public sealed class TrayNotificationTests : IDisposable
     [Fact]
     public void A_stored_event_reaches_the_tray_through_the_store_hook()
     {
-        var tray = new TrayController(_view, Store());
+        var tray = new TrayController(_view, Store(), () => TrayWords.En);
         using (var db = new BluettiWatcher.Storage.StationStore(Path.Combine(_dir, "station.db")))
         {
             db.EventAdded = tray.OnEvent;
@@ -266,7 +266,7 @@ public sealed class TrayNotificationTests : IDisposable
         var store = Store();
         using (var doc = JsonDocument.Parse("""{ "mains": false, "modeChanges": false, "lowBattery": false, "failures": false, "faults": false, "overTemperature": false }"""))
             Assert.Null(store.Update(doc.RootElement));
-        new TrayController(_view, store).SendTest();
+        new TrayController(_view, store, () => TrayWords.En).SendTest();
         Assert.Equal("Test notification", Assert.Single(_view.Notices).Title);
     }
 
