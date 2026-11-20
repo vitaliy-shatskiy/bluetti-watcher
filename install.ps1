@@ -6,11 +6,16 @@ install.ps1 - install Bluetti Watcher for the current user. DRY RUN by default: 
   pwsh -NoProfile -File install.ps1 -RemoveWake [-Apply]              only the wake task: removed
   pwsh -NoProfile -File install.ps1 -Broker [-Apply]                  only the admin broker (elevated; after an install)
 
--Broker (the power modes' admin broker, tools/broker-task.ps1): %ProgramData%\BluettiWatcher\broker owned by
-Administrators (the user reads it and may only add request files), a copy of the installed exe in its bin\ (SYSTEM never
-runs the copy in the user's bin), policy.json when there is none (nothing allowed; BluettiWatcher.exe --broker-allow adds
-services, tasks, profiles, elevated), and the task "BluettiWatcherBroker": SYSTEM, no trigger, started on demand by the
-service. Run it again after each upgrade: it refreshes the copy of the exe.
+The admin broker of the power modes (tools/broker-task.ps1) is the elevated part: -Apply in an elevated shell installs
+it after the service (step 8); -Apply in a shell that is not elevated installs the service only and names the elevated
+step, install.ps1 -Broker -Apply in an elevated shell (the service never needs elevation). The broker:
+%ProgramData%\BluettiWatcher\broker owned by Administrators (the user reads it and may only add request files), a copy of
+the installed exe in its bin\ (SYSTEM never runs the copy in the user's bin), policy.json when there is none (nothing
+allowed; BluettiWatcher.exe --broker-allow adds services, tasks, profiles, elevated), and the task
+"BluettiWatcherBroker": SYSTEM, no trigger, started on demand by the service. Its copy of the exe is stale after each
+upgrade until the elevated step runs again. Once the broker is registered, the old GPU cap tasks "<prefix>GpuCap" and
+"<prefix>GpuRestore" (config powerMode.taskPrefix, default BluettiWatcherEco; power-mode.ps1 gpu-task install) are
+removed: the broker's GPU limit replaces them. A failed registration keeps them.
 
 Runs from a release zip (bin\BluettiWatcher.exe beside this script: the exe is copied) or from a source checkout
 (src\ beside this script: the exe is published, which needs the .NET SDK and, for NativeAOT, the MSVC linker).
@@ -46,9 +51,11 @@ enabled and started, a bin that never passed the health check replaced by bin.ol
      service sets its time and enables it before a hibernation in a cut, wakeEveryMinutes > 0, and disables it on
      mains). Registered from XML through COM and read back; one that differs is deleted again
   7. shortcuts "Bluetti Watcher" on the Desktop and in the Start menu: Chrome (else Edge) --app=http://127.0.0.1:<port>/
+  8. elevated only: the admin broker (above), then the old GPU cap tasks removed; not elevated: one line naming the
+     elevated step (a broker already registered: its copy of the exe is stale until that step runs)
 
-Exit: 0 done (or the dry run found nothing in the way) · 1 a step failed, or the dry run found something in the way ·
-2 could not run.
+Exit: 0 done (or the dry run found nothing in the way; a shell that is not elevated only skips step 8) · 1 a step
+failed, or the dry run found something in the way · 2 could not run (-Broker -Apply: also when not elevated).
 #>
 [CmdletBinding()]
 param(
@@ -112,18 +119,25 @@ $macPattern = '^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$'
 
 function Step([string] $text) { Write-Output "$(if ($Apply) { 'do ' } else { 'would' })  $text" }
 
-# ---- the admin broker alone (tools/broker-task.ps1): elevated, after the service is installed
+# The admin broker (tools/broker-task.ps1): the elevated part, after the service is installed.
+$brokerRoot = Get-WatcherBrokerRoot
+$sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$gpuTaskPrefix = Get-WatcherPowerModeTaskPrefix $config
+function Write-BrokerSteps([string] $Prefix = '') {
+    Get-WatcherBrokerSteps -Root $brokerRoot -SourceExe $exe -User "$env:USERDOMAIN\$env:USERNAME" | ForEach-Object { Step "$Prefix$_" }
+    Get-WatcherOldGpuTaskSteps -Prefix $gpuTaskPrefix | ForEach-Object { Step "$Prefix$_" }
+}
+
+# ---- the admin broker alone
 if ($Broker) {
-    $brokerRoot = Get-WatcherBrokerRoot
-    $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    $elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     $brokerProblems = @()
     if (-not (Test-Path -LiteralPath $exe)) { $brokerProblems += "no installed $exe to copy: run install.ps1 -Apply first" }
     if ($Apply -and -not $elevated) { $brokerProblems += 'the broker is a SYSTEM task: run install.ps1 -Broker -Apply in an elevated shell' }
-    Get-WatcherBrokerSteps -Root $brokerRoot -SourceExe $exe -User "$env:USERDOMAIN\$env:USERNAME" | ForEach-Object { Step $_ }
+    Write-BrokerSteps
     if ($brokerProblems) { $brokerProblems | ForEach-Object { Write-Output "blocked: $_" }; exit $(if ($Apply) { 2 } else { 1 }) }
     if (-not $Apply) { Write-Output 'dry run: nothing changed.'; exit 0 }
-    $done = Install-WatcherBroker -Root $brokerRoot -SourceExe $exe -Sid $sid
+    $done = Complete-WatcherBroker -Root $brokerRoot -SourceExe $exe -Sid $sid -Prefix $gpuTaskPrefix
     Write-Output "install: $($done.text)"
     exit $(if ($done.ok) { 0 } else { 1 })
 }
@@ -222,9 +236,13 @@ Step "after the health check passed: remove $previous. A failed swap or no healt
 Step "copy the power-mode switch $powerModeFrom\*.ps1 to $powerModeTo (after the health check: the scripts forward to BluettiWatcher.exe power-mode)"
 if (Test-Path -LiteralPath $oldVenv) { Step "remove the 1.0.0 Python venv $oldVenv (after the health check; the built-in reader does not use it)" }
 Step "register the wake task '$script:WatcherWakeTask': disabled, WakeToRun, a time trigger the service sets, action $([Environment]::GetFolderPath('System'))\conhost.exe --headless cmd.exe /d /c exit 0 (a no-op) as $env:USERDOMAIN\$env:USERNAME, interactive token, least privilege; security: Administrators, SYSTEM, the user; read back after registering"
-Step "leave the admin broker (power modes) as it is: install.ps1 -Broker -Apply in an elevated shell registers it, or refreshes its copy of the exe after this upgrade"
 Step "create the shortcuts $($shortcuts -join ' and ') -> $browser --app=$url"
-if (-not $Apply) { Write-Output 'dry run: nothing changed. Run with -Apply to install.'; exit $(if ($problems) { 1 } else { 0 }) }
+if (-not $Apply) {
+    Write-Output 'elevated part (the admin broker, power modes): runs after the service when this shell is elevated, else afterwards: install.ps1 -Broker -Apply in an elevated shell'
+    Write-BrokerSteps 'elevated: '
+    Write-Output 'dry run: nothing changed. Run with -Apply to install.'
+    exit $(if ($problems) { 1 } else { 0 })
+}
 
 # A failure from here on: what runs stays as it is.
 function Stop-Install([string] $why) {
@@ -308,5 +326,9 @@ foreach ($lnk in $shortcuts) {
     $s.Description = 'Bluetti Watcher dashboard'
     $s.Save()
 }
+
+# ---- 8. the admin broker, elevated only; then the old GPU cap tasks
+$brokerStep = Invoke-WatcherBrokerStep -Elevated $elevated -Root $brokerRoot -SourceExe $exe -Sid $sid -Prefix $gpuTaskPrefix
+Write-Output "install: $($brokerStep.text)"
 Write-Output "install: done - $url"
-exit $(if ($wakeTask.ok) { 0 } else { 1 })
+exit $(if ($wakeTask.ok -and $brokerStep.ok) { 0 } else { 1 })

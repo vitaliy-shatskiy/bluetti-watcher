@@ -159,9 +159,20 @@ try {
     Check 'broker: no exe blocks, exit 1' ($r.Code -eq 1 -and $r.Text -match 'blocked: no installed .+BluettiWatcher\.exe to copy') "exit $($r.Code)"
     Check 'broker: nothing written' $r.Unchanged
     Check 'broker: no service steps' ($r.Text -notmatch 'swap|shortcut') $r.Text
-    # a normal dry run names the broker as a separate elevated step
+    # a normal dry run lists the broker's steps as the elevated part, and how to run it from a shell that is not elevated
     $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:01', '-CapacityWh', '2048')
     Check 'install: names the broker step' ($r.Text -match 'install\.ps1 -Broker -Apply in an elevated shell') $r.Text
+    Check 'install: the elevated part is labelled' ($r.Text -match '(?m)^elevated part \(the admin broker') $r.Text
+    Check 'install: broker folder step is an elevated would line' ($r.Text -match 'would\s+elevated: create .+\\BluettiWatcher\\broker with requests\\') $r.Text
+    Check 'install: broker exe copy step is an elevated would line' ($r.Text -match 'would\s+elevated: copy .+BluettiWatcher\.exe to .+\\broker\\bin\\BluettiWatcher\.exe') $r.Text
+    Check 'install: broker task step is an elevated would line' ($r.Text -match "would\s+elevated: register the task 'BluettiWatcherBroker': SYSTEM") $r.Text
+    Check 'install: broker steps after the service steps' ($r.Text.IndexOf("register the task 'BluettiWatcherBroker'") -gt $r.Text.IndexOf("register the logon task 'BluettiWatcher'")) $r.Text
+    Check 'install: no leave-as-it-is broker line' ($r.Text -notmatch 'leave the admin broker') $r.Text
+    Check 'install with broker steps: nothing written' $r.Unchanged
+    # a prefix no task has: no old GPU task to remove
+    $r = Invoke-DryRun -Config ('{ "mac": "AA:BB:CC:DD:EE:0C", "powerMode": { "taskPrefix": "BwInstallTest' + [Guid]::NewGuid().ToString('N') + '" } }')
+    Check 'install: no old GPU task present, none named' ($r.Text -notmatch 'old GPU task') $r.Text
+    Check 'install: no old GPU task present, unchanged' $r.Unchanged
     # the wake task name from the config: never the service's own task, only plain characters
     $mac = '"mac": "AA:BB:CC:DD:EE:06"'
     foreach ($bad in 'BluettiWatcher', 'bluettiwatcher', 'a\\b', 'x*', 'a;b', 'a\"b', 'abc\n', ' lead', 'trail.', ('n' * 101)) {
@@ -274,6 +285,82 @@ try {
         $ops.Query = { param($name) '<Task><Principals><Principal><UserId>S-1-5-21-9</UserId></Principal></Principals></Task>' }
         $r = Install-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Ops $ops
         Check 'broker: a task read back as another account fails' (-not $r.ok -and $r.text -match 'not registered as written') $r.text
+
+        # the old GPU cap tasks: their names from config powerMode.taskPrefix (key read case-sensitively, as the service does)
+        $cfgDir = Join-Path $base 'prefix'
+        $null = New-Item -ItemType Directory -Force -Path $cfgDir
+        $cfgFile = Join-Path $cfgDir 'config.json'
+        Check 'old gpu: no config = the default prefix' ((Get-WatcherPowerModeTaskPrefix $cfgFile) -ceq 'BluettiWatcherEco')
+        [IO.File]::WriteAllText($cfgFile, "{`n  // a comment`n  `"mac`": `"AA:BB:CC:DD:EE:01`", `"powerMode`": { `"taskPrefix`": `"MyEco`" } }")
+        Check 'old gpu: the prefix from the config' ((Get-WatcherPowerModeTaskPrefix $cfgFile) -ceq 'MyEco')
+        [IO.File]::WriteAllText($cfgFile, '{ "powerMode": { "TaskPrefix": "MyEco" } }')
+        Check 'old gpu: a key in the wrong case is not read' ((Get-WatcherPowerModeTaskPrefix $cfgFile) -ceq 'BluettiWatcherEco')
+        foreach ($bad in '{ "powerMode": { "taskPrefix": "-Mutex" } }', '{ "mac": ') {
+            [IO.File]::WriteAllText($cfgFile, $bad)
+            Check "old gpu: no prefix from $bad" ($null -eq (Get-WatcherPowerModeTaskPrefix $cfgFile))
+        }
+        Check 'old gpu: the two task names' ((@(Get-WatcherOldGpuTaskNames 'MyEco') -join ',') -ceq 'MyEcoGpuCap,MyEcoGpuRestore')
+
+        # given registered tasks and fakes for icacls / Task Scheduler; the GPU restore task is not there
+        $present = @{ MyEcoGpuCap = '<Task>cap</Task>' }
+        $deleted = [Collections.Generic.List[string]]::new()
+        $newOps = {
+            param([bool] $registerOk = $true, [bool] $deleteOk = $true)
+            # locals, so each fake below closes over them
+            $reg = @{}
+            $present = $present
+            $deleted = $deleted
+            @{
+                Icacls   = { param([string[]] $list) }
+                Register = { param($name, $xml, $sddl) $reg[$name] = $xml }.GetNewClosure()
+                Query    = { param($name) if ($reg.ContainsKey($name)) { if ($registerOk) { $reg[$name] } else { '<Task>other</Task>' } } elseif ($present.ContainsKey($name)) { $present[$name] } else { $null } }.GetNewClosure()
+                Delete   = { param($name) if (-not $deleteOk) { throw 'ERROR: Access is denied.' }; $deleted.Add($name) }.GetNewClosure()
+            }
+        }
+        $steps = @(Get-WatcherOldGpuTaskSteps -Prefix 'MyEco' -Ops (& $newOps))
+        Check 'old gpu: dry run names each present task' ($steps.Count -eq 1 -and $steps[0] -match "remove the old GPU task 'MyEcoGpuCap'") ($steps -join ' | ')
+        Check 'old gpu: dry run removes nothing' ($deleted.Count -eq 0)
+
+        # when the broker registers, then the present old task goes and the missing one is not touched
+        $deleted.Clear()
+        $r = Complete-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops (& $newOps)
+        Check 'old gpu: removed after the broker registered' ($r.ok -and ($deleted -join ',') -ceq 'MyEcoGpuCap') "$($r.text) | $($deleted -join ',')"
+        Check 'old gpu: the removal is named' ($r.text -match "removed the old GPU task 'MyEcoGpuCap'") $r.text
+        # when the broker registration fails, then the old tasks stay (the only GPU cap path left)
+        $deleted.Clear()
+        $r = Complete-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops (& $newOps $false)
+        Check 'old gpu: kept when the broker was not registered' (-not $r.ok -and $deleted.Count -eq 0) "$($r.text) | $($deleted -join ',')"
+        Check 'old gpu: kept is named' ($r.text -match 'old GPU tasks .*kept') $r.text
+        # when the broker install throws, then the old tasks stay
+        $deleted.Clear()
+        $ops2 = & $newOps
+        $ops2.Icacls = { param([string[]] $list) throw 'icacls failed' }
+        $r = Complete-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops $ops2
+        Check 'old gpu: kept when the broker install threw' (-not $r.ok -and $deleted.Count -eq 0) $r.text
+        # when the prefix is unknown, then nothing is removed and that is named
+        $deleted.Clear()
+        $r = Complete-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Prefix $null -Ops (& $newOps)
+        Check 'old gpu: no prefix, nothing removed' ($deleted.Count -eq 0 -and $r.text -match 'old GPU tasks') $r.text
+        # when the removal fails, then it is named and the step fails
+        $deleted.Clear()
+        $r = Complete-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops (& $newOps $true $false)
+        Check 'old gpu: a failed removal fails the step, named' (-not $r.ok -and $r.text -match "could not remove the old GPU task 'MyEcoGpuCap'") $r.text
+
+        # the normal install's broker step: not elevated = one line naming the elevated step, nothing registered, not a failure
+        $deleted.Clear()
+        $ops3 = & $newOps
+        $r = Invoke-WatcherBrokerStep -Elevated $false -Root $root -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops $ops3
+        Check 'not elevated: ok (the service install decides the exit)' ($r.ok) $r.text
+        Check 'not elevated: names the elevated step' ($r.text -match 'run install\.ps1 -Broker -Apply in an elevated shell') $r.text
+        Check 'not elevated: no broker yet, nothing about a stale copy' ($r.text -notmatch 'stale') $r.text
+        Check 'not elevated: nothing registered or removed' ($null -eq (& $ops3.Query 'BluettiWatcherBroker') -and $deleted.Count -eq 0)
+        # an upgrade with the broker registered: its copy of the exe is stale until the elevated step runs
+        $ops3.Query = { param($name) if ($name -ceq 'BluettiWatcherBroker') { '<Task>broker</Task>' } else { $null } }
+        $r = Invoke-WatcherBrokerStep -Elevated $false -Root $root -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops $ops3
+        Check 'not elevated, broker registered: the copy is stale until the step runs' ($r.ok -and $r.text -match 'stale' -and $r.text -match 'install\.ps1 -Broker -Apply in an elevated shell') $r.text
+        # elevated: the broker installed and the old GPU task removed
+        $r = Invoke-WatcherBrokerStep -Elevated $true -Root $root -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops (& $newOps)
+        Check 'elevated: the broker installed, the old GPU task removed' ($r.ok -and ($deleted -join ',') -ceq 'MyEcoGpuCap') "$($r.text) | $($deleted -join ',')"
     }
 }
 catch {

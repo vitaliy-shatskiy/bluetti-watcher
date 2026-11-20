@@ -1,7 +1,9 @@
 <#
 broker-task.ps1 - the admin broker (docs/design.md, power modes): a SYSTEM scheduled task "BluettiWatcherBroker" with no
 trigger, started on demand by the unelevated service, that runs BluettiWatcher.exe --broker once and exits. Functions
-only: install.ps1 dot-sources it (install.ps1 -Broker -Apply, elevated). Dot-sourcing changes nothing.
+only: install.ps1 dot-sources it (install.ps1 -Apply or -Broker -Apply, elevated). Dot-sourcing changes nothing. Once the
+broker is registered, the old GPU cap tasks "<prefix>GpuCap" and "<prefix>GpuRestore" (power-mode.ps1 gpu-task install)
+are removed: the broker's GPU limit replaces them. A failed registration keeps them.
 
 What runs as SYSTEM takes nothing the user can write: the exe is a copy in %ProgramData%\BluettiWatcher\broker\bin, a
 folder owned by Administrators where the user may only read (the user's own bin under %LOCALAPPDATA% is never run
@@ -61,7 +63,68 @@ function Get-WatcherBrokerOps {
         # 6 = TASK_CREATE_OR_UPDATE, 5 = TASK_LOGON_SERVICE_ACCOUNT
         Register = { param($name, $xml, $sddl) $svc = New-Object -ComObject 'Schedule.Service'; $svc.Connect(); $null = $svc.GetFolder('\').RegisterTask($name, $xml, 6, 'SYSTEM', $null, 5, $sddl) }
         Query    = { param($name) $r = (& schtasks.exe /query /tn $name /xml 2>&1) -join "`n"; if ($LASTEXITCODE -eq 0) { $r } else { $null } }
+        Delete   = { param($name) $r = & schtasks.exe /delete /tn $name /f 2>&1; if ($LASTEXITCODE -ne 0) { throw "$(@($r)[-1])" } }
     }
+}
+
+# The old GPU cap tasks (power-mode.ps1 gpu-task install): "<prefix>GpuCap" and "<prefix>GpuRestore". The broker's GPU
+# limit replaces them; they go only once the broker is registered, so a GPU cap path is always left.
+$script:WatcherDefaultTaskPrefix = 'BluettiWatcherEco'
+
+# The prefix the service uses: config.json powerMode.taskPrefix, keys read case-sensitively as the service reads them,
+# the default when not set. $null when the config cannot be read or the prefix is no plain name: nothing is removed then.
+function Get-WatcherPowerModeTaskPrefix([string] $ConfigPath) {
+    if (-not (Test-Path -LiteralPath $ConfigPath)) { return $script:WatcherDefaultTaskPrefix }
+    try { $cfg = Get-Content -Raw -LiteralPath $ConfigPath | ConvertFrom-Json -ErrorAction Stop } catch { return $null }
+    $prefix = $script:WatcherDefaultTaskPrefix
+    if ($cfg -and @($cfg.PSObject.Properties.Name) -ccontains 'powerMode' -and $cfg.powerMode -and
+        @($cfg.powerMode.PSObject.Properties.Name) -ccontains 'taskPrefix' -and $cfg.powerMode.taskPrefix) { $prefix = "$($cfg.powerMode.taskPrefix)" }
+    if ($prefix -cnotmatch '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$') { return $null }
+    $prefix
+}
+
+function Get-WatcherOldGpuTaskNames([string] $Prefix) { @("${Prefix}GpuCap", "${Prefix}GpuRestore") }
+
+# The dry run's lines: one per old GPU task that is registered now.
+function Get-WatcherOldGpuTaskSteps([string] $Prefix, [hashtable] $Ops = $null) {
+    if (-not $Ops) { $Ops = Get-WatcherBrokerOps }
+    if (-not $Prefix) { return @("keep the old GPU tasks: config.json powerMode.taskPrefix cannot be read (their names are not known)") }
+    foreach ($name in Get-WatcherOldGpuTaskNames $Prefix) {
+        if ($null -ne (& $Ops.Query $name)) { "remove the old GPU task '$name' once '$script:WatcherBrokerTask' is registered (the broker's GPU limit replaces it)" }
+    }
+}
+
+# Removes each old GPU task that is registered. @{ ok; lines }, never throws.
+function Remove-WatcherOldGpuTasks([string] $Prefix, [hashtable] $Ops) {
+    if (-not $Prefix) { return @{ ok = $true; lines = @('the old GPU tasks were kept: config.json powerMode.taskPrefix cannot be read (their names are not known)') } }
+    $ok = $true
+    $lines = foreach ($name in Get-WatcherOldGpuTaskNames $Prefix) {
+        if ($null -eq (& $Ops.Query $name)) { continue }
+        try { $null = & $Ops.Delete $name; "removed the old GPU task '$name' (the broker's GPU limit replaces it)" }
+        catch { $ok = $false; "could not remove the old GPU task '$name': $($_.Exception.Message)" }
+    }
+    @{ ok = $ok; lines = @($lines) }
+}
+
+# The broker installed, then, only when it is registered, the old GPU tasks removed. @{ ok; text }, never throws.
+function Complete-WatcherBroker([string] $Root, [string] $SourceExe, [string] $Sid, [string] $Prefix, [hashtable] $Ops = $null) {
+    if (-not $Ops) { $Ops = Get-WatcherBrokerOps }
+    $done = Install-WatcherBroker -Root $Root -SourceExe $SourceExe -Sid $Sid -Ops $Ops
+    if (-not $done.ok) { return @{ ok = $false; text = "$($done.text); the old GPU tasks were kept" } }
+    $gone = Remove-WatcherOldGpuTasks -Prefix $Prefix -Ops $Ops
+    @{ ok = $gone.ok; text = (@($done.text) + $gone.lines) -join '; ' }
+}
+
+# The normal install's broker step. Elevated: Complete-WatcherBroker. Not elevated: nothing changes and the one line
+# names the elevated step; ok, since the service needs no elevation and its install decides the exit.
+function Invoke-WatcherBrokerStep([bool] $Elevated, [string] $Root, [string] $SourceExe, [string] $Sid, [string] $Prefix, [hashtable] $Ops = $null) {
+    if (-not $Ops) { $Ops = Get-WatcherBrokerOps }
+    if ($Elevated) { return Complete-WatcherBroker -Root $Root -SourceExe $SourceExe -Sid $Sid -Prefix $Prefix -Ops $Ops }
+    $text = if ($null -ne (& $Ops.Query $script:WatcherBrokerTask)) {
+        "the admin broker's copy of the exe is stale (the previous version) until this step runs: install.ps1 -Broker -Apply in an elevated shell"
+    }
+    else { 'the admin broker (power modes) is a SYSTEM task and was not installed: run install.ps1 -Broker -Apply in an elevated shell' }
+    @{ ok = $true; text = $text }
 }
 
 # Folders, ACLs, the exe copy, the policy, the owner, the task. @{ ok; text }, never throws.
