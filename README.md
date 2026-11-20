@@ -129,7 +129,20 @@ pwsh -NoProfile -File "$env:LOCALAPPDATA\bluetti-watcher\power-mode\power-mode.p
 - Manual control on the page: Auto, Eco, Max.
 - Your own command when a mode begins (`actions`), and a flag file other programs can read.
 - Optional wake timer and DTEK planned-outage schedule (Kyiv region): an hour grid for today and tomorrow, checked against the station's own mains reading, and the hours already past show whether there really was power.
-- One NativeAOT exe, a per-user scheduled task, no window and no tray.
+- Tray icon: the charge as a number over a bar, green on mains and amber on battery; the tooltip gives watts, mode and
+  time left, a click opens Auto / Eco / Max, the panel and "Exit tray". Windows notifications for mains lost and back,
+  mode changes, low battery, failed actions and station alarms, each switchable (`--no-tray` turns both off).
+- One NativeAOT exe, a per-user scheduled task, no window.
+
+## Tray
+
+The service shows its own notification-area icon (no second program): the charge in digits over a bar, green on mains,
+amber on battery, grey when no fresh reading has come for `maxGapSec`. Hover for the watts in and out, the mode and the
+time left; click for a menu with Auto, Eco and Max (the page's buttons), "Open panel" (this page in your browser) and
+"Exit tray" (removes the icon until the service starts again; the service keeps running). Its notifications are Windows
+toasts for mains lost and back, the service's own mode changes, low battery, failed actions and station alarms; switch
+each group in `notifications.json` ([configuration.md](docs/configuration.md#notifications-notificationsjson)). The
+notifications come from the icon: with the icon closed or `"tray": false` (or `--no-tray`) there are none.
 
 ## Screenshots
 

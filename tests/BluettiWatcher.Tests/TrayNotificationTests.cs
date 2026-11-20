@@ -232,6 +232,23 @@ public sealed class TrayNotificationTests : IDisposable
         Assert.False(store.Current.Mains);
     }
 
+    [Fact]
+    public async Task The_station_api_serves_the_route_only_with_a_settings_store()
+    {
+        var cfg = new StationConfig { DataDir = _dir, Port = Port };
+        var clock = new ManualClock(T0);
+        using (var db = new BluettiWatcher.Storage.StationStore(Path.Combine(_dir, "station.db")))
+        using (var service = new StationService(cfg, new QueueReader(), new FakeActions(), new FakeHibernator(true), new FixedFlag(Flag()), db, clock, _ => { }))
+        {
+            var with = new StationApi(cfg, service, db, clock, T0, notificationSettings: Store());
+            var without = new StationApi(cfg, service, db, clock, T0);
+            Assert.Equal(200, (await with.HandleAsync(Req("PUT", """{ "faults": false }""", ("X-Station", "1")), CancellationToken.None)).Status);
+            Assert.Equal(404, (await without.HandleAsync(Req("GET", null), CancellationToken.None)).Status);
+        }
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        Assert.False(Store().Current.Faults);
+    }
+
     [Theory]
     [InlineData("PUT", "{ nope", 400)]
     [InlineData("PUT", """{ "mains": 1 }""", 400)]

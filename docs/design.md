@@ -23,7 +23,7 @@ read-only features to come, are mapped in [bluetti-protocol.md](bluetti-protocol
 
 ## 2. Architecture
 
-1. A per-user background process, no window and no tray, started at logon by a scheduled task as the user (Medium
+1. A per-user background process, no window (the notification-area icon of §12 is its only UI besides the page), started at logon by a scheduled task as the user (Medium
    integrity, "run only when the user is logged on"), restarted on failure; nothing before logon. It must never run in
    session 0: the power-mode mutex is a `Local\` name shared with the user's own scripts. A start in session 0 exits 2.
 2. Host: one C# NativeAOT exe (`BluettiWatcher.exe`). Bluetooth LE goes in-process through WinRT GATT, the 29 IoT V1 and
@@ -593,3 +593,34 @@ those three calls and the `dtekWatcher` config property.
     window would otherwise fit it (both ends within 20 minutes). A cut of exactly `minCutMin` counts. Short cuts stay
     in the cut history and on the chart, and a running cut is overdue and shown as before: the minimum applies when
     the cut ends.
+
+## 12. Tray and notifications
+
+1. The icon lives in the service process: one more thread (STA) with a hidden top-level window and a blocking
+   `GetMessage` loop, no timer. Win32 through source-generated P/Invoke (`Shell_NotifyIconW` with
+   `NOTIFYICON_VERSION_4`, `TrackPopupMenuEx`, `CreateIconIndirect`), NativeAOT-safe, no WinForms or WPF. On by default
+   (`tray`), only in an interactive session; `--no-tray` turns it off. Measured once (NativeAOT, idle, no station):
+   private bytes 5.5 MB with the icon against 4.4 MB without, 10 threads against 5.
+2. The service pushes a snapshot after each poll and each page or tray choice: charge, the last fresh reading's input,
+   watts, mode (the flag's mode and the page choice), time left on battery, the confirmed cut. A reading older than
+   `maxGapSec` is stale: grey icon, the tooltip names its time and shows no watts or time left.
+3. The icon is drawn at run time from a 32-bit pixel buffer at the taskbar's size for the system DPI (the tray thread
+   is per-monitor DPI aware): a dark tile, the rounded charge in a 3x5 pixel font, a bar filled to the charge, green
+   on mains, amber on battery, grey unknown. It is rebuilt only when the digits, colour, staleness or size change; the
+   tooltip only when its text changes.
+4. The menu is Auto and the modes as one radio group, "Open panel" (the page through the shell, no window of ours),
+   "Exit tray" (the icon and its notifications go until the next start; the service runs on). The modes come through
+   a small port (list, current, select), today the page's Auto / Eco / Max; a choice goes to the same path as
+   `POST /api/mode`, off the tray thread.
+5. Explorer's restart (`TaskbarCreated`) adds the icon again; so does a taskbar that was not there yet when the
+   service started at logon.
+6. Notifications are shell balloons (`NIF_INFO`), shown by Windows 10 and 11 as toasts with no app registration or
+   AUMID, respecting quiet time. A WinRT toast would need a Start-menu shortcut with an AUMID for an unpackaged exe
+   and the WinRT notification projection in the NativeAOT image. Without the icon there is nowhere to show them.
+7. Sources: each stored event (a hook on the store, so every writer's events count) by kind: `eco-on`, `mains-back`,
+   `mode-dropped` (mode changes); `emergency-on`, `stop`, `hibernate-warning` (low battery); `action-failed`,
+   `mode-refused` (failures); `grid-voltage-high` (faults). Mains lost and back follow the confirmed cut between two
+   snapshots, never the first one after a start. Station faults, warnings and over-temperature come as the whole
+   active list per reading (`TrayController.ReportAlarms`): an alarm notifies when it appears, not while it stays.
+8. Each group is switched in `notifications.json`, read at start and on each `PUT /api/settings/notifications`
+   (all or nothing, written as a temp file moved over the old one); a change applies to the next notification.

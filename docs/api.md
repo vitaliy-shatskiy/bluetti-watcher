@@ -8,10 +8,10 @@ or Unix milliseconds.
 
 - Every request: the `Host` header must be exactly `127.0.0.1:<port>` or `localhost:<port>`; anything else is `403
   forbidden: foreign Host`. This blocks DNS rebinding.
-- `POST /api/mode` and `POST /api/return-plan` also need the header `X-Station: 1` and an `Origin` that is absent or the service's own
+- `POST /api/mode`, `POST /api/return-plan` and `PUT /api/settings/notifications` also need the header `X-Station: 1` and an `Origin` that is absent or the service's own
   (`http://127.0.0.1:<port>` or `http://localhost:<port>`); else 403 with the reason. A web page on another origin
   cannot send the custom header without a CORS preflight, and the service never sends a CORS header.
-- Wrong method: 405 (`POST only` for `/api/mode`, `GET only` elsewhere; `/api/return-plan` takes both). Unknown path: 404.
+- Wrong method: 405 (`POST only` for `/api/mode`, `GET or PUT only` for `/api/settings/notifications`, `GET only` elsewhere; `/api/return-plan` takes both). Unknown path: 404.
 
 ## GET /
 
@@ -130,3 +130,15 @@ mode and actions"; the power-mode commands have their own limit, `powerModeTimeo
 
 Answer: `{ "ok", "accepted", "manual", "message", "code" }`. 202 = saved; the service loop applies it. 409 = Max or Eco refused
 during a battery emergency (`code` names it: `max-held`, `eco-held`). 400 = a body that is not JSON or a mode that is not one of the three.
+
+## GET /api/settings/notifications, PUT /api/settings/notifications
+
+Which Windows notifications show (`notifications.json`, [configuration.md](configuration.md), Notifications).
+GET answers `{ "mains", "modeChanges", "lowBattery", "failures", "faults", "overTemperature" }`, each true or false.
+PUT body: any of these keys with true or false, headers per the guard above; the rest keep their value. All or nothing:
+an unknown key or a value that is not a boolean is 400 and changes nothing. 200 answers the whole set as saved (a temp
+file moved over the old one); the next notification follows it, no restart.
+
+```powershell
+Invoke-RestMethod -Method Put -Uri http://127.0.0.1:18940/api/settings/notifications -Headers @{ 'X-Station' = '1' } -ContentType 'application/json' -Body '{"modeChanges":false}'
+```
