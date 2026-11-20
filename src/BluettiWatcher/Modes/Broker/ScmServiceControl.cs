@@ -109,17 +109,8 @@ internal sealed partial class ScmServiceControl(TimeProvider time) : IServiceCon
         finally { CloseServiceHandle(scm); }
     }
 
-    private static BrokerResult ReadStartType(nint svc, string name)
-    {
-        // QUERY_SERVICE_CONFIGW: dwServiceType, then dwStartType; the strings after them are not read.
-        var buffer = new byte[8192];
-        if (!QueryServiceConfigW(svc, buffer, (uint)buffer.Length, out _)) return WinError($"the start type of {name} could not be read");
-        uint start = BitConverter.ToUInt32(buffer, 4);
-        int delayed = 0;
-        if (start == 2 && !QueryServiceConfig2W(svc, DelayedAutoStartInfo, ref delayed, 4, out _)) return WinError($"the delayed start of {name} could not be read");
-        var match = StartTypes.FirstOrDefault(p => p.Value == (start, start == 2 && delayed != 0));
-        return new(true, null, match.Key ?? $"start type {start.ToString(CultureInfo.InvariantCulture)}");
-    }
+    private static BrokerResult ReadStartType(nint svc, string name) =>
+        Modules.WindowsServiceReader.StartType(svc) is { } type ? new(true, null, type) : WinError($"the start type of {name} could not be read");
 
     [LibraryImport("advapi32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
@@ -130,16 +121,6 @@ internal sealed partial class ScmServiceControl(TimeProvider time) : IServiceCon
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool ChangeServiceConfig2W(nint service, uint level, ref int info);
-
-    [LibraryImport("advapi32.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool QueryServiceConfigW(nint service, [Out] byte[] buffer, uint size, out uint needed);
-
-    [LibraryImport("advapi32.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool QueryServiceConfig2W(nint service, uint level, ref int buffer, uint size, out uint needed);
 
     [LibraryImport("advapi32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

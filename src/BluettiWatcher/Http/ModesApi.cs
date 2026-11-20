@@ -66,7 +66,7 @@ internal sealed class ModesApi(StationConfig config, ModesEngine engine)
         const string prefix = "/api/modes/";
         if (!path.StartsWith(prefix, StringComparison.Ordinal)) return null;
         string id = path[prefix.Length..];
-        return id is "rules" or "select" or "catalogue" or "journal" || !ModesValidation.ValidId(id) ? null : id;
+        return ModesValidation.ReservedIds.Contains(id) || !ModesValidation.ValidId(id) ? null : id;
     }
 
     private HttpResponse Answer((int Status, string Error) res) =>

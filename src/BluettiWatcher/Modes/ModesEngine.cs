@@ -153,6 +153,7 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
     {
         bool exists = s.Modes.Any(m => m.Id == mode.Id);
         if (create && exists) return (s, $"409:mode {mode.Id} exists");
+        if (create && s.Modes.Count >= ModesValidation.MaxModes) return (s, $"409:at most {ModesValidation.MaxModes.ToString(CultureInfo.InvariantCulture)} modes");
         if (!create && !exists) return (s, $"404:no mode {mode.Id}");
         if (ModesValidation.Mode(mode, registry) is { Count: > 0 } bad) return (s, "400:" + string.Join("; ", bad));
         var put = mode with { BuiltIn = BuiltInModes.IsBuiltIn(mode.Id) };

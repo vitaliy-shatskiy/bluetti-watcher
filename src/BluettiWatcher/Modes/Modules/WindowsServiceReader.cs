@@ -86,21 +86,34 @@ internal sealed partial class WindowsServiceReader : IServiceReader
 
     private static int Align(int size, int to) => (size + to - 1) / to * to;
 
-    /// <summary>QUERY_SERVICE_CONFIGW.dwStartType (offset 4) and the delayed-start flag; null when unreadable.</summary>
-    private static string? StartType(nint svc)
+    /// <summary>
+    /// QUERY_SERVICE_CONFIGW.dwStartType (offset 4) and the delayed-start flag; null when unreadable. The one start-type
+    /// reader: the broker's <c>service.setStartType</c> reads its result back through it too.
+    /// </summary>
+    internal static string? StartType(nint svc)
     {
         int raw = ReadConfig(svc, delayed: false);
         if (raw < 0) return null;
-        return raw switch
+        bool delayed = false;
+        if (raw == 2)
         {
-            0 => "boot",
-            1 => "system",
-            2 => ReadConfig(svc, delayed: true) == 1 ? "delayedAutomatic" : "automatic",
-            3 => "manual",
-            4 => "disabled",
-            _ => "unknown",
-        };
+            int flag = ReadConfig(svc, delayed: true);
+            if (flag < 0) return null;
+            delayed = flag == 1;
+        }
+        return StartTypeName(raw, delayed);
     }
+
+    /// <summary>The name of a SERVICE_*_START value, as the modes and the broker's requests spell it.</summary>
+    internal static string StartTypeName(int start, bool delayed) => start switch
+    {
+        0 => "boot",
+        1 => "system",
+        2 => delayed ? "delayedAutomatic" : "automatic",
+        3 => "manual",
+        4 => "disabled",
+        _ => "unknown",
+    };
 
     private static int ReadConfig(nint svc, bool delayed)
     {

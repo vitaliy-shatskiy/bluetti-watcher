@@ -79,6 +79,43 @@ public sealed class ModesApiTests : IDisposable
         Assert.Contains("rules[0].modeId", Encoding.UTF8.GetString(r.Body), StringComparison.Ordinal);
     }
 
+    private static string ModeBody(string id, string name = "\"Quiet\"") =>
+        $$"""{"id":"{{id}}","name":{{name}},"flagWord":"eco","actions":[]}""";
+
+    [Theory]
+    [InlineData("auto")]
+    [InlineData("journal")]
+    [InlineData("rules")]
+    [InlineData("select")]
+    [InlineData("catalogue")]
+    public async Task Mode_CreateWithAReservedId_Is400(string id)
+    {
+        var r = await _api.HandleAsync(Req("POST", "/api/modes", ModeBody(id)), TestContext.Current.CancellationToken);
+
+        Assert.Equal(400, r.Status);
+        Assert.DoesNotContain(_engine.Settings.Modes, m => m.Id == id);
+    }
+
+    [Fact]
+    public async Task Mode_CreateWithANullName_Is400()
+    {
+        var r = await _api.HandleAsync(Req("POST", "/api/modes", ModeBody("quiet", "null")), TestContext.Current.CancellationToken);
+
+        Assert.Equal(400, r.Status);
+    }
+
+    [Fact]
+    public async Task Mode_CreatePastMaxModes_IsRefused()
+    {
+        for (int i = _engine.Settings.Modes.Count; i < ModesValidation.MaxModes; i++)
+            Assert.Equal(200, (await _api.HandleAsync(Req("POST", "/api/modes", ModeBody($"m{i}")), TestContext.Current.CancellationToken)).Status);
+
+        var r = await _api.HandleAsync(Req("POST", "/api/modes", ModeBody("one-more")), TestContext.Current.CancellationToken);
+
+        Assert.Equal(409, r.Status);
+        Assert.Equal(ModesValidation.MaxModes, _engine.Settings.Modes.Count);
+    }
+
     [Fact]
     public async Task Mode_CreateThenDelete_RoundTrips()
     {
