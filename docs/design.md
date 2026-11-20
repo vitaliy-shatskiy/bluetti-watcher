@@ -469,7 +469,7 @@ started on demand (`schtasks /run`), and wait up to 10 s for the answer.
    older than `maxGapSec` is stale: grey icon, no watts.
 3. The icon is drawn at the taskbar's DPI size: the charge in a 3x5 pixel font and a bar, green on mains, amber on
    battery, grey unknown; rebuilt only when it changes.
-4. **Menu:** Auto and the modes as one radio group (under `legacy` Auto / Eco / Max), "Open panel", "Exit tray" (the
+4. **Menu:** Auto and the modes as one radio group (under `legacy` Auto / Eco / Max), "Open panel", "Exit tray" (in the page's language, `TrayWords`; the
    service runs on). Explorer restarts (`TaskbarCreated`) add the icon again.
 5. **Toasts** under the app id `BluettiWatcher`, set on the Start-menu shortcut by the installer; a click opens the
    page by protocol activation. Without that shortcut, or when a toast fails, a shell balloon (`NIF_INFO`) instead.

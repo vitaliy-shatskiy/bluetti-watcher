@@ -122,7 +122,8 @@ Without the broker the service runs fine; only the actions that need it report s
   mode, edits modes and rules, and turns hibernation on or off.
 - **Tray icon**: the charge as digits over a bar, green on mains, amber on battery, grey with no fresh reading. The
   tooltip gives the watts, the mode and the time left; a click opens Auto, every mode, "Open panel" and "Exit tray"
-  (hides the icon until the service restarts; the service keeps running).
+  (hides the icon until the service restarts; the service keeps running). The menu, tooltip and notifications speak the
+  language last chosen on the page (English or Ukrainian).
 - **Notifications**: Windows toasts for mains lost and back, mode changes, low battery, failed actions, an admin broker
   older than the service, and station faults, warnings and over-temperature. Each group can be switched off on the page
   or in [`notifications.json`](docs/configuration.md#notifications-notificationsjson). No icon (`"tray": false` or
