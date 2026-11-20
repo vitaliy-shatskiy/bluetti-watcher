@@ -52,7 +52,10 @@ if (config.MutexWarning is { } mutexWarning)
 }
 // The wake of a PC hibernated in a cut: armed only with wakeEveryMinutes > 0; turned off at the first reading on mains whatever it says.
 var wake = new WakeKeeper(config, new ScheduledWakeTask(config, runner, Log), store, Log);
-// Bluetooth first; when it misses, the BLUETTI cloud (design.md §4 Cloud fallback), on whenever its token file exists (read at each poll, so a token made while running counts) unless cloudEnabled is false.
+// The page's reading-source choice, saved in the data directory, wins over the config key (design.md §4 Reading source).
+config.PageSource = ReadingSourceFile.Read(config.DataDir, Log);
+// Under the auto source: Bluetooth first; when it misses, the BLUETTI cloud (design.md §4 Cloud fallback), on whenever its token file exists (read at each poll, so a token made while running counts) unless cloudEnabled is false.
+// The source is read at each poll: bluetooth never calls the cloud, cloud never opens Bluetooth.
 using var cloudHttp = new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(10) };
 // The serial an earlier history run saved for this station type: the history session then skips the device list, which the cloud has left unanswered.
 using var cloud = BluettiCloudReader.ForService(config, cloudHttp, time, Log, store);
@@ -63,7 +66,7 @@ using var historyReader = new CloudHistoryReader(historyHttp);
 using var backfill = new CloudBackfill(config, historyReader, cloud.HistorySessionAsync, store, time, Log, cloud.ForgetSerial);
 // Bluetooth: the built-in WinRT reader, IoT V1 and V2 models, read only (Io/Ble).
 var bluetooth = new NativeBleReader(config, new WinRtBleConnector(), Log);
-using var service = new StationService(config, new FallbackReader(bluetooth, cloud, () => config.CloudOn, r => StationDecision.Check(r, new StationState(), time.GetUtcNow(), config), Log), new PowerModeAdapter(config, runner, Log, new BluettiWatcher.PowerMode.InProcessPowerMode()),
+using var service = new StationService(config, new FallbackReader(bluetooth, cloud, () => config.CloudOn, r => StationDecision.Check(r, new StationState(), time.GetUtcNow(), config), Log, () => config.CloudOnly), new PowerModeAdapter(config, runner, Log, new BluettiWatcher.PowerMode.InProcessPowerMode()),
     config.DryRun ? new DryRunHibernator(Log) : new ShutdownHibernator(runner, Log),
     new FlagFileReader(config.FlagFile, Log, config.PowerModeMutex), store, time, Log, wake, new StateActions(config, runner, store, time, Log));
 service.Compact();
@@ -72,24 +75,29 @@ var started = time.GetLocalNow();
 // The outage schedule: its own task and cadence, never on the poll path; off (no source, no request) unless dtekWatcher.enabled.
 // The guard is the module's whole boundary: no call into it ever throws into this loop or into /api/now.
 using var dtek = DtekWatcherGuard.Create(config, store, time, Log);
+using var stop = new CancellationTokenSource();
+// The page's sign-in: the --cloud-login flow inside the service, its catcher on a port the OS assigns; the token is written through the reader's lock.
+using var signInHttp = new SocketsHttpHandler();
+using var account = new CloudAccount(config, cloud, signInHttp, time, Log, stop.Token);
 var api = new StationApi(config, service, store, time, started, dtek, Log, () => bluetooth.StationEncrypted, () => bluetooth.BluetoothStalled,
         () =>
         {
             using var planSwitch = new BluettiWatcher.PowerMode.PowerModeSwitch([.. BluettiWatcher.PowerMode.PowerModeSwitch.ProcessEnvironment(), .. config.PowerModeEnvironment], TextWriter.Null);
             return planSwitch.ActivePlan();
-        });
+        }, account);
 using var http = new MiniHttpServer(IPAddress.Loopback, config.Port, api.HandleAsync, Log);
 try { http.Start(); }
 catch (SocketException e) { Log($"DID NOT RUN - 127.0.0.1:{config.Port} is taken ({e.SocketErrorCode})"); return 2; }
 
-using var stop = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
 AppDomain.CurrentDomain.ProcessExit += (_, _) => stop.Cancel();
-Log($"Bluetti Watcher started: http://127.0.0.1:{config.Port}/ · reader {(config.CloudOnly ? "cloud only" : "Bluetooth")} · data {config.DataDir}{(config.CloudOn ? " · cloud fallback" : "")}{(config.DryRun ? " · DRY RUN" : "")}");
+Log($"Bluetti Watcher started: http://127.0.0.1:{config.Port}/ · source {ReadingSourceFile.Name(config.Source)}{(config.PageSource is null ? "" : " (set on the page)")} · reader {(config.CloudOnly ? "cloud only" : "Bluetooth")} · data {config.DataDir}{(config.CloudOn ? " · cloud fallback" : "")}{(config.DryRun ? " · DRY RUN" : "")}");
 
 var serving = http.RunAsync(stop.Token);
 var scheduleReads = dtek.RunAsync(stop.Token);
 var historyRuns = backfill.RunAsync(stop.Token);
+// The token is refreshed once a day while the source allows the cloud, even when Bluetooth answers (design.md §4 AC11).
+var keepAlive = cloud.RunKeepAliveAsync(stop.Token);
 // A page choice applies when it is saved, never after a station read that is still running.
 var presses = service.RunPressesAsync(stop.Token);
 long lastCompact = time.GetTimestamp();
@@ -135,6 +143,7 @@ catch (OperationCanceledException)
 await serving;
 await scheduleReads;
 await historyRuns;
+await keepAlive;
 try { await presses; }
 catch (OperationCanceledException) { /* the press loop ends with the stop */ }
 Log("stopped");

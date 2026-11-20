@@ -105,7 +105,28 @@ internal sealed class StationConfig
     /// <summary>The wake task install.ps1 registers (disabled, WakeToRun, a no-op as the current user).</summary>
     public string WakeTaskName { get; set; } = "BluettiWatcherWake";
 
-    /// <summary>The BLUETTI cloud fallback when Bluetooth misses (design.md §4 Cloud fallback): not set = on when the token file exists at start; false = off.</summary>
+    /// <summary>
+    /// Where readings come from (design.md §4 Reading source): auto (Bluetooth, the cloud when it misses), bluetooth (never
+    /// the cloud) or cloud (never Bluetooth). Not set = auto, or bluetooth when <see cref="CloudEnabled"/> is false. The page's
+    /// choice (<see cref="PageSource"/>) wins over it.
+    /// </summary>
+    public ReadingSource? ReadingSource { get; set; }
+
+    private volatile int _pageSource = -1;
+
+    /// <summary>The page's choice, saved in reading-source.json; null = none. Read at every poll: a change needs no restart.</summary>
+    [JsonIgnore]
+    public ReadingSource? PageSource
+    {
+        get => _pageSource < 0 ? null : (ReadingSource)_pageSource;
+        set => _pageSource = value is { } v ? (int)v : -1;
+    }
+
+    /// <summary>The source in force: the page's choice, then <c>readingSource</c>, then <c>cloudEnabled: false</c> = bluetooth, else auto.</summary>
+    [JsonIgnore]
+    public ReadingSource Source => PageSource ?? ReadingSource ?? (CloudEnabled == false ? BluettiWatcher.ReadingSource.Bluetooth : BluettiWatcher.ReadingSource.Auto);
+
+    /// <summary>The BLUETTI cloud fallback when Bluetooth misses (design.md §4 Cloud fallback): not set = on when the token file exists; false = off. Read under the auto source only.</summary>
     public bool? CloudEnabled { get; set; }
     /// <summary>The cloud token file; not set = cloud-token.json in the data directory.</summary>
     public string? CloudTokenPath { get; set; }
@@ -192,7 +213,7 @@ internal sealed class StationConfig
 
     /// <summary>The model is not one Bluetooth reads, and the cloud fallback is on: the cloud alone reads the station.</summary>
     [JsonIgnore]
-    public bool CloudOnly => CloudOn && !BleModels.TryGet(Type, out _);
+    public bool CloudOnly => Source == BluettiWatcher.ReadingSource.Cloud || (CloudOn && !BleModels.TryGet(Type, out _));
 
     /// <summary>
     /// Why Bluetooth cannot read this station: a model that is not one of the 29 IoT V1 and V2 models (an unknown name), or an address it cannot parse. Null when it can (a missing address is <see cref="MacProblem"/>).
@@ -202,6 +223,7 @@ internal sealed class StationConfig
     {
         get
         {
+            if (Source == BluettiWatcher.ReadingSource.Cloud) return null;   // Bluetooth is never opened
             string models = string.Join(", ", BleModels.Names);
             string cloud = CloudOn ? "the cloud fallback alone reads it" : "only the cloud fallback can read it (README, Optional modules)";
             if (!BleModels.TryGet(Type, out _))
@@ -234,10 +256,16 @@ internal sealed class StationConfig
     [JsonIgnore]
     public string CloudTokenFile => CloudTokenPath ?? Path.Combine(DataDir, "cloud-token.json");
 
+    /// <summary>The cloud may be called: never under the bluetooth source, always under the cloud source, under auto as <see cref="CloudEnabled"/> says.</summary>
     [JsonIgnore]
-    public bool CloudOn => CloudEnabled ?? File.Exists(CloudTokenFile);
+    public bool CloudOn => Source switch
+    {
+        BluettiWatcher.ReadingSource.Bluetooth => false,
+        BluettiWatcher.ReadingSource.Cloud => true,
+        _ => CloudEnabled ?? File.Exists(CloudTokenFile),
+    };
 
-    /// <summary>The cloud history back-fill (design.md §4a): with the cloud fallback on and its token file present, unless <see cref="CloudHistory"/> is false.</summary>
+    /// <summary>The cloud history back-fill (design.md §4a): with the cloud allowed by the source and its token file present, unless <see cref="CloudHistory"/> is false.</summary>
     [JsonIgnore]
     public bool CloudHistoryOn => CloudHistory != false && CloudOn && File.Exists(CloudTokenFile);
 

@@ -11,16 +11,24 @@ namespace BluettiWatcher.Io;
 /// <paramref name="check"/> is the decision's own acceptance check (<c>""</c> = accepted): a Bluetooth reading it rejects as incomplete
 /// (a model with no mode, a field that did not answer) is read again from the cloud, and the cloud's reading is used when it passes;
 /// otherwise the Bluetooth reading goes on as it is, so the decision records the miss. <paramref name="log"/> names the answering
-/// source once per change.
+/// source once per change. <paramref name="cloudOnly"/>, asked at each poll as well (the reading source may change while the
+/// service runs): true = Bluetooth is never opened, the cloud alone reads.
 /// </summary>
-internal sealed class FallbackReader(IStationReader bluetooth, IStationReader? cloud, Func<bool>? cloudOn = null, Func<Reading, string>? check = null, Action<string>? log = null) : IStationReader
+internal sealed class FallbackReader(IStationReader bluetooth, IStationReader? cloud, Func<bool>? cloudOn = null, Func<Reading, string>? check = null, Action<string>? log = null,
+    Func<bool>? cloudOnly = null) : IStationReader
 {
     private string? _state = "Bluetooth answers";
 
     public async Task<Reading?> ReadAsync(CancellationToken ct)
     {
-        var r = await bluetooth.ReadAsync(ct);
         bool cloudReady = cloud is not null && cloudOn?.Invoke() != false;
+        if (cloudOnly?.Invoke() == true)
+        {
+            var only = cloudReady ? await cloud!.ReadAsync(ct) : null;
+            State(only is null ? "no source answers (cloud only)" : "cloud answers (cloud only)");
+            return only is null ? null : only with { Source = "cloud" };
+        }
+        var r = await bluetooth.ReadAsync(ct);
         if (r is not null)
         {
             string why = check?.Invoke(r) ?? "";
@@ -89,6 +97,18 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
     private string? _serial;
     private double? _staleSoc;
     private DateTimeOffset _staleSocSince;
+    /// <summary>
+    /// The refresh token the server refused (HTTP 400, 401 or 403: a dead grant, not a hiccup) and when; until a new sign-in
+    /// or <see cref="RefusedHold"/> passes it is not sent again, nor a read with the access token that answered 805.
+    /// Only compared, never logged.
+    /// </summary>
+    private volatile Refusal? _refused;
+    /// <summary>The last read's outcome for <see cref="Status"/>; null = no read since the start or the last sign-in.</summary>
+    private volatile Outcome? _outcome;
+    internal static readonly TimeSpan RefusedHold = TimeSpan.FromHours(6);
+
+    private sealed record Refusal(string Refresh, string? DeadAccess, int Http, DateTimeOffset At);
+    private sealed record Outcome(bool Ok, string Why, DateTimeOffset At);
 
     /// <summary>The cap on each request.</summary>
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(15);
@@ -123,7 +143,99 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
         {
             var (r, why) = await ReadOnceAsync(ct);
             if (r is null) log($"cloud: no reading - {why}");
+            _outcome = new Outcome(r is not null, why, time.GetUtcNow());
             return r;
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// The cloud's state for the page and /api/health (design.md §4 Cloud state): off (the source never calls it) ·
+    /// signed-out (no token file) · sign-in-needed (the server refused the refresh token) · error (the last read failed) ·
+    /// ok. The detail names the reason, never a token.
+    /// </summary>
+    public CloudStatus Status()
+    {
+        if (config.Source == ReadingSource.Bluetooth) return new CloudStatus("off", "the reading source is Bluetooth only", null);
+        if (config.Source == ReadingSource.Auto && config.CloudEnabled == false) return new CloudStatus("off", "cloudEnabled is false", null);
+        if (!File.Exists(config.CloudTokenFile)) return new CloudStatus("signed-out", "no token: sign in to the BLUETTI cloud", null);
+        if (_refused is { } refused)
+            return new CloudStatus("sign-in-needed", Invariant($"the token refresh was refused (HTTP {refused.Http}): sign in again"), refused.At);
+        if (_outcome is { } o) return o.Ok ? new CloudStatus("ok", "the last read answered", o.At) : new CloudStatus("error", o.Why, o.At);
+        var (t, why) = LoadToken();
+        return t is null
+            ? new CloudStatus("error", why, null)
+            : new CloudStatus("ok", Invariant($"signed in, not read yet; the access token {(t.ExpiresAt > time.GetUtcNow() ? "is valid until" : "expired at")} {t.ExpiresAt:yyyy-MM-dd'T'HH:mm:ss'Z'}"), null);
+    }
+
+    /// <summary>A token pair older than this is refreshed by <see cref="KeepAliveAsync"/> even when no read needs the cloud.</summary>
+    internal static readonly TimeSpan KeepAliveEvery = TimeSpan.FromDays(1);
+    private DateTimeOffset? _keepAliveFailedAt;
+
+    /// <summary>
+    /// design.md §4 AC11: under the auto source a healthy Bluetooth never calls the cloud, so without this the pair is never
+    /// refreshed and lapses unnoticed. When the source allows the cloud and a token exists, a pair issued
+    /// <see cref="KeepAliveEvery"/> ago (or expiring within <see cref="RefreshAhead"/>) is refreshed; a refused refresh
+    /// turns the state to sign-in-needed and is held as any refusal; another failure waits an hour.
+    /// </summary>
+    internal async Task KeepAliveAsync(CancellationToken ct)
+    {
+        if (!config.CloudOn) return;
+        await _gate.WaitAsync(ct);
+        try
+        {
+            var (token, _) = CurrentToken();
+            if (token is null || HeldRefusal(token) is not null) return;
+            var now = time.GetUtcNow();
+            bool due = token.ExpiresAt - now < RefreshAhead || now - DateTimeOffset.FromUnixTimeSeconds(token.CreatedAt) >= KeepAliveEvery;
+            if (!due || (_keepAliveFailedAt is { } failedAt && now - failedAt < EarlyRefreshHold)) return;
+            var (fresh, why) = await RefreshAsync(token, ct);
+            if (fresh is not null)
+            {
+                _keepAliveFailedAt = null;
+                log("cloud: the token was refreshed (daily keep-alive)");
+                return;
+            }
+            _keepAliveFailedAt = now;
+            _outcome = new Outcome(false, $"the daily token refresh failed - {why}", now);
+            log($"cloud: the daily token refresh failed - {why}");
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>Runs <see cref="KeepAliveAsync"/> once an hour until <paramref name="ct"/> ends; one failure never stops it.</summary>
+    internal async Task RunKeepAliveAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try { await KeepAliveAsync(ct); }
+            catch (Exception e) when (e is not OperationCanceledException) { log($"cloud: keep-alive failed: {e.GetType().Name}"); }
+            try { await Task.Delay(TimeSpan.FromHours(1), time, ct); }
+            catch (OperationCanceledException) { return; }
+        }
+    }
+
+    /// <summary>
+    /// A new sign-in (<paramref name="token"/>) or a sign-out (null): the token file is written or deleted under the reader's
+    /// lock, so no read in flight writes an older refreshed pair over it; what the reader held for the old token is dropped.
+    /// Throws IOException / UnauthorizedAccessException when the file cannot be written or deleted.
+    /// </summary>
+    internal async Task ReplaceTokenAsync(CloudToken? token, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            string path = config.CloudTokenFile;
+            if (token is null) File.Delete(path);
+            else
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+                Save(path, token);
+            }
+            _unsaved = null;
+            _refused = null;
+            _outcome = null;
+            _earlyRefreshFailedAt = null;
         }
         finally { _gate.Release(); }
     }
@@ -213,10 +325,13 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
     {
         var (token, refreshed, why) = await FreshTokenAsync(ct);
         if (token is null) return (null, why);
+        // The access token already answered 805 and its refresh was refused: no call can succeed until a new sign-in.
+        if (HeldRefusal(token) is { } held && held.DeadAccess == token.Access) return (null, SignInNeeded(held));
         var answer = await DevicesAsync(token.Access, ct);
         if (answer.MsgCode != Expired) return (answer.Reading, answer.Why);
         if (refreshed) return (null, $"msgCode {Expired} (token expired) after a token refresh");
         var (renewed, refreshWhy) = await RefreshAsync(token, ct);
+        if (renewed is null && _refused is { } refused && refused.Refresh == token.Refresh) _refused = refused with { DeadAccess = token.Access };
         if (renewed is null) return (null, $"msgCode {Expired} (token expired) and {refreshWhy}");
         answer = await DevicesAsync(renewed.Access, ct);
         return answer.MsgCode == Expired ? (null, $"msgCode {Expired} (token expired) after a token refresh") : (answer.Reading, answer.Why);
@@ -289,9 +404,22 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
         return (code, null, $"no {type} in the cloud account");
     }
 
+    /// <summary>A refused refresh token still held back: no call goes out with it until a new sign-in or the hold passes.</summary>
+    private Refusal? HeldRefusal(CloudToken token)
+    {
+        if (_refused is not { } r) return null;
+        if (r.Refresh == token.Refresh && time.GetUtcNow() - r.At < RefusedHold) return r;
+        if (r.Refresh != token.Refresh) _refused = null;   // a sign-in outside the page (--cloud-login) replaced the token
+        return null;
+    }
+
+    private static string SignInNeeded(Refusal r) =>
+        Invariant($"sign-in needed: the token refresh was refused (HTTP {r.Http}); sign in again on the page or with --cloud-login (no retry for {RefusedHold.TotalHours:0} h)");
+
     private async Task<(CloudToken? Token, string Why)> RefreshAsync(CloudToken token, CancellationToken ct)
     {
         if (token.Refresh.Length == 0) return (null, "the token file has no refresh token");
+        if (HeldRefusal(token) is { } held) return (null, SignInNeeded(held));
         using var req = new HttpRequestMessage(HttpMethod.Post, new Uri(TokenUrl))
         {
             Content = new FormUrlEncodedContent([
@@ -300,6 +428,13 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
         };
         var (status, body, why) = await SendAsync(req, ct);
         if (body is null) return (null, $"the token refresh {why}");
+        if (status is HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            // A dead grant answers the same every time: held back instead of sent at every poll.
+            var refused = new Refusal(token.Refresh, null, (int)status, time.GetUtcNow());
+            _refused = refused;
+            return (null, SignInNeeded(refused));
+        }
         if (status != HttpStatusCode.OK) return (null, Invariant($"the token refresh answered HTTP {(int)status}"));
         CloudToken? fresh;
         try

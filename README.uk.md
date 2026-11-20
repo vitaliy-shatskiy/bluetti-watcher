@@ -186,7 +186,11 @@ Bluetti Watcher - незалежний проєкт, не пов'язаний з
 - **Модуль ДТЕК** (Київщина, типово вимкнений): найближче планове відключення вашої черги, очікуване повернення світла
   і чи вистачить батареї; [docs/design.md](docs/design.md#11-dtek-module-planned-outages-kyiv-region).
 - **Резервне зчитування з хмари** (неофіційне, лише читання): коли Bluetooth не відповідає, дані беруться з хмари
-  BLUETTI; [docs/design.md](docs/design.md#4-cloud-fallback).
+  BLUETTI. Увійдіть на панелі кнопкою «Увійти в хмару BLUETTI» (або один раз через
+  `& "$env:LOCALAPPDATA\bluetti-watcher\bin\BluettiWatcher.exe" --cloud-login`); панель показує стан хмари й просить
+  увійти знову, коли BLUETTI відхиляє збережений токен. Кнопки «Джерело даних» (або `readingSource` у config.json)
+  вибирають Авто (Bluetooth, потім хмара), лише Bluetooth (без хмари) або лише хмару (без Bluetooth);
+  [docs/design.md](docs/design.md#4-cloud-fallback).
 - **Інтеграція з Claude Code**: `BluettiWatcher.exe hook` повідомляє кожній сесії Claude Code на цьому комп'ютері режим
   живлення й заряд, Node.js не потрібен; [integrations/claude-code](integrations/claude-code/README.md).
 
