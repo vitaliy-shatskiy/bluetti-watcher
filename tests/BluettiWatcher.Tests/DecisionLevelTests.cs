@@ -25,7 +25,7 @@ public class DecisionLevelTests
 
     private static int IndexOf(List<StationDecisionResult> d, string action) => d.FindIndex(x => Flat([x]).Contains(action));
 
-    // CS-1829: at 16 % with hibernateAt 15 the warning is given, the PC does not hibernate: the level must not say it does.
+    // at 16 % with hibernateAt 15 the warning is given, the PC does not hibernate: the level must not say it does.
     [Fact]
     public void Level_at_the_warning_above_hibernateAt_never_reads_hibernating()
     {
@@ -54,7 +54,7 @@ public class DecisionLevelTests
         Assert.Contains("\"Hibernating\"", JsonSerializer.Serialize(s, StationJson.Default.StationState), StringComparison.Ordinal);
     }
 
-    // CS-1146: at 90 %/h the soc crosses warn and hibernate within a few polls; the raised levels give the warning early
+    // at 90 %/h the soc crosses warn and hibernate within a few polls; the raised levels give the warning early
     // enough that the hibernate comes at the first poll its own agreement allows (2 readings a minute apart at or under 15 %).
     [Fact]
     public void High_drain_warning_comes_early_and_hibernate_fires_at_its_first_agreed_poll()
@@ -69,7 +69,7 @@ public class DecisionLevelTests
         Assert.True(IndexOf(plain, "hibernate") > hib, "without the drain the hibernate comes later (the defect)");
     }
 
-    // CS-1146: a low drain leaves every level where the config puts it.
+    // a low drain leaves every level where the config puts it.
     [Fact]
     public void Low_drain_keeps_the_configured_levels()
     {
@@ -79,7 +79,7 @@ public class DecisionLevelTests
         Assert.Equal(AllActs(Step(Minutely(Fall), Station, cfg: c)), AllActs(Step(Minutely(Fall), Station, cfg: c, drain: _ => 3)));
     }
 
-    // CS-1146 fail-open: no estimate, a stale one (the service passes null), zero, negative, NaN, infinite = the configured levels.
+    // Fail-open: no estimate, a stale one (the service passes null), zero, negative, NaN, infinite = the configured levels.
     [Theory]
     [InlineData(null)]
     [InlineData(0.0)]
@@ -92,7 +92,7 @@ public class DecisionLevelTests
         Assert.Equal((20.0, 17.0, 16.0, 15.0, (double?)null), (th.EmergencyAt, th.StopAt, th.WarnAt, th.HibernateAt, th.DrainPerHour));
     }
 
-    // CS-1146: one wild sample is capped; it never moves hibernateAt and never warns or hibernates at 80 %.
+    // one wild sample is capped; it never moves hibernateAt and never warns or hibernates at 80 %.
     [Fact]
     public void Huge_drain_is_capped_and_never_moves_hibernateAt()
     {
@@ -105,7 +105,7 @@ public class DecisionLevelTests
         Assert.DoesNotContain(Flat(d), a => a is "stop" or "hibernate-warning" or "hibernate");
     }
 
-    // CS-1146: the levels only rise and keep their order (emergency >= stop >= warn >= hibernate).
+    // the levels only rise and keep their order (emergency >= stop >= warn >= hibernate).
     [Theory]
     [InlineData(3.0)]
     [InlineData(30.0)]
@@ -120,7 +120,7 @@ public class DecisionLevelTests
         Assert.True(th.EmergencyAt <= 100);
     }
 
-    // CS-1146 default-deny: whatever the drain does from poll to poll (flapping, spikes, gaps), the hibernate still comes,
+    // Default-deny: whatever the drain does from poll to poll (flapping, spikes, gaps), the hibernate still comes,
     // never later than with the configured levels, and never above hibernateAt.
     [Theory]
     [InlineData("none")]
