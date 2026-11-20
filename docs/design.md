@@ -17,8 +17,8 @@ read-only features to come, are mapped in [bluetti-protocol.md](bluetti-protocol
 - Read only toward the station, forever. The Bluetooth reader can build one kind of frame, a read of holding
   registers (Modbus function 0x03) under register 2000, and its only GATT writes are that request and the
   notification subscription.
-- The BLUETTI cloud fallback (section 4) is read only the same way: it reads the device list and refreshes its token,
-  and its history back-fill (section 4a) reads two statistics endpoints, nothing else.
+- The BLUETTI cloud fallback (section 4) is read only the same way: it reads the station's live state and the device
+  list and refreshes its token, and its history back-fill (section 4a) reads two statistics endpoints, nothing else.
 - Never blocks or harms the PC on bad data: unknown beats wrong.
 
 ## 2. Architecture
@@ -48,8 +48,10 @@ read-only features to come, are mapped in [bluetti-protocol.md](bluetti-protocol
    shown on the page; the pack current does not feed the runtime estimate (the app reads it unsigned, so it does not say
    charge from discharge, and no V2 station was available to validate it). A new warning or fault, a code that clears
    and a temperature above `stationTempHighC` (re-armed 5 °C under it) each write an event row and run the matching
-   `actions` command. When opening the connection fails (GATT Unreachable, no ff01/ff02), the poll opens once more
-   before it gives up; when `readerTimeoutSec` runs out, the fields already read are kept as a partial reading and the log
+   `actions` command. Each connection open is capped at 40 % of `readerTimeoutSec` (12 s at the default 30 s) and cut
+   there even when the Bluetooth call ignores its cancellation (a link it hands over later is released), so two opens
+   leave at least 20 % of the budget for the register reads. When opening the connection fails (GATT Unreachable, no
+   ff01/ff02, the cap), the poll opens once more before it gives up; when `readerTimeoutSec` runs out, the fields already read are kept as a partial reading and the log
    names what the read was waiting for. An answer that timed out or came back invalid
    ends its connection and the next request goes over a new one; as a reconnect may reuse the radio link, an answer
    that an earlier unanswered request (of this poll or an earlier one) could have sent (same byte count, so any
@@ -137,9 +139,11 @@ store's upserts need it), named in one `service.log` line with the version found
 
 ## 4. Cloud fallback
 
-When Bluetooth does not answer, the reading may come from the BLUETTI cloud
-(`GET https://gw.bluettipower.com/api/bluiotdata/ha/v2/devices`, the API of BLUETTI's official Home Assistant
-integration) with the token in `cloud-token.json` (`cloudTokenPath`, default the data directory). It is opt-in:
+When Bluetooth does not answer, the reading may come from the BLUETTI cloud: the live state the official app reads
+(`POST https://gw.bluettipower.com/api/bluiotdata/realtime/v1/getDeviceLastAlive`, body `{"deviceSn"}`), with the token
+of BLUETTI's official Home Assistant integration in `cloud-token.json` (`cloudTokenPath`, default the data directory).
+The station's serial comes from that integration's device list (`GET .../api/bluiotdata/ha/v2/devices`), read only
+while no serial is known (none saved, or the history refused it); its values are never a reading. It is opt-in:
 `cloudEnabled` not set = on when the token file exists (checked at each poll); `true` = on; `false` = off.
 
 ### Reading source
@@ -187,18 +191,31 @@ file) · `ok` (the last read answered, or signed in and not read yet; the detail
   turns the state to `sign-in-needed` (AC10); another failure shows as `error` and waits an hour.
 
 - AC1: when Bluetooth returns a reading, the cloud is not called.
-- AC2: when Bluetooth returns nothing and the cloud returns the station (model starting with `type`, `online` "1",
-  `SOC` numeric), the reading is Soc = `SOC`, InAc = `GridAllTotalPower`, OutAc = `ACLoadAllTotalPower` if present
-  else null, the DC and voltage fields null.
+- AC2: when Bluetooth returns nothing and getDeviceLastAlive answers `allFieldIsNull` false, a numeric `batterySoc`
+  and a `timestamp` at most `cloudLiveMaxAgeSec` (120) seconds off the clock either way, the reading is Soc =
+  `batterySoc`, InAc = `powerGridIn`, OutAc = `powerAcOut`, InDc = `powerPvIn`, OutDc = `powerDcOut` (numbers as
+  strings or numbers; null = unknown), the voltage fields null, `lastSource` `cloud`. The `timestamp` is the station's
+  local time, read in this machine's time zone (the station and the machine are taken to share one zone; in the hour
+  a clock change repeats, the reading nearer now).
 - AC2a: the cloud has no output mode, and a reading without one is incomplete (section 3). The mode is derived:
-  `GridAllTotalPower` > 0 = `CLOUD_MAINS` (mains is on whatever the mode); `GridAllTotalPower` 0 with `SetCtrlAc` 1
-  and `ACLoadAllTotalPower` > 0 = `INVERTER_OUTPUT` (the AC load runs from the battery); anything else = no mode, so
-  the reading is incomplete. The cloud has answered an all-zero device state (SOC 0 %, 0 W in, 0 W out) while the
-  station ran on Bluetooth at a real charge: that answer derives no mode and is rejected as incomplete, which keeps a
-  false 0 % away from the stop and hibernate levels.
-- AC3: when the device is offline (`online` not "1"), the answer is not `msgCode` 0, `SOC` is missing or not a
-  number, HTTP fails or times out (15 s cap; a device list request with no answer at all is sent once more), or the
-  token file is missing or unreadable, the result is a miss with one log line naming why, never the token.
+  `powerGridIn` > 0 = `CLOUD_MAINS` (mains is on whatever the mode); `powerGridIn` 0 with `acSwitch` 1 and
+  `powerAcOut` > 0 = `INVERTER_OUTPUT` (the AC load runs from the battery); anything else = no mode, so the reading is
+  incomplete.
+- AC2b: the HA device list answered an all-zero state (SOC 0 %, 0 W in, 0 W out) for an AC200PL running on Bluetooth
+  at a real charge, while getDeviceLastAlive answered its real state. A live state with every field null
+  (`allFieldIsNull` true), no numeric SOC, a timestamp outside `cloudLiveMaxAgeSec`, or all zero is no live state:
+  never a reading, so a false 0 % never reaches the stop and hibernate levels nor a stored row. The newest point of today on the history's
+  power curve (§4a, the same read-only call) is the reading instead, `lastSource` `cloud-history`, while it is at most
+  `cloudHistoryMaxAgeMin` (10) minutes old; its mode is derived as in AC2a with the AC output taken as on when it feeds
+  a load, and the decision's checks (AC9 stale included) apply as to any cloud reading. At most one history call each
+  5 minutes (the last answer serves between them), counted in the back-fill's daily cap of 40 calls. An older or
+  missing point, a failed call or the cap reached is a plain miss (no reading). "cloud: no live state from
+  getDeviceLastAlive (<reason>)" is logged once until it answers a live state again; the history's outcome once each
+  time it changes.
+- AC3: when the answer is not `msgCode` 0, the device list holds no station of `type` (while the serial is looked
+  up), HTTP fails or times out (15 s cap; a live-state or device-list request with no answer at all is sent once
+  more), or the token file is missing or unreadable, the result is a miss with one log line naming why, never the
+  token. An offline station answers an old timestamp: no live state (AC2b).
 - AC4: when the access token expires within 3 days (`created_at` + `expires_in`) or the API answers `msgCode` 805,
   the reader refreshes once (`POST https://sso.bluettipower.com/oauth2/token`, `grant_type=refresh_token`), writes the
   token file atomically (temp file flushed to disk, then replace) and retries once; a failed refresh after 805 is a
@@ -207,8 +224,9 @@ file) · `ok` (the last read answered, or signed in and not read yet; the detail
 - AC4a: when a refresh succeeded but the token file cannot be written, the new pair is used from memory, logged, and
   written again on every poll until it is written; a pair the server issued is never thrown away. A token file that
   is not JSON (torn, zeroed) is logged as such.
-- AC5: the cloud client only GETs the devices endpoint and POSTs the token endpoint; no control, fulfilment or bind
-  call exists in the code (a test checks the client's URLs against an allow-list).
+- AC5: the cloud client only GETs the devices endpoint and POSTs the live-state and token endpoints (and the history's,
+  section 4a); no control, fulfilment or bind call exists in the code (a test checks the client's URLs against an
+  allow-list).
 - AC6: each accepted reading carries its source (`bluetooth` or `cloud`): every accepted cloud reading and the first
   Bluetooth one after it are logged with it (unchanged repeats folded into a count, section 2), a rejected reading's
   log line names it, and `/api/health` gives

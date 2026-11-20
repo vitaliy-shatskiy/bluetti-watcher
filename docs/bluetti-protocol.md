@@ -7,8 +7,8 @@ the station already reports. The watcher stays read only (see [design.md](design
 Source: the app `net.poweroak.bluetticloud`, `base.apk` sha256
 `2d4df0c9146cb93cd8f0cd4eb491300f113260fc685cb9b4bea472e3258a6a59`, decompiled with JADX. The app-derived sections (1 and
 up) are static analysis only: no device, no network, nothing executed. The "Verified on a live AC200PL" section comes
-from one read-only Modbus read and a Bluetooth HCI capture of the official app. Each app-derived fact names its
-evidence:
+from one read-only Modbus read and two Bluetooth HCI captures of the official app. The "Cloud read endpoints" section
+comes from read-only calls to the endpoints the app uses. Each app-derived fact names its evidence:
 
 - `[code: Class.method]` read in the decompiled method.
 - `[inferred]` derived from code, not read verbatim. The reasoning is given.
@@ -25,6 +25,15 @@ Read on a live station. These facts override the app-derived claims below.
   grid page.
 - A Bluetooth HCI capture of the official app talking to this station: the app reads **V1 only**, in three pages,
   start 10 count 59, start 70 count 87 and start 3000 count 91. It also writes a settings range.
+- A second capture (app 3.1.5, about 3 minutes, its screens clicked through): the app reads V1 start 1 count 16 once at
+  connect (model and version, ASCII), then start 10 count 59 and start 3000 count 91 every ~2 s. Start 70 count 87 is
+  read only on some screens. Start 5000 count 49 is read only while the station settings screens are open: it holds
+  the station's Wi-Fi settings (network name and address), which the watcher never logs or stores.
+- At connect the app **writes** 3031-3033 (function 0x10, 3 registers): the station clock as plain byte pairs (not BCD)
+  yy,MM / dd,HH / mm,ss, for example 0x1A0B 0x1412 0x1A12 = 26-11-20 18:26:18. The station keeps a clock; the watcher
+  never writes it.
+- Neither capture shows a history read over Bluetooth: the app's charts, SOC history, energy and outage statistics come
+  from the cloud (section 6).
 
 Values from the app's 70+87 answer, station in bypass. The app showed 224.0 V grid voltage a few minutes later.
 
@@ -288,3 +297,24 @@ register 2000.
 - Units of 104 and 105 (minutes is the likely one), and the codes of 103, 160, 161, 214.
 - The English texts of the warning and fault resource ids, and how the app formats a code (`codeFormat`).
 - The high-power tables (`invPowerType` 3) were not counted. Which `invPowerType` an AC200PL reports is not known.
+
+## 6. Cloud read endpoints (from the app, verified live)
+
+Read-only calls the official app makes to `https://gw.bluettipower.com`, each sent once by hand to the AC200PL's account
+with the watcher's token and headers (`Authorization` raw, `x-os`, `x-app-key`, `x-app-ver`), all `POST` with a JSON
+body. Every answer is `{msgCode, message, data}`, `msgCode` 0 = OK.
+
+- `/api/bluiotdata/realtime/v1/getDeviceLastAlive`, body `{"deviceSn": "<sn>"}`: the live state the app shows. `data`
+  is one flat object with numbers as strings: `timestamp` `"yyyy-MM-dd HH:mm:ss"` in the station's local time,
+  `batterySoc` (%), `powerGridIn`, `powerAcOut`, `powerFeedBack`, `powerPvIn`, `powerDcOut` (W), `acSwitch`,
+  `gridSwitch`, `dcSwitch`, `pvSwitch`, `iotSession` ("1"/"0"), `workMode` (int), `allFieldIsNull` (bool). The other
+  59 fields were null for this station. The watcher reads its live cloud state here (design.md section 4): the
+  device list of the Home Assistant API answered every value "0" for this station while it was online.
+- `/api/bluiotdata/dashboard/v1/getSocChangeList`, body `{"deviceSn", "startDate": "yyyy-MM-dd", "queryType": int,
+  "remoteFlag": false}`: hourly SOC points `{id, deviceSn, batSoc, timestamp "yyyy-MM-dd HH:00:00"}`. `queryType` 0
+  and 1 answered the same; 2 answered zeros. The labels run one hour ahead of the station's local hour (not verified
+  why).
+- `/api/bluiotdata/device/iotData/v1/blackout/stats`, body `{"anchorDate", "dimension": "MONTH" | "YEAR" | "TO_DATE",
+  "sn", "showCount", "showDuration"}`: outage statistics `{labels, countSeries, durationHoursSeries, totalCount,
+  totalDurationHours, rangeStartUtc, rangeEndUtc, xunit}` (for `MONTH`: labels "1d".."30d", `xunit` "DAY"). A clear
+  endpoint for these statistics exists; the watcher never calls it.

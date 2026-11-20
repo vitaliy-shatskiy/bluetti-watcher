@@ -140,6 +140,16 @@ internal sealed class StationConfig
     public int StaleAfterMin { get; set; } = 30;
     /// <summary>Gaps in the history filled from the cloud's own 5-minute history (design.md §4a): not set = on with the cloud fallback; false = off.</summary>
     public bool? CloudHistory { get; set; }
+    /// <summary>
+    /// When the device list holds no live state (all zero), the cloud history's newest point is the reading while it is at
+    /// most this many minutes old (design.md §4 AC2b); 0 or less = never.
+    /// </summary>
+    public int CloudHistoryMaxAgeMin { get; set; } = 10;
+    /// <summary>
+    /// The cloud's live state (getDeviceLastAlive) is a reading while its timestamp is at most this many seconds off the
+    /// clock (design.md §4 AC2); older, or 0 or less, = no live state, so the history stand-in (AC2b) is asked.
+    /// </summary>
+    public int CloudLiveMaxAgeSec { get; set; } = 120;
 
     public const string DefaultMutex = "Local\\BluettiWatcherPowerMode";
     public const string DefaultTaskPrefix = "BluettiWatcherEco";

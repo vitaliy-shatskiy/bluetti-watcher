@@ -104,7 +104,7 @@ Stored events, same time defaults: `{ "events": [ { "at", "kind", "detail" } ] }
 | `uptimeSec` | Seconds since start. |
 | `dryRun` | true in a dry run. |
 | `lastPollAt`, `lastAcceptedAt` | Times of the last poll and the last accepted reading, or null. |
-| `lastSource` | `bluetooth` or `cloud`: the source of the last accepted reading, or null. |
+| `lastSource` | `bluetooth`, `cloud` or `cloud-history` (the cloud history's newest point, standing in for a device list with no live state): the source of the last accepted reading, or null. |
 | `bluetoothEncrypted` | true once the station opened the encrypted Bluetooth handshake: the built-in reader reads unencrypted stations only, so it is not connected to again until the service restarts and the cloud fallback answers. Information, not a problem: `ok` does not change. false otherwise. |
 | `readingSource` | The source in force: `auto`, `bluetooth` or `cloud` (see `/api/cloud`). |
 | `cloud` | The cloud's state `{ "state", "detail", "at" }`: `off` (the source never calls it) · `signed-out` (no token) · `ok` · `sign-in-needed` (the server refused the token refresh: sign in again) · `error` (the last read failed; `detail` names why). `at` = when it was seen, or null. Never a token. |

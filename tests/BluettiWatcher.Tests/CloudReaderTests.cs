@@ -63,7 +63,10 @@ public sealed class CloudReaderTests : IDisposable
 
     /// <summary>The two calls the cloud client may make (design.md §4 AC5).</summary>
     internal static bool Allowed(HttpMethod method, string url) =>
-        (method == HttpMethod.Get && url == Devices) || (method == HttpMethod.Post && url == TokenUrl);
+        (method == HttpMethod.Get && url == Devices) || (method == HttpMethod.Post && url is TokenUrl or PowerUrl or LastAlive);
+
+    private const string LastAlive = "https://gw.bluettipower.com/api/bluiotdata/realtime/v1/getDeviceLastAlive";
+    private const string PowerUrl = "https://gw.bluettipower.com/api/bluiotdata/dashboard/v2/getDevicePowerStatistics";
 
     [Fact]
     public void The_allow_list_refuses_any_other_call()
@@ -87,19 +90,14 @@ public sealed class CloudReaderTests : IDisposable
     private BluettiCloudReader? _cloud;
 
     /// <summary>One reader per test: its early-refresh hold lives across reads.</summary>
-    private BluettiCloudReader Cloud => _cloud ??= new(Config(), _http, _clock, _log.Add);
+    private BluettiCloudReader Cloud => _cloud ??= new(Config(), _http, _clock, _log.Add) { KnownSerial = "SERIAL-1" };
 
-    private static string State(string soc = "71", string grid = "0", string? acLoad = "169", string ctrlAc = "1") =>
-        "[" + string.Join(",", new[]
-        {
-            $$"""{"fnCode":"SOC","fnValue":"{{soc}}"}""", $$"""{"fnCode":"GridAllTotalPower","fnValue":"{{grid}}"}""",
-            $$"""{"fnCode":"SetCtrlAc","fnValue":"{{ctrlAc}}"}""", """{"fnCode":"PVAllTotalPower","fnValue":"5"}""",
-            """{"fnCode":"DCLoadAllTotalPower","fnValue":"7"}""",
-            acLoad is null ? null : $$"""{"fnCode":"ACLoadAllTotalPower","fnValue":"{{acLoad}}"}""",
-        }.Where(s => s is not null)) + "]";
+    /// <summary>A device list holding one station of <paramref name="model"/> (read only for its serial).</summary>
+    private static string ListAnswer(string model = "AC200PL-AC200PL") =>
+        $$"""{"msgCode":0,"message":"OK","data":[{"sn":"SERIAL-1","online":"1","model":"{{model}}","stateList":[]}]}""";
 
-    private static string Answer(string stateList, string online = "1", string model = "AC200PL-AC200PL", int msgCode = 0) =>
-        $$"""{"msgCode":{{msgCode}},"message":"OK","data":[{"sn":"SERIAL-1","online":"{{online}}","model":"{{model}}","stateList":{{stateList}}}]}""";
+    /// <summary>The cloud's answer to an expired access token.</summary>
+    private const string Expired805 = """{"msgCode":805,"message":"token expired","data":null}""";
 
     private void AssertClean()
     {
@@ -121,7 +119,7 @@ public sealed class CloudReaderTests : IDisposable
         Token(Now - 2678400 + 86400);
         File.SetAttributes(TokenPath, FileAttributes.ReadOnly);   // the replace fails
         Refreshed();
-        _http.Json(Answer(State()));
+        _http.Json(Alive());
         Assert.NotNull(await Cloud.ReadAsync(CancellationToken.None));
         Assert.Equal("NEW-ACCESS", _http.Calls[1].Auth);
         Assert.Contains(_log, l => l.Contains("could not be written", StringComparison.Ordinal));
@@ -130,7 +128,7 @@ public sealed class CloudReaderTests : IDisposable
         File.SetAttributes(TokenPath, FileAttributes.Normal);
         _log.Clear();
         _clock.Now = T0.AddMinutes(1);
-        _http.Json(Answer(State(soc: "70")));
+        _http.Json(Alive(soc: "70"));
         Assert.NotNull(await Cloud.ReadAsync(CancellationToken.None));
         Assert.Equal(3, _http.Calls.Count);   // no second refresh: the kept pair is fresh
         Assert.Equal("NEW-ACCESS", _http.Calls[2].Auth);
@@ -140,22 +138,239 @@ public sealed class CloudReaderTests : IDisposable
         Assert.Contains(_log, l => l.Contains("written", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// A live device-list answer for a station running on Bluetooth at a real charge, identifiers replaced: online "1", every
+    /// value "0", sensor values as strings with their metadata beside them.
+    /// </summary>
+    private const string AllZeroAnswer = """
+        {"appId":null,"msgId":"MSG-1","msgCode":0,"message":"OK","data":[{"sn":"SERIAL-1","online":"1","isBindByCurUser":"1","name":"Station","model":"AC200PL-AC200PL","supportNetwork":"1","stateList":[
+        {"fnCode":"SetACECO","fnName":"AC ECO","fnValue":"0","fnType":"SWITCH","supportModeValues":[]},
+        {"fnCode":"SetCtrlWorkMode","fnName":"Working mode","fnValue":"0","fnType":"SELECT","supportModeValues":[{"code":"workmode_0","name":"Mode 0"},{"code":"workmode_1","name":"Mode 1"}]},
+        {"fnCode":"SetDCECO","fnName":"DC ECO","fnValue":"0","fnType":"SWITCH","supportModeValues":[]},
+        {"fnCode":"SOC","fnName":"Battery Level","fnValue":"0","fnType":"SENSOR","supportModeValues":[],"sensorInfo":{"sensorType":"SensorDeviceClass.BATTERY","unit":"%"}},
+        {"fnCode":"SetCtrlAc","fnName":"AC","fnValue":"0","fnType":"SWITCH","supportModeValues":[]},
+        {"fnCode":"PVAllTotalPower","fnName":"Photovoltaics Input Power","fnValue":"0","fnType":"SENSOR","supportModeValues":[],"sensorInfo":{"sensorType":"SensorDeviceClass.POWER","unit":null}},
+        {"fnCode":"GridAllTotalPower","fnName":"Grid Input Power","fnValue":"0","fnType":"SENSOR","supportModeValues":[],"sensorInfo":{"sensorType":"SensorDeviceClass.POWER","unit":null}},
+        {"fnCode":"SetCtrlDc","fnName":"DC","fnValue":"0","fnType":"SWITCH","supportModeValues":[]},
+        {"fnCode":"DCLoadAllTotalPower","fnName":"Direct Current Out Power","fnValue":"0","fnType":"SENSOR","supportModeValues":[],"sensorInfo":{"sensorType":"SensorDeviceClass.POWER","unit":null}},
+        {"fnCode":"ACLoadAllTotalPower","fnName":"Alternating Current Out Power","fnValue":"0","fnType":"SENSOR","supportModeValues":[],"sensorInfo":{"sensorType":"SensorDeviceClass.POWER","unit":null}}]}],
+        "error":null,"code":0}
+        """;
+
+    /// <summary>
+    /// A live getDeviceLastAlive answer (identifiers replaced), its values substituted: raw JSON for each value, so a test
+    /// may give a string, a number or null. <paramref name="at"/> is the station's local "yyyy-MM-dd HH:mm:ss".
+    /// </summary>
+    private static string AliveAnswer(string at, string soc = "\"100\"", string grid = "\"356\"", string acOut = "\"356\"", string pv = "\"0\"",
+        string dc = "\"0\"", string acSwitch = "\"1\"", string allNull = "false", int msgCode = 0) => $$"""
+        {"appId":null,"msgId":"MSG-1","msgCode":{{msgCode}},"message":"OK","data":{"allFieldIsNull":{{allNull}},"timestamp":"{{at}}","powerPvIn":{{pv}},"powerGridIn":{{grid}},
+        "powerAcOut":{{acOut}},"powerDcOut":{{dc}},"powerFeedBack":"356","batterySoc":{{soc}},"acSwitch":{{acSwitch}},"dcSwitch":"0","pvSwitch":"0","gridSwitch":"1",
+        "iotSession":"1","ac_line":null,"dc_line":null,"pv_line":"0","grid_line":"1","feedback_line":null,"pv_to_grid_line":null,"ac_icon":"1","dc_icon":"0","pv_icon":"0",
+        "grid_icon":"1","longitude":null,"latitude":null,"packAverageTemp":null,"dsgEmptyTime":null,"chgFullTime":null,"batteryVoltage":null,"setCtrlPowerOn":null,
+        "packHeatSwitch":null,"pvTotalEnergy":null,"dcTotalEnergy":null,"packCycle":null,"batterySoh":null,"workMode":3,"stormMode":null,"maxPowerPvIn":null,"packCapacity":null},
+        "error":null,"code":0}
+        """;
+
+    /// <summary>The station's local time <paramref name="secondsAgo"/> before the test clock, in the clock's zone.</summary>
+    private string LocalAgo(int secondsAgo) =>
+        TimeZoneInfo.ConvertTime(_clock.GetUtcNow().AddSeconds(-secondsAgo), _clock.Zone).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+
+    /// <summary>A fresh live state (stamped now) with the values of the old device-list fixture.</summary>
+    private string Alive(string soc = "71", string grid = "0", string? acOut = "169", string acSwitch = "1") =>
+        AliveAnswer(LocalAgo(0), $"\"{soc}\"", $"\"{grid}\"", acOut is null ? "null" : $"\"{acOut}\"", acSwitch: $"\"{acSwitch}\"");
+
+    private BluettiCloudReader WithHistory(StationStore store, CloudHistoryReader history) =>
+        _cloud = new BluettiCloudReader(Config(), _http, _clock, _log.Add) { KnownSerial = "SERIAL-1", History = history, Store = store };
+
+    // design.md §4 AC2: the live state comes from getDeviceLastAlive, numbers as strings
+    [Fact]
+    public async Task ReadAsync_FreshLastAlive_IsCloudReadingWithSocAndPowers()
+    {
+        Token(Now);
+        _http.Json(AliveAnswer("2026-10-06 19:59:30"));   // T0 is 20:00 +03:00
+        var r = await Cloud.ReadAsync(CancellationToken.None);
+        Assert.Equal(new Reading(100, 356, 356, "CLOUD_MAINS", InDc: 0, OutDc: 0, Source: "cloud"), r);
+        var call = Assert.Single(_http.Calls);
+        Assert.Equal((HttpMethod.Post, LastAlive, Access), (call.Method, call.Url, call.Auth));
+        Assert.Equal("""{"deviceSn":"SERIAL-1"}""", call.Body);
+        Assert.Equal("", StationDecision.Check(r!, new StationState(), T0, Defaults()));
+        Assert.Empty(_log);
+    }
+
+    // design.md §4 AC2: JSON numbers and nulls parse as strings do; a null power is an unknown value
+    [Fact]
+    public async Task ReadAsync_NumbersAndNulls_ParseToValuesAndNulls()
+    {
+        Token(Now);
+        _http.Json(AliveAnswer("2026-10-06 19:59:30", soc: "64", grid: "\"0\"", acOut: "300", pv: "null", dc: "null", acSwitch: "1"));
+        Assert.Equal(new Reading(64, 0, 300, "INVERTER_OUTPUT", Source: "cloud"), await Cloud.ReadAsync(CancellationToken.None));
+    }
+
+    // design.md §4 AC2b: at most cloudLiveMaxAgeSec off the clock, either way
+    [Theory]
+    [InlineData(120, true)]
+    [InlineData(121, false)]
+    [InlineData(-120, true)]
+    [InlineData(-121, false)]
+    public async Task ReadAsync_LastAliveAge_IsAcceptedWithinTheCap(int secondsAgo, bool accepted)
+    {
+        Token(Now);
+        _http.Json(AliveAnswer(LocalAgo(secondsAgo)));
+        Assert.Equal(accepted, await Cloud.ReadAsync(CancellationToken.None) is not null);
+        Assert.Equal(120, new StationConfig().CloudLiveMaxAgeSec);
+    }
+
+    [Fact]
+    public async Task ReadAsync_LastAliveAge_ComesFromTheConfig()
+    {
+        Token(Now);
+        _cloud = new(new StationConfig { DataDir = _dir, CloudLiveMaxAgeSec = 600 }, _http, _clock, _log.Add) { KnownSerial = "SERIAL-1" };
+        _http.Json(AliveAnswer(LocalAgo(590)));
+        Assert.NotNull(await Cloud.ReadAsync(CancellationToken.None));
+    }
+
+    // The timestamp is the station's local time, read in the machine's zone
+    [Fact]
+    public async Task ReadAsync_Timestamp_IsReadInTheLocalZone()
+    {
+        Token(Now);
+        _clock.Zone = TimeZoneInfo.CreateCustomTimeZone("t2", TimeSpan.FromHours(2), "t2", "t2");
+        _http.Json(AliveAnswer("2026-10-06 18:59:30"));   // T0 is 17:00 UTC = 19:00 at +02:00
+        Assert.NotNull(await Cloud.ReadAsync(CancellationToken.None));
+        _clock.Zone = TimeZoneInfo.CreateCustomTimeZone("t3", TimeSpan.FromHours(3), "t3", "t3");
+        _clock.Now = T0.AddMinutes(1);
+        _http.Json(AliveAnswer("2026-10-06 18:59:30"));   // at +03:00 the same label is an hour old
+        Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
+    }
+
+    // design.md §4 AC2b: every field null is no live state: a plain miss without the history
+    [Fact]
+    public async Task ReadAsync_AllFieldIsNull_IsNoReading()
+    {
+        Token(Now);
+        _http.Json(AliveAnswer("2026-10-06 19:59:30", allNull: "true"));
+        Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
+        Assert.Equal("cloud: no live state from getDeviceLastAlive (every field null)", Assert.Single(_log));
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("\"\"")]
+    [InlineData("\"n/a\"")]
+    public async Task ReadAsync_NoNumericSoc_IsNoReading(string soc)
+    {
+        Token(Now);
+        _http.Json(AliveAnswer("2026-10-06 19:59:30", soc: soc));
+        Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
+        Assert.StartsWith("cloud: no live state from getDeviceLastAlive", Assert.Single(_log), StringComparison.Ordinal);
+    }
+
+    // design.md §4 AC2b: a stale live state falls to the history's newest point
+    [Fact]
+    public async Task ReadAsync_StaleLastAlive_FallsToTheHistoryStandIn()
+    {
+        Token(Now);
+        using var store = new StationStore(Path.Combine(_dir, "station.db"));
+        using var history = new CloudHistoryReader(_http);
+        WithHistory(store, history);
+        _http.Json(AliveAnswer("2026-10-06 19:57:59"));   // 121 s old
+        _http.Json(HistoryAnswer("2026-10-06 19:50", "2026-10-06 19:55"));
+        var r = await new FallbackReader(new QueueReader(), Cloud).ReadAsync(CancellationToken.None);
+        Assert.Equal(new Reading(64, 0, 300, "INVERTER_OUTPUT", Source: "cloud-history"), r! with { InDc = null, OutDc = null });
+        Assert.Equal([LastAlive, PowerUrl], _http.Calls.Select(c => c.Url));
+        Assert.Single(_log, l => l.StartsWith("cloud: no live state from getDeviceLastAlive (", StringComparison.Ordinal));
+    }
+
+    // The serial is learnt once from the device list (all zero for this station); the live state then comes from getDeviceLastAlive
+    [Fact]
+    public async Task ReadAsync_NoKnownSerial_ReadsTheDeviceListOnceForIt()
+    {
+        Token(Now);
+        _cloud = new(Config(), _http, _clock, _log.Add);
+        _http.Json(AllZeroAnswer);
+        _http.Json(Alive());
+        Assert.Equal(71, (await Cloud.ReadAsync(CancellationToken.None))?.Soc);
+        _clock.Now = T0.AddMinutes(1);
+        _http.Json(Alive(soc: "70"));
+        Assert.Equal(70, (await Cloud.ReadAsync(CancellationToken.None))?.Soc);
+        Assert.Equal([Devices, LastAlive, LastAlive], _http.Calls.Select(c => c.Url));
+        Assert.Contains("SERIAL-1", _http.Calls[2].Body, StringComparison.Ordinal);
+    }
+
+    // design.md §4 AC2b: an all-zero live state is no live state: a plain miss, so a false 0 % is never a reading
+    [Fact]
+    public async Task ReadAsync_AllZeroLastAlive_IsNoReading()
+    {
+        Token(Now);
+        _http.Json(AliveAnswer(LocalAgo(0), soc: "\"0\"", grid: "\"0\"", acOut: "\"0\""));
+        Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
+        Assert.Equal("cloud: no live state from getDeviceLastAlive (all values zero)", Assert.Single(_log));
+    }
+
+    /// <summary>A history day (local labels "yyyy-MM-dd HH:mm" at +03:00) whose points are <paramref name="labels"/>: SOC 64 %, no grid, 300 W AC out.</summary>
+    private static string HistoryAnswer(params string[] labels)
+    {
+        string Series(string title, string v) => $$"""{"title":"{{title}}","data":[{{string.Join(',', labels.Select(_ => v))}}]}""";
+        string xs = string.Join(',', labels.Select(l => $"\"{l}\""));
+        string ys = string.Join(',', Series("soc", "64"), Series("grid", "0"), Series("ac", "300"), Series("pv", "0"), Series("dc", "0"));
+        return $$"""{"code":200,"msgCode":0,"message":"OK","data":{"chart_x":[{{xs}}],"chart_y":[{{ys}}]} }""";
+    }
+
+    // design.md §4 AC2b: no live state is replaced by the cloud history's newest point while it is fresh; the all-zero
+    // device list still gives the serial
+    [Fact]
+    public async Task An_empty_live_state_reads_the_fresh_newest_history_point_as_cloud_history()
+    {
+        Token(Now);
+        using var store = new StationStore(Path.Combine(_dir, "station.db"));
+        using var history = new CloudHistoryReader(_http);
+        _cloud = BluettiCloudReader.ForService(Config(), _http, _clock, _log.Add, store, history);
+        _http.Json(AllZeroAnswer);
+        _http.Json(AliveAnswer(LocalAgo(0), allNull: "true"));
+        _http.Json(HistoryAnswer("2026-10-06 19:50", "2026-10-06 19:55"));   // T0 is 20:00 +03:00: the newest point is 5 min old
+        var r = await new FallbackReader(new QueueReader(), Cloud).ReadAsync(CancellationToken.None);
+        Assert.NotNull(r);
+        Assert.Equal(new Reading(64, 0, 300, "INVERTER_OUTPUT", Source: "cloud-history"), r with { InDc = null, OutDc = null });
+        Assert.Equal("", StationDecision.Check(r, new StationState(), T0, Config()));
+        Assert.Equal([Devices, LastAlive, PowerUrl], _http.Calls.Select(c => c.Url));
+        Assert.Contains(_log, l => l == "cloud: no live state from getDeviceLastAlive (every field null)");
+    }
+
+    // design.md §4 AC2b: an old history point is a plain miss (no reading, so no row with SOC 0), said once per outage
+    [Fact]
+    public async Task An_empty_live_state_with_an_old_history_point_is_a_miss_said_once()
+    {
+        Token(Now);
+        using var store = new StationStore(Path.Combine(_dir, "station.db"));
+        using var history = new CloudHistoryReader(_http);
+        _cloud = BluettiCloudReader.ForService(Config(), _http, _clock, _log.Add, store, history);
+        _http.Json(AllZeroAnswer);
+        _http.Json(AliveAnswer(LocalAgo(0), allNull: "true"));
+        _http.Json(HistoryAnswer("2026-10-06 19:35", "2026-10-06 19:40"));   // 20 min old
+        Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
+        _clock.Now = T0.AddMinutes(1);
+        _http.Json(AliveAnswer(LocalAgo(0), allNull: "true"));   // within 5 minutes of the last history call: no second one
+        Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
+        Assert.Equal([Devices, LastAlive, PowerUrl, LastAlive], _http.Calls.Select(c => c.Url));
+        Assert.Single(_log, l => l.Contains("no live state", StringComparison.Ordinal));
+    }
+
     // design.md §4 AC9: a frozen cloud cache is a miss
     [Fact]
     public async Task An_unchanged_soc_under_load_off_mains_for_30_minutes_is_stale()
     {
         Token(Now);
-        _http.Json(Answer(State(soc: "71")));
+        _http.Json(Alive(soc: "71"));
         Assert.NotNull(await Cloud.ReadAsync(CancellationToken.None));
         _clock.Now = T0.AddMinutes(29);
-        _http.Json(Answer(State(soc: "71")));
+        _http.Json(Alive(soc: "71"));
         Assert.NotNull(await Cloud.ReadAsync(CancellationToken.None));
         _clock.Now = T0.AddMinutes(30);
-        _http.Json(Answer(State(soc: "71")));
+        _http.Json(Alive(soc: "71"));
         Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
         Assert.Contains("cloud reading stale", Assert.Single(_log), StringComparison.Ordinal);
         _clock.Now = T0.AddMinutes(31);
-        _http.Json(Answer(State(soc: "70")));
+        _http.Json(Alive(soc: "70"));
         Assert.Equal(70, (await Cloud.ReadAsync(CancellationToken.None))?.Soc);
     }
 
@@ -165,10 +380,10 @@ public sealed class CloudReaderTests : IDisposable
     public async Task An_unchanged_soc_on_mains_or_light_load_is_not_stale(string grid, string acLoad)
     {
         Token(Now);
-        _http.Json(Answer(State(grid: grid, acLoad: acLoad)));
+        _http.Json(Alive(grid: grid, acOut: acLoad));
         Assert.NotNull(await Cloud.ReadAsync(CancellationToken.None));
         _clock.Now = T0.AddMinutes(45);
-        _http.Json(Answer(State(grid: grid, acLoad: acLoad)));
+        _http.Json(Alive(grid: grid, acOut: acLoad));
         Assert.NotNull(await Cloud.ReadAsync(CancellationToken.None));
         Assert.Empty(_log);
     }
@@ -177,11 +392,11 @@ public sealed class CloudReaderTests : IDisposable
     public async Task The_stale_limits_come_from_the_config()
     {
         Token(Now);
-        _cloud = new(new StationConfig { DataDir = _dir, StaleLoadW = 50, StaleAfterMin = 5 }, _http, _clock, _log.Add);
-        _http.Json(Answer(State(acLoad: "60")));
+        _cloud = new(new StationConfig { DataDir = _dir, StaleLoadW = 50, StaleAfterMin = 5 }, _http, _clock, _log.Add) { KnownSerial = "SERIAL-1" };
+        _http.Json(Alive(acOut: "60"));
         Assert.NotNull(await Cloud.ReadAsync(CancellationToken.None));
         _clock.Now = T0.AddMinutes(5);
-        _http.Json(Answer(State(acLoad: "60")));
+        _http.Json(Alive(acOut: "60"));
         Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
         Assert.Equal(100, new StationConfig().StaleLoadW);
         Assert.Equal(30, new StationConfig().StaleAfterMin);
@@ -214,9 +429,9 @@ public sealed class CloudReaderTests : IDisposable
     public async Task A_station_on_battery_is_a_reading_from_the_cloud()
     {
         Token(Now);
-        _http.Json(Answer(State()));
+        _http.Json(Alive());
         var r = await Cloud.ReadAsync(CancellationToken.None);
-        Assert.Equal(new Reading(71, 0, 169, "INVERTER_OUTPUT", Source: "cloud"), r);
+        Assert.Equal(new Reading(71, 0, 169, "INVERTER_OUTPUT", InDc: 0, OutDc: 0, Source: "cloud"), r);
         var call = Assert.Single(_http.Calls);
         Assert.Equal(Access, call.Auth);   // raw, no "Bearer"
         Assert.Equal("", StationDecision.Check(r!, new StationState(), T0, Defaults()));
@@ -232,22 +447,22 @@ public sealed class CloudReaderTests : IDisposable
     public async Task The_mode_is_derived_or_unknown(string grid, string acLoad, string ctrlAc, string? mode)
     {
         Token(Now);
-        _http.Json(Answer(State(grid: grid, acLoad: acLoad, ctrlAc: ctrlAc)));
+        _http.Json(Alive(grid: grid, acOut: acLoad, acSwitch: ctrlAc));
         var r = await Cloud.ReadAsync(CancellationToken.None);
         Assert.NotNull(r);
         Assert.Equal(mode, r.Mode);
         Assert.Equal(double.Parse(grid, CultureInfo.InvariantCulture), r.InAc);
-        Assert.Null(r.InDc);
-        Assert.Null(r.OutDc);
+        Assert.Equal(0, r.InDc);
+        Assert.Equal(0, r.OutDc);
         AssertClean();
     }
 
-    // design.md §4 AC2: no AC output fnCode = OutAc null, and no derived inverter mode
+    // design.md §4 AC2: a null AC output = OutAc null, and no derived inverter mode
     [Fact]
     public async Task No_ac_load_code_leaves_out_ac_null()
     {
         Token(Now);
-        _http.Json(Answer(State(acLoad: null)));
+        _http.Json(Alive(acOut: null));
         var r = await Cloud.ReadAsync(CancellationToken.None);
         Assert.NotNull(r);
         Assert.Null(r.OutAc);
@@ -257,7 +472,7 @@ public sealed class CloudReaderTests : IDisposable
 
     // design.md §4 AC3
     [Theory]
-    [InlineData("offline")]
+    [InlineData("stale")]
     [InlineData("msgCode")]
     [InlineData("soc-text")]
     [InlineData("soc-missing")]
@@ -270,11 +485,14 @@ public sealed class CloudReaderTests : IDisposable
         Token(Now);
         switch (kind)
         {
-            case "offline": _http.Json(Answer(State(), online: "0")); break;
-            case "msgCode": _http.Json(Answer(State(), msgCode: 500)); break;
-            case "soc-text": _http.Json(Answer(State(soc: "n/a"))); break;
-            case "soc-missing": _http.Json(Answer("""[{"fnCode":"GridAllTotalPower","fnValue":"0"}]""")); break;
-            case "other-model": _http.Json(Answer(State(), model: "EB3A-EB3A")); break;
+            case "stale": _http.Json(AliveAnswer(LocalAgo(3600))); break;
+            case "msgCode": _http.Json(AliveAnswer(LocalAgo(0), msgCode: 500)); break;
+            case "soc-text": _http.Json(Alive(soc: "n/a")); break;
+            case "soc-missing": _http.Json(AliveAnswer(LocalAgo(0), soc: "null")); break;
+            case "other-model":   // the serial is looked up: no station of this type
+                _cloud = new(Config(), _http, _clock, _log.Add);
+                _http.Json(ListAnswer(model: "EB3A-EB3A"));
+                break;
             case "http-500": _http.Json($$"""{"echo":"{{Access}}"}""", HttpStatusCode.InternalServerError); break;
             case "http-throws":   // no answer at all: tried once more
                 _http.Throw(new HttpRequestException($"connection reset, token {Access}"));
@@ -291,7 +509,7 @@ public sealed class CloudReaderTests : IDisposable
     private void Slow() =>
         _http.Next.Enqueue(async (_, ct) => { await Task.Delay(TimeSpan.FromSeconds(30), ct); return new HttpResponseMessage(HttpStatusCode.OK); });
 
-    // design.md §4 AC3: 15 s cap; the devices call is tried once more
+    // design.md §4 AC3: 15 s cap; the live-state call is tried once more
     [Fact]
     public async Task A_slow_answer_is_a_miss()
     {
@@ -300,7 +518,7 @@ public sealed class CloudReaderTests : IDisposable
         Slow();
         Slow();
         Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
-        Assert.Contains("devices: timed out after 0.2 s, again on retry", Assert.Single(_log), StringComparison.Ordinal);
+        Assert.Contains("live state: timed out after 0.2 s, again on retry", Assert.Single(_log), StringComparison.Ordinal);
         Assert.Equal(2, _http.Calls.Count);
     }
 
@@ -310,16 +528,16 @@ public sealed class CloudReaderTests : IDisposable
     [Theory]
     [InlineData("timeout", "timed out after 0.2 s")]
     [InlineData("http-throws", "HTTP failed")]
-    public async Task A_devices_call_with_no_answer_is_tried_once_more(string kind, string first)
+    public async Task A_live_state_call_with_no_answer_is_tried_once_more(string kind, string first)
     {
         Token(Now);
         Cloud.Timeout = TimeSpan.FromMilliseconds(200);
         if (kind == "timeout") Slow();
         else _http.Throw(new HttpRequestException($"connection reset, token {Access}"));
-        _http.Json(Answer(State()));
+        _http.Json(Alive());
         Assert.Equal(71, (await Cloud.ReadAsync(CancellationToken.None))?.Soc);
-        Assert.Equal([HttpMethod.Get, HttpMethod.Get], _http.Calls.Select(c => c.Method));
-        Assert.Contains($"cloud: devices answered on the second try (first: {first}", Assert.Single(_log), StringComparison.Ordinal);
+        Assert.Equal([LastAlive, LastAlive], _http.Calls.Select(c => c.Url));
+        Assert.Contains($"cloud: live state answered on the second try (first: {first}", Assert.Single(_log), StringComparison.Ordinal);
         AssertClean();
     }
 
@@ -333,10 +551,10 @@ public sealed class CloudReaderTests : IDisposable
         switch (kind)
         {
             case "http-500": _http.Json("""{"error":"server"}""", HttpStatusCode.InternalServerError); break;
-            case "msgCode": _http.Json(Answer(State(), msgCode: 500)); break;
+            case "msgCode": _http.Json(AliveAnswer(LocalAgo(0), msgCode: 500)); break;
             case "not-json": _http.Json("<html></html>"); break;
         }
-        _http.Json(Answer(State()));   // a retry would read this
+        _http.Json(Alive());   // a retry would read this
         Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
         Assert.Single(_http.Calls);
     }
@@ -353,7 +571,7 @@ public sealed class CloudReaderTests : IDisposable
             await Task.Delay(TimeSpan.FromSeconds(30), ct);
             return new HttpResponseMessage(HttpStatusCode.OK);
         });
-        _http.Json(Answer(State()));   // a retry would read this
+        _http.Json(Alive());   // a retry would read this
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Cloud.ReadAsync(cts.Token));
         Assert.Single(_http.Calls);
         Assert.Empty(_log);
@@ -364,11 +582,11 @@ public sealed class CloudReaderTests : IDisposable
     public async Task A_refresh_with_no_answer_after_805_is_not_retried()
     {
         Token(Now);
-        _http.Json(Answer("[]", msgCode: 805));
+        _http.Json(Expired805);
         _http.Throw(new HttpRequestException("connection reset"));
         Refreshed();   // a retry would read this
         Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
-        Assert.Equal([HttpMethod.Get, HttpMethod.Post], _http.Calls.Select(c => c.Method));
+        Assert.Equal([LastAlive, TokenUrl], _http.Calls.Select(c => c.Url));
         Assert.Contains("the token refresh HTTP failed", Assert.Single(_log), StringComparison.Ordinal);
     }
 
@@ -398,7 +616,7 @@ public sealed class CloudReaderTests : IDisposable
     {
         Token(Now - 2678400 + (2 * 86400));   // 2 days left
         Refreshed();
-        _http.Json(Answer(State()));
+        _http.Json(Alive());
         Assert.NotNull(await Cloud.ReadAsync(CancellationToken.None));
         Assert.Equal(2, _http.Calls.Count);
         var post = _http.Calls[0];
@@ -420,9 +638,9 @@ public sealed class CloudReaderTests : IDisposable
     public async Task A_token_with_4_days_left_is_not_refreshed()
     {
         Token(Now - 2678400 + (4 * 86400));
-        _http.Json(Answer(State()));
+        _http.Json(Alive());
         Assert.NotNull(await Cloud.ReadAsync(CancellationToken.None));
-        Assert.Equal(HttpMethod.Get, Assert.Single(_http.Calls).Method);
+        Assert.Equal(LastAlive, Assert.Single(_http.Calls).Url);
     }
 
     // design.md §4 AC4: a refresh answer without a refresh token keeps the old one
@@ -431,7 +649,7 @@ public sealed class CloudReaderTests : IDisposable
     {
         Token(Now - 2678400 + 3600);
         Refreshed(refresh: null);
-        _http.Json(Answer(State()));
+        _http.Json(Alive());
         Assert.NotNull(await Cloud.ReadAsync(CancellationToken.None));
         Assert.Equal(Refresh, TokenFile().GetProperty("refresh_token").GetString());
         AssertClean();
@@ -442,12 +660,12 @@ public sealed class CloudReaderTests : IDisposable
     public async Task Expired_805_refreshes_and_retries_once()
     {
         Token(Now);
-        _http.Json(Answer("[]", msgCode: 805));
+        _http.Json(Expired805);
         Refreshed();
-        _http.Json(Answer(State()));
+        _http.Json(Alive());
         var r = await Cloud.ReadAsync(CancellationToken.None);
         Assert.Equal(71, r?.Soc);
-        Assert.Equal([HttpMethod.Get, HttpMethod.Post, HttpMethod.Get], _http.Calls.Select(c => c.Method));
+        Assert.Equal([LastAlive, TokenUrl, LastAlive], _http.Calls.Select(c => c.Url));
         Assert.Equal("NEW-ACCESS", _http.Calls[2].Auth);
         AssertClean();
     }
@@ -456,9 +674,9 @@ public sealed class CloudReaderTests : IDisposable
     public async Task Expired_805_twice_is_a_miss_after_one_retry()
     {
         Token(Now);
-        _http.Json(Answer("[]", msgCode: 805));
+        _http.Json(Expired805);
         Refreshed();
-        _http.Json(Answer("[]", msgCode: 805));
+        _http.Json(Expired805);
         Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
         Assert.Equal(3, _http.Calls.Count);
         Assert.Single(_log);
@@ -472,7 +690,7 @@ public sealed class CloudReaderTests : IDisposable
     public async Task A_failed_refresh_after_805_is_a_miss(string body, HttpStatusCode status)
     {
         Token(Now);
-        _http.Json(Answer("[]", msgCode: 805));
+        _http.Json(Expired805);
         _http.Json(body, status);
         Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
         Assert.Contains("refresh", Assert.Single(_log), StringComparison.Ordinal);
@@ -487,32 +705,32 @@ public sealed class CloudReaderTests : IDisposable
         Token(Now - 2678400 + 86400);
         var reader = Cloud;
         _http.Json("""{"error":"server"}""", HttpStatusCode.BadGateway);
-        _http.Json(Answer(State()));
+        _http.Json(Alive());
         Assert.NotNull(await reader.ReadAsync(CancellationToken.None));
         Assert.Equal(Access, _http.Calls[1].Auth);
         Assert.Contains("refresh", Assert.Single(_log), StringComparison.Ordinal);
 
         _clock.Now = T0.AddMinutes(30);
-        _http.Json(Answer(State(soc: "70")));   // a moving SOC: not stale (AC9)
+        _http.Json(Alive(soc: "70"));   // a moving SOC: not stale (AC9)
         Assert.NotNull(await reader.ReadAsync(CancellationToken.None));
         Assert.Equal(3, _http.Calls.Count);   // no second POST within the hour
 
         _clock.Now = T0.AddMinutes(61);
         Refreshed();
-        _http.Json(Answer(State(soc: "69")));
+        _http.Json(Alive(soc: "69"));
         Assert.NotNull(await reader.ReadAsync(CancellationToken.None));
         Assert.Equal(HttpMethod.Post, _http.Calls[3].Method);
         AssertClean();
     }
 
-    // design.md §4 AC5: the only URLs in the client are the two allowed ones
+    // design.md §4 AC5: the only URLs in the client are the allowed ones
     [Fact]
     public void The_client_holds_only_the_allowed_urls()
     {
         var urls = typeof(BluettiCloudReader).GetFields(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static)
             .Where(f => f.FieldType == typeof(string)).Select(f => (string?)f.GetValue(null))
             .Where(v => v is not null && v.Contains("://", StringComparison.Ordinal)).Select(v => v!).Order(StringComparer.Ordinal).ToArray();
-        Assert.Equal([Devices, TokenUrl], urls);
+        Assert.Equal([Devices, LastAlive, TokenUrl], urls);
     }
 
     // design.md §4 AC1

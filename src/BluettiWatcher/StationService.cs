@@ -96,7 +96,9 @@ internal sealed class StationService(StationConfig config, IStationReader reader
 
     private static string Minutes(int sec) => $"{Fmt(sec / 60.0)} minutes";
 
-    private static string From(Reading? r) => r?.Source switch { null => "", "cloud" => " from the cloud", var s => $" from {s}" };
+    private static string From(Reading? r) => r?.Source switch { null => "", "cloud" => " from the cloud", "cloud-history" => " from the cloud history", var s => $" from {s}" };
+
+    private static bool FromCloud(string? source) => source is "cloud" or "cloud-history";
 
     /// <summary>A rebase is remembered in this cut and its confirmation is not over: hibernate waits for it.</summary>
     private bool RebaseMayDelay(StationState s) =>
@@ -210,7 +212,7 @@ internal sealed class StationService(StationConfig config, IStationReader reader
 
             // Spec 3.1 AC6: every cloud reading is logged with its source, and the first Bluetooth one after it.
             if (status == ReadingStatus.Rejected) log($"reading rejected{From(reading)}: {d.Rejected} (miss {_state.Misses})");
-            else if (status == ReadingStatus.Accepted && (reading!.Source == "cloud" || sourceBefore == "cloud"))
+            else if (status == ReadingStatus.Accepted && (FromCloud(reading!.Source) || FromCloud(sourceBefore)))
                 log($"reading accepted{From(reading)}: battery {Fmt(reading.Soc!.Value)} %");
             // A miss is logged at the first, at the turn to silent and every 15th after; each one is a row (an event) all the same.
             else if (status == ReadingStatus.Missed && (_state.Misses <= 1 || _state.Silent != silentBefore || _state.Misses % MissLogEvery == 0)) log($"no answer from the station (miss {_state.Misses}){(_state.Silent ? " - station silent" : "")}");

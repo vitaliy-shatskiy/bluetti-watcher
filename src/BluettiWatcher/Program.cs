@@ -63,12 +63,13 @@ config.PageSource = ReadingSourceFile.Read(config.DataDir, Log);
 // Under the auto source: Bluetooth first; when it misses, the BLUETTI cloud (design.md §4 Cloud fallback), on whenever its token file exists (read at each poll, so a token made while running counts) unless cloudEnabled is false.
 // The source is read at each poll: bluetooth never calls the cloud, cloud never opens Bluetooth.
 using var cloudHttp = new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(10) };
-// The serial an earlier history run saved for this station type: the history session then skips the device list, which the cloud has left unanswered.
-using var cloud = BluettiCloudReader.ForService(config, cloudHttp, time, Log, store);
-// The cloud's own 5-minute history fills the database's gaps (design.md §4a): two read-only statistics calls, its own task, never on the poll path.
+// The cloud's own 5-minute history (two read-only statistics calls) fills the database's gaps in its own task (design.md §4a),
+// and its newest point stands in for a device list with no live state (§4 AC2b).
 // Its own pool: it never follows a redirect; the live reader's handler keeps its behaviour.
 using var historyHttp = CloudHistoryReader.NewHandler();
 using var historyReader = new CloudHistoryReader(historyHttp);
+// The serial an earlier history run saved for this station type: the history session then skips the device list, which the cloud has left unanswered.
+using var cloud = BluettiCloudReader.ForService(config, cloudHttp, time, Log, store, historyReader);
 using var backfill = new CloudBackfill(config, historyReader, cloud.HistorySessionAsync, store, time, Log, cloud.ForgetSerial);
 // Bluetooth: the built-in WinRT reader, IoT V1 and V2 models, read only (Io/Ble).
 var bluetooth = new NativeBleReader(config, new WinRtBleConnector(), Log);

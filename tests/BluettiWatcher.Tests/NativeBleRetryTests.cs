@@ -44,6 +44,45 @@ public class NativeBleRetryTests
         Assert.Contains("GATT Unreachable", Assert.Single(log), StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// An open that never completes (a WinRT call ignoring its cancellation) is cut at its own cap, so the retry and the
+    /// register reads still fit inside readerTimeoutSec instead of the whole budget going to the hung open.
+    /// </summary>
+    [Fact]
+    public async Task ReadAsync_FirstOpenHangs_IsCutAtItsCapAndTheRetryReadsOverBluetooth()
+    {
+        await using var link = new ScriptedLink(Mtu20);
+        var conn = new SequenceConnector(n => n == 1 ? new TaskCompletionSource<BleOpen>().Task : Task.FromResult(new BleOpen(link, null)));
+        var log = new List<string>();
+        var r = await Reader(conn, log, timeoutSec: 1).ReadAsync(CancellationToken.None);
+        Assert.Equal(Full, r);
+        Assert.Equal(2, conn.Opens);
+        Assert.Contains("connection opened at the second try (first: the connection did not open within 0.4 s)", Assert.Single(log), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ReadAsync_EveryOpenHangs_IsNoReadingNamingTheOpenCap()
+    {
+        var conn = new SequenceConnector(_ => new TaskCompletionSource<BleOpen>().Task);
+        var log = new List<string>();
+        Assert.Null(await Reader(conn, log, timeoutSec: 1).ReadAsync(CancellationToken.None));
+        Assert.Equal(2, conn.Opens);
+        Assert.Contains("no reading: the connection did not open within 0.4 s", Assert.Single(log), StringComparison.Ordinal);
+    }
+
+    /// <summary>An open whose cap ends while it is still going: a link it hands over late is released, never left open.</summary>
+    [Fact]
+    public async Task ReadAsync_HungOpenCompletesLate_ItsLinkIsReleased()
+    {
+        var late = new TaskCompletionSource<BleOpen>();
+        await using var lateLink = new ScriptedLink(Mtu20);
+        await using var link = new ScriptedLink(Mtu20);
+        var conn = new SequenceConnector(n => n == 1 ? late.Task : Task.FromResult(new BleOpen(link, null)));
+        Assert.Equal(Full, await Reader(conn, [], timeoutSec: 1).ReadAsync(CancellationToken.None));
+        late.SetResult(new BleOpen(lateLink, null));
+        Assert.True(lateLink.Disposed);
+    }
+
     /// <summary>The fields read before the poll's budget ran out are this poll's own: they make a partial reading, never nothing.</summary>
     [Fact]
     public async Task ReadAsync_BudgetRunsOutAfterTheFirstBlock_KeepsThePartialReadingAndNamesTheWait()
@@ -64,5 +103,13 @@ public class NativeBleRetryTests
         var log = new List<string>();
         Assert.Null(await Reader(new ScriptedConnector(() => new BleOpen(link, null)), log, timeoutSec: 1, commandSec: 5).ReadAsync(CancellationToken.None));
         Assert.Contains("no reading: readerTimeoutSec (1 s) ran out waiting for registers 36+8", Assert.Single(log), StringComparison.Ordinal);
+    }
+
+    /// <summary>A connector answering each open (numbered from 1) with the task the script gives; a never-completing task ignores its cancellation.</summary>
+    private sealed class SequenceConnector(Func<int, Task<BleOpen>> open) : IBleConnector
+    {
+        public int Opens { get; private set; }
+
+        public Task<BleOpen> OpenAsync(ulong address, CancellationToken ct) => open(++Opens);
     }
 }

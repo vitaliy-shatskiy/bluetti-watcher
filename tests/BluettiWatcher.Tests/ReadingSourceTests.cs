@@ -18,6 +18,7 @@ public sealed class ReadingSourceTests : IDisposable
     private const string NewRefresh = "REFRESH-NEW-77e3";
     private const string Devices = "https://gw.bluettipower.com/api/bluiotdata/ha/v2/devices";
     private const string TokenUrl = "https://sso.bluettipower.com/oauth2/token";
+    private const string LastAlive = "https://gw.bluettipower.com/api/bluiotdata/realtime/v1/getDeviceLastAlive";
     private const int Port = 18940;
 
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "bluetti-src-test-" + Guid.NewGuid().ToString("N"));
@@ -42,7 +43,7 @@ public sealed class ReadingSourceTests : IDisposable
                     foreach (var secret in new[] { Access, Refresh, NewAccess, NewRefresh })
                         Assert.DoesNotContain(secret, line, StringComparison.Ordinal);
             foreach (var c in _http.Calls)
-                Assert.True((c.Method == HttpMethod.Get && c.Url == Devices) || (c.Method == HttpMethod.Post && c.Url == TokenUrl), $"{c.Method} {c.Url} is not allowed");
+                Assert.True((c.Method == HttpMethod.Get && c.Url == Devices) || (c.Method == HttpMethod.Post && c.Url is TokenUrl or LastAlive), $"{c.Method} {c.Url} is not allowed");
         }
         finally
         {
@@ -54,15 +55,18 @@ public sealed class ReadingSourceTests : IDisposable
 
     private void Log(string line) { lock (_log) _log.Add(line); }
 
-    private BluettiCloudReader Cloud => _cloud ??= new(_cfg, _http, _clock, Log);
+    private BluettiCloudReader Cloud => _cloud ??= new(_cfg, _http, _clock, Log) { KnownSerial = "SERIAL-1" };
 
     private string TokenPath => Path.Combine(_dir, "cloud-token.json");
 
     private void Token(string access = Access, string refresh = Refresh) =>
         File.WriteAllText(TokenPath, $$"""{"access_token":"{{access}}","refresh_token":"{{refresh}}","token_type":"bearer","expires_in":2678400,"created_at":{{T0.ToUnixTimeSeconds()}}}""");
 
-    private static string Answer(string soc = "71", string grid = "0", string acLoad = "169", string ctrlAc = "1", int msgCode = 0) =>
-        $$"""{"msgCode":{{msgCode}},"message":"OK","data":[{"sn":"SERIAL-1","online":"1","model":"AC200PL-AC200PL","stateList":[{"fnCode":"SOC","fnValue":"{{soc}}"},{"fnCode":"GridAllTotalPower","fnValue":"{{grid}}"},{"fnCode":"SetCtrlAc","fnValue":"{{ctrlAc}}"},{"fnCode":"ACLoadAllTotalPower","fnValue":"{{acLoad}}"}]}]}""";
+    /// <summary>A getDeviceLastAlive answer stamped with the test clock's local time.</summary>
+    private string Answer(string soc = "71", string grid = "0", string acLoad = "169", string ctrlAc = "1", int msgCode = 0) =>
+        $$$"""{"msgCode":{{{msgCode}}},"message":"OK","data":{"allFieldIsNull":false,"timestamp":"{{{LocalNow()}}}","batterySoc":"{{{soc}}}","powerGridIn":"{{{grid}}}","acSwitch":"{{{ctrlAc}}}","powerAcOut":"{{{acLoad}}}","powerPvIn":null,"powerDcOut":null}}""";
+
+    private string LocalNow() => TimeZoneInfo.ConvertTime(_clock.GetUtcNow(), _clock.Zone).ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
 
     // --- the setting -------------------------------------------------------------------------------------------------
 
@@ -185,7 +189,7 @@ public sealed class ReadingSourceTests : IDisposable
         Assert.Contains("not read yet", fresh.Detail, StringComparison.Ordinal);
         _http.Json("{}", HttpStatusCode.InternalServerError);
         Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
-        Assert.Equal(("error", "devices answered HTTP 500"), (Cloud.Status().State, Cloud.Status().Detail));
+        Assert.Equal(("error", "the live state answered HTTP 500"), (Cloud.Status().State, Cloud.Status().Detail));
         _http.Json(Answer());
         Assert.NotNull(await Cloud.ReadAsync(CancellationToken.None));
         Assert.Equal("ok", Cloud.Status().State);
@@ -215,7 +219,7 @@ public sealed class ReadingSourceTests : IDisposable
         Assert.Equal("sign-in-needed", status.State);
         Assert.Contains($"HTTP {(int)refused}", status.Detail, StringComparison.Ordinal);
 
-        // Every poll after it: no devices call with the dead access token, no refresh with the refused one.
+        // Every poll after it: no live-state call with the dead access token, no refresh with the refused one.
         _clock.Now = T0.AddMinutes(1);
         Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
         _clock.Now = T0.AddHours(5);
@@ -323,11 +327,11 @@ public sealed class ReadingSourceTests : IDisposable
 
     /// <summary>
     /// Every reading rejected that way since 30.10.2026 carried SOC 0 %, 0 W in and 0 W out: a device state with nothing
-    /// live in it. No mode can be derived from it, and the decision must not take SOC 0 % as the battery (a stop and a
-    /// hibernation would follow), so the rejection stands. A real state on the inverter or on mains derives its mode.
+    /// live in it. The decision must not take SOC 0 % as the battery (a stop and a hibernation would follow): such an answer
+    /// is no live state, a plain miss with no reading at all (design.md §4 AC2b). A real state on the inverter or on mains derives its mode.
     /// </summary>
     [Theory]
-    [InlineData("0", "0", "0", "1", false)]     // the answer the cloud gave 306 times: rejected, never SOC 0 %
+    [InlineData("0", "0", "0", "1", false)]     // the answer the cloud gave 306 times: no reading, never SOC 0 %
     [InlineData("0", "0", "0", "0", false)]
     [InlineData("64", "0", "169", "1", true)]   // mains off, AC on, a load: the inverter
     [InlineData("64", "250", "169", "1", true)] // on mains
@@ -338,10 +342,36 @@ public sealed class ReadingSourceTests : IDisposable
         Token();
         _http.Json(Answer(soc, grid, acLoad, ctrlAc));
         var r = await Cloud.ReadAsync(CancellationToken.None);
+        if (!accepted)
+        {
+            Assert.Null(r);
+            return;
+        }
         Assert.NotNull(r);
-        string why = StationDecision.Check(r, new StationState(), T0, _cfg);
-        Assert.Equal(accepted, why.Length == 0);
-        if (!accepted) Assert.Equal("incomplete (no valid output mode)", why);
+        Assert.Equal("", StationDecision.Check(r, new StationState(), T0, _cfg));
+    }
+
+    /// <summary>design.md §4 AC2b: the all-zero answer is stored as a plain miss: a row with no SOC, never one with SOC 0.</summary>
+    [Fact]
+    public async Task Poll_AllZeroCloudAnswer_StoresAPlainMissWithNoSocZeroRow()
+    {
+        _cfg.PageSource = ReadingSource.Cloud;
+        Token();
+        _http.Json(Answer("0", "0", "0", "1"));
+        string db = Path.Combine(_dir, "station.db");
+        using (var store = new StationStore(db))
+        using (var service = new StationService(_cfg, new FallbackReader(new QueueReader(), Cloud, cloudOnly: () => true), new FakeActions(), new FakeHibernator(true),
+            new FixedFlag(FlagView.Normal), store, _clock, Log))
+            await service.PollAsync(CancellationToken.None);
+        await using var c = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={db};Pooling=False");
+        await c.OpenAsync(TestContext.Current.CancellationToken);
+        await using var q = c.CreateCommand();
+        q.CommandText = "SELECT status, soc FROM reading";
+        await using var rows = await q.ExecuteReaderAsync(TestContext.Current.CancellationToken);
+        Assert.True(await rows.ReadAsync(TestContext.Current.CancellationToken));
+        Assert.Equal((long)ReadingStatus.Missed, rows.GetInt64(0));
+        Assert.True(await rows.IsDBNullAsync(1, TestContext.Current.CancellationToken));
+        Assert.False(await rows.ReadAsync(TestContext.Current.CancellationToken));
     }
 
     // --- the page's controls -------------------------------------------------------------------------------------------

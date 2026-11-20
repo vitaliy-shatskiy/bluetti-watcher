@@ -225,15 +225,15 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
             {
                 if (opens > MaxReconnects) { problems.Add(string.Create(CultureInfo.InvariantCulture, $"stopped after {opens} connections")); stopped = true; return null; }
                 waiting = "the connection to open";
-                var open = await connector.OpenAsync(address, budget.Token);
+                var open = await OpenCappedAsync(address, budget.Token);
                 opens++;
                 if (open.Link is null && !openRetried && opens <= MaxReconnects)
                 {
-                    // Windows fails one GATT setup now and then (Unreachable, no ff01/ff02) and the next one a second later
-                    // works: one more open inside this poll's budget before the poll is given to the cloud.
+                    // Windows fails one GATT setup now and then (Unreachable, no ff01/ff02, an open that hangs) and the next
+                    // one a second later works: one more open inside this poll's budget before the poll is given to the cloud.
                     openRetried = true;
                     string first = open.Failure ?? "no connection";
-                    open = await connector.OpenAsync(address, budget.Token);
+                    open = await OpenCappedAsync(address, budget.Token);
                     opens++;
                     if (open.Link is not null) Note($"connection opened at the second try (first: {first})", miss: false);
                 }
@@ -323,6 +323,52 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         {
             if (link is not null) await link.DisposeAsync();
         }
+    }
+
+    /// <summary>
+    /// The share of readerTimeoutSec one connection open may take: two opens (the first and its retry) leave at least 20 %
+    /// of the budget for the register reads, so an open that hangs no longer spends the whole poll.
+    /// </summary>
+    private const double OpenShare = 0.4;
+
+    /// <summary>
+    /// One open, cut at <see cref="OpenShare"/> of readerTimeoutSec (a failure naming the cap) even when the Bluetooth call
+    /// ignores its cancellation; such an open keeps running, and a link it hands over late is released at once.
+    /// The poll's own budget (<paramref name="budget"/>) running out still ends the poll as before.
+    /// </summary>
+    private async Task<BleOpen> OpenCappedAsync(ulong address, CancellationToken budget)
+    {
+        var cap = TimeSpan.FromSeconds(Math.Max(1, config.ReaderTimeoutSec) * OpenShare);
+        var open = OpenWithinAsync(connector, address, cap, budget);
+        try
+        {
+            return await open.WaitAsync(cap, budget);
+        }
+        catch (Exception e) when (e is TimeoutException || (e is OperationCanceledException && !budget.IsCancellationRequested))
+        {
+            _ = ReleaseLateAsync(open);
+            return new BleOpen(null, string.Create(CultureInfo.InvariantCulture, $"the connection did not open within {cap.TotalSeconds:0.#} s"));
+        }
+        catch (OperationCanceledException)
+        {
+            _ = ReleaseLateAsync(open);
+            throw;
+        }
+    }
+
+    /// <summary>The open itself, asked to stop at <paramref name="cap"/>; its token source lives until the open ends, as a hung open still holds the token.</summary>
+    private static async Task<BleOpen> OpenWithinAsync(IBleConnector connector, ulong address, TimeSpan cap, CancellationToken budget)
+    {
+        using var capped = CancellationTokenSource.CreateLinkedTokenSource(budget);
+        capped.CancelAfter(cap);
+        return await connector.OpenAsync(address, capped.Token);
+    }
+
+    /// <summary>An open given up (its cap or the poll's budget ran out): a link it hands over later is disposed; a late failure is dropped, as the open already counted as one.</summary>
+    private static async Task ReleaseLateAsync(Task<BleOpen> open)
+    {
+        await ((Task)open).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        if (open.IsCompletedSuccessfully && await open is { Link: { } late }) await late.DisposeAsync();
     }
 
     /// <summary>The optional blocks a V2 station answered or refused, by name; absent = not asked yet. Refusals hold until a restart.</summary>
