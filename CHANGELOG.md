@@ -6,6 +6,24 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-20
+
+### Changed
+
+- Bluetti Watcher runs on .NET 11 (SDK 11.0.100, `net11.0-windows10.0.19041.0`), still one NativeAOT exe. Building it
+  needs the .NET 11 SDK. Arithmetic is checked: an overflow stops the operation instead of wrapping silently.
+- Package updates: Microsoft.Data.Sqlite.Core 10.0.13 -> 11.0.0; SQLitePCLRaw.provider.winsqlite3 2.1.11 -> 3.0.5
+  (Microsoft.Data.Sqlite.Core 11 needs SQLitePCLRaw 3; SQLite is still Windows' own `winsqlite3.dll`); tests only:
+  Jint 4.17.0 -> 4.18.0, xunit.v3 4.0.2 -> 4.0.3.
+
+### Fixed
+
+- After a sleep or hibernation and a service restart, a mode's runtime writes (a paused backup, a held task) are kept:
+  on .NET 11 the awake-time counter skips sleep, so the boot time came out late and those writes were taken for lost
+  in a reboot. The boot time now counts the time asleep.
+- A cloud token file with an absurd lifetime ends at the last representable date or at 1970 instead of failing to
+  load, and an empty battery history gives no measured drain instead of an error.
+
 ## [1.8.1] - 2026-11-20
 
 ### Fixed
@@ -503,7 +521,9 @@ with `-Apply`. Requirements and details: [README](https://github.com/vitaliy-sha
 
 Source at this tag: [v1.0.0](https://github.com/vitaliy-shatskiy/bluetti-watcher/tree/v1.0.0)
 
-[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.8.1...v1.9.0
+[1.8.1]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.5.0...v1.6.0

@@ -17,7 +17,7 @@
     <ServerGarbageCollector>false</ServerGarbageCollector>
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <TieredPGO>false</TieredPGO>
-    <Version>1.8.1</Version>
+    <Version>1.9.0</Version>
     <!-- LibraryImport (AttachConsole for the cloud login) generates unsafe marshalling code. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
