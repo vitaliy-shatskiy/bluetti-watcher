@@ -10,7 +10,7 @@ namespace BluettiWatcher.Modes.Modules;
 /// and is read back once the service has settled. Reversible: the reconciler restores the baseline it journaled.
 /// </summary>
 /// <remarks>Pattern: Adapter.</remarks>
-internal sealed class ServiceStateModule(IServiceReader services, IAdminBroker broker, TimeProvider time) : IActionModule
+internal sealed class ServiceStateModule(IServiceReader services, IAdminBroker broker, TimeProvider time) : IActionModule, IBrokerTargets
 {
     public const string Id = "service.state";
     private const string Prefix = "service/";
@@ -64,6 +64,11 @@ internal sealed class ServiceStateModule(IServiceReader services, IAdminBroker b
             problems.Add($"service '{JsonFields.Str(e["name"])}': running must be true or false");
         return problems;
     }
+
+    /// <summary>Every start, stop and start-type change goes through the broker: each service needs its policy entry.</summary>
+    public IReadOnlyList<BrokerTarget> BrokerTargets(JsonObject settings) =>
+        [.. JsonFields.Objects(settings["services"]).Select(e => JsonFields.Str(e["name"])).OfType<string>().Where(n => n.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Select(n => new BrokerTarget(BrokerTargetKind.Service, n))];
 
     public IReadOnlyList<ResourceIntent> Expand(JsonObject settings)
     {

@@ -9,7 +9,7 @@ namespace BluettiWatcher.Modes.Modules;
 /// (an admin or SYSTEM task) goes through the admin broker (<c>task.enable</c>, <c>task.disable</c>). Reversible.
 /// </summary>
 /// <remarks>Pattern: Adapter.</remarks>
-internal sealed class ScheduledTaskModule(ITaskScheduler tasks, IAdminBroker broker) : IActionModule
+internal sealed class ScheduledTaskModule(ITaskScheduler tasks, IAdminBroker broker) : IActionModule, IBrokerTargets
 {
     public const string Id = "scheduledTask.state";
     private const string Prefix = "task/";
@@ -56,6 +56,11 @@ internal sealed class ScheduledTaskModule(ITaskScheduler tasks, IAdminBroker bro
         }
         return problems;
     }
+
+    /// <summary>A task the user may not change (an administrator's or SYSTEM's) is changed by the broker: it needs its policy entry.</summary>
+    public IReadOnlyList<BrokerTarget> BrokerTargets(JsonObject settings) =>
+        [.. JsonFields.Objects(settings["tasks"]).Select(e => JsonFields.Str(e["path"])).OfType<string>().Where(p => p.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Select(p => new BrokerTarget(BrokerTargetKind.Task, p))];
 
     public IReadOnlyList<ResourceIntent> Expand(JsonObject settings) =>
         [.. JsonFields.Objects(settings["tasks"])

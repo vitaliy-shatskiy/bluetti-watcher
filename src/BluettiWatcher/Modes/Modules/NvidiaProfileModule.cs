@@ -15,7 +15,7 @@ namespace BluettiWatcher.Modes.Modules;
 /// Compensatable: the import replaces the profiles the export holds, but a profile the applied file created that was not
 /// customised before stays. Pattern: Adapter.
 /// </remarks>
-internal sealed class NvidiaProfileModule(INvidiaProfileFiles files, IAdminBroker broker) : IActionModule, IChecksOnTransition
+internal sealed class NvidiaProfileModule(INvidiaProfileFiles files, IAdminBroker broker) : IActionModule, IChecksOnTransition, IBrokerTargets
 {
     public const string TypeId = "nvidia.profile";
     public const string ResourceKey = "nvidia/profiles";
@@ -63,6 +63,14 @@ internal sealed class NvidiaProfileModule(INvidiaProfileFiles files, IAdminBroke
             : !file.EndsWith(".nip", StringComparison.OrdinalIgnoreCase)
                 ? [$"\"{file}\" is not a .nip file"]
                 : [];
+    }
+
+    /// <summary>The broker imports only a .nip file its policy lists.</summary>
+    public IReadOnlyList<BrokerTarget> BrokerTargets(JsonObject settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        string file = Path.GetFileName(FileOf(settings));
+        return file.Length == 0 ? [] : [new BrokerTarget(BrokerTargetKind.Profile, file)];
     }
 
     public IReadOnlyList<ResourceIntent> Expand(JsonObject settings)

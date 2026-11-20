@@ -30,8 +30,38 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
     public ReconcileSnapshot Snapshot => _reconciler.Snapshot;
     public string Reason => _reason;
     public bool Emergency => _emergency;
-    /// <summary>Start problems (settings or journal), shown by the API until the next start.</summary>
-    public IReadOnlyList<string> Problems => [.. _problems];
+    /// <summary>Start problems (settings or journal), shown by the API until the next start; then the active mode's entries the broker policy does not allow.</summary>
+    public IReadOnlyList<string> Problems => [.. _problems, .. _policyProblems];
+
+    /// <summary>
+    /// The admin broker's policy (the user can read it, only an elevated step writes it); null = none or unreadable, and
+    /// then no entry is warned about (the broker's health says that).
+    /// </summary>
+    public Func<Broker.BrokerPolicy?> ReadPolicy { get; init; } = () => null;
+
+    /// <summary>The exe a warning's <c>--broker-allow</c> command runs.</summary>
+    public string ExePath { get; init; } = Environment.ProcessPath ?? "BluettiWatcher.exe";
+
+    private IReadOnlyList<string> _policyProblems = [];
+
+    /// <summary>The entries of mode <paramref name="modeId"/> the broker policy does not allow; none when there is no policy or no such mode.</summary>
+    public IReadOnlyList<PolicyWarning> PolicyWarnings(string modeId) =>
+        _settings.Modes.FirstOrDefault(m => m.Id == modeId) is { } mode && ReadPolicy() is { } policy
+            ? PolicyWarning.For(mode, registry, policy, ExePath)
+            : [];
+
+    /// <summary>The active mode's policy gaps, re-read each pass; a new set is logged and raised once.</summary>
+    private void CheckPolicy(Mode mode)
+    {
+        IReadOnlyList<string> now = [.. PolicyWarnings(mode.Id).Select(w => w.Text(mode.Id))];
+        if (now.SequenceEqual(_policyProblems, StringComparer.Ordinal)) return;
+        _policyProblems = now;
+        foreach (var text in now)
+        {
+            log($"modes: {text}");
+            onEvent?.Invoke("action-failed", text);
+        }
+    }
     public bool AutoHibernate => _settings.AutoHibernate;
     /// <summary>The mode being entered while its actions run; null when no transition is under way.</summary>
     public string? Switching => _switching;
@@ -146,6 +176,7 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
             onEvent?.Invoke("mode-changed", $"{mode.Id} ({d.Reason})");
         }
         _reason = d.Reason;
+        CheckPolicy(mode);
         bool entering = !string.Equals(_reconciler.Snapshot.ModeId, mode.Id, StringComparison.Ordinal);
         if (entering) _switching = mode.Id;
         try { await _reconciler.ReconcileAsync(mode, ct); }

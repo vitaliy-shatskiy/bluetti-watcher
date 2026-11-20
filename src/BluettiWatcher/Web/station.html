@@ -365,6 +365,13 @@ en: {
   modesSave: "Save",
   modesCancel: "Cancel",
   modesSaved: "Saved",
+  modesSavedWarn: "Saved. The admin broker does not allow some entries yet: run the command under each in an elevated PowerShell, then save again.",
+  modesPolicyWarn: "{k} '{n}' is not in the admin broker's policy: a change that needs administrator rights is refused. Allow it in an elevated PowerShell:",
+  modesCopy: "Copy",
+  modesCopied: "Copied",
+  brokerKind_service: "Service",
+  brokerKind_task: "Task",
+  brokerKind_profile: "Profile",
   modesNotSaved: "Not saved: {e}",
   modesFix: "Not saved: see the marked fields",
   modesNeedValue: "a value is needed",
@@ -754,6 +761,13 @@ uk: {
   modesSave: "Зберегти",
   modesCancel: "Скасувати",
   modesSaved: "Збережено",
+  modesSavedWarn: "Збережено. Адмін-брокер ще не дозволяє деякі записи: виконайте команду під кожним у PowerShell від імені адміністратора й збережіть знову.",
+  modesPolicyWarn: "{k} '{n}' немає в політиці адмін-брокера: зміну, що потребує прав адміністратора, буде відхилено. Дозвольте в PowerShell від імені адміністратора:",
+  modesCopy: "Копіювати",
+  modesCopied: "Скопійовано",
+  brokerKind_service: "Служба",
+  brokerKind_task: "Завдання",
+  brokerKind_profile: "Профіль",
   modesNotSaved: "Не збережено: {e}",
   modesFix: "Не збережено: перегляньте позначені поля",
   modesNeedValue: "потрібне значення",
@@ -1918,6 +1932,14 @@ function mpActionBox(a, i, errs, used) {
   enf.onchange = () => { a.enforce = enf.checked; };
   const body = e ? mpForm(e.descriptor.settingsSchema || {}, e.descriptor.uiHints || {}, a.settings, e, ek, errs, used, '')
     : mpEl('div', { className: 'help' }, t('modesUnknownType'));
+  // an entry the broker's policy lacks (the save's warnings): what to run, elevated, to allow it, with a copy button
+  const warns = ((mpDraft && mpDraft.warns) || []).filter((w) => w.action === i).map((w) => {
+    const copy = mpButton('copy-command', i, t('modesCopy'), () => {
+      navigator.clipboard.writeText(w.command).then(() => { copy.textContent = t('modesCopied'); }, () => { copy.textContent = t('modesCopy'); });
+    });
+    return mpEl('div', { className: 'warn', 'data-warn': w.kind + ':' + w.name }, t('modesPolicyWarn', { k: w.kind === 'task' ? t('brokerKind_task') : w.kind === 'profile' ? t('brokerKind_profile') : t('brokerKind_service'), n: w.name }), ' ',
+      mpEl('code', {}, w.command), ' ', copy);
+  });
   const rest = Object.keys(errs).filter((k) => (k === ek || k.startsWith(ek + '.')) && !used.has(k))
     .map((k) => { used.add(k); return mpEl('div', { className: 'ferr', 'data-err': k }, mpRest(k.slice(ek.length + 1), errs[k])); });
   return mpEl('fieldset', { 'data-f': ek }, mpEl('legend', {}, mpTitle(a.typeId)),
@@ -1925,7 +1947,7 @@ function mpActionBox(a, i, errs, used) {
     mpEl('div', { className: 'row' }, mpEl('label', { className: 'ck' }, on, t('modesEnabled')),
       mpEl('label', { className: 'ck', title: t('modesEnforceTip') }, enf, t('modesEnforce')), mpEl('span', { className: 'sp' }),
       mpButton('remove-action', i, t('modesRemove'), () => { mpDraft.mode.actions.splice(i, 1); mpDraft.errs = {}; mpPaintEdit(); })),
-    body, rest);
+    warns, body, rest);
 }
 // The mode editor, rebuilt only on a change of shape (open, an action added or removed, a refused save); typing never rebuilds it.
 function mpPaintEdit() {
@@ -1988,7 +2010,10 @@ async function mpSaveMode() {
     return { typeId: a.typeId, enabled: a.enabled !== false, enforce: !!a.enforce, settings: e ? mpPrune(e.descriptor.settingsSchema, mpClone(a.settings)) : a.settings };
   }) };
   const r = await mpWrite(d.create ? 'POST' : 'PUT', d.create ? '/api/modes' : `/api/modes/${encodeURIComponent(m.id)}`, body);
-  if (r.ok) { mpDraft = null; mpMsg = { kind: 'ok', text: t('modesSaved') }; }
+  const warns = r.ok ? (mpView && mpView.warnings) || [] : [];
+  // saved with entries the broker's policy lacks: the editor stays open on them, each with its elevated command
+  if (r.ok && warns.length) { d.create = false; d.errs = {}; d.msg = ''; d.warns = warns; mpMsg = { kind: 'bad', text: t('modesSavedWarn') }; }
+  else if (r.ok) { mpDraft = null; mpMsg = { kind: 'ok', text: t('modesSaved') }; }
   else { d.errs = r.status === 400 ? mpProblems(r.text) : {}; d.msg = r.status === 400 ? t('modesFix') : t('modesNotSaved', { e: r.text }); }
   mpPaintAll();
 }
@@ -2050,6 +2075,14 @@ function mpRuleRow(r, i, count, modes, errs, used) {
   const mode = mpEl('select', { 'data-f': ek + '.modeId', 'aria-label': t('modesRuleTo'), value: r.modeId, 'aria-invalid': modeErr ? 'true' : null, 'aria-describedby': modeErr ? modeErrId : null },
     modes.map((m) => mpEl('option', { value: m.id }, m.name)), modes.some((m) => m.id === r.modeId) ? null : mpEl('option', { value: r.modeId }, t('modesMissing', { v: r.modeId })));
   mode.onchange = () => { r.modeId = mode.value; mpRulesTouched(); };
+  // an entry the broker's policy lacks (the save's warnings): what to run, elevated, to allow it, with a copy button
+  const warns = ((mpDraft && mpDraft.warns) || []).filter((w) => w.action === i).map((w) => {
+    const copy = mpButton('copy-command', i, t('modesCopy'), () => {
+      navigator.clipboard.writeText(w.command).then(() => { copy.textContent = t('modesCopied'); }, () => { copy.textContent = t('modesCopy'); });
+    });
+    return mpEl('div', { className: 'warn', 'data-warn': w.kind + ':' + w.name }, t('modesPolicyWarn', { k: w.kind === 'task' ? t('brokerKind_task') : w.kind === 'profile' ? t('brokerKind_profile') : t('brokerKind_service'), n: w.name }), ' ',
+      mpEl('code', {}, w.command), ' ', copy);
+  });
   const rest = Object.keys(errs).filter((k) => (k === ek || k.startsWith(ek + '.')) && !used.has(k))
     .map((k) => { used.add(k); return mpEl('div', { className: 'ferr', 'data-err': k }, mpRest(k.slice(ek.length + 1), errs[k])); });
   const move = (to) => () => { const [x] = mpRules.splice(i, 1); mpRules.splice(to, 0, x); mpRuleErrs = {}; mpRulesDirty = true; mpPaintRules(); };

@@ -37,7 +37,7 @@ internal sealed class ModesApi(StationConfig config, ModesEngine engine, TimeSpa
                 ("GET", "/api/modes") => View(200),
                 ("GET", "/api/modes/catalogue") => await CatalogueAsync(ct),
                 ("GET", "/api/modes/journal") => Journal(r),
-                ("POST", "/api/modes") => await AnswerAsync(engine.PutModeAsync(Body(r, ModesJson.Default.Mode), create: true, ct), ct),
+                ("POST", "/api/modes") => await SaveAsync(Body(r, ModesJson.Default.Mode), create: true, ct),
                 ("PUT", "/api/modes/rules") => await AnswerAsync(engine.PutRulesAsync(Body(r, ModesJson.Default.ListRule), ct), ct),
                 ("POST", "/api/modes/select") => await AnswerAsync(engine.SelectAsync(Field(r, "mode"), ct), ct),
                 ("PUT", "/api/settings/hibernate") => await AnswerAsync(engine.SetAutoHibernateAsync(Flag(r, "autoHibernate"), ct), ct),
@@ -65,7 +65,7 @@ internal sealed class ModesApi(StationConfig config, ModesEngine engine, TimeSpa
     {
         var mode = Body(r, ModesJson.Default.Mode);
         if (!string.Equals(mode.Id, id, StringComparison.Ordinal)) return HttpResponse.Text(400, $"body id {mode.Id} is not the path's {id}");
-        return await AnswerAsync(engine.PutModeAsync(mode, create: false, ct), ct);
+        return await SaveAsync(mode, create: false, ct);
     }
 
     /// <summary>The id of /api/modes/{id}; null for the fixed sub-routes or an id that cannot be one.</summary>
@@ -81,18 +81,19 @@ internal sealed class ModesApi(StationConfig config, ModesEngine engine, TimeSpa
     /// Waits for a change at most <see cref="ChangeWait"/>: past it the answer is 202 with the view as it stands (pending,
     /// switching) and the change runs on in the engine; the page follows it with GET /api/modes.
     /// </summary>
-    private async Task<HttpResponse> AnswerAsync(Task<(int Status, string Error)> change, CancellationToken ct)
+    private async Task<HttpResponse> AnswerAsync(Task<(int Status, string Error)> change, CancellationToken ct, string? savedMode = null)
     {
         (int Status, string Error) res;
         try { res = await change.WaitAsync(_changeWait, ct); }
-        catch (TimeoutException) { return View(202); }
-        return Answer(res);
+        catch (TimeoutException) { return View(202, savedMode); }
+        return res.Status == 0 ? View(200, savedMode) : HttpResponse.Text(res.Status, res.Error);
     }
 
-    private HttpResponse Answer((int Status, string Error) res) =>
-        res.Status == 0 ? View(200) : HttpResponse.Text(res.Status, res.Error);
+    /// <summary>A mode saved answers with <c>warnings</c>: its entries the broker policy does not allow, each with the elevated command.</summary>
+    private Task<HttpResponse> SaveAsync(Mode mode, bool create, CancellationToken ct) =>
+        AnswerAsync(engine.PutModeAsync(mode, create, ct), ct, mode.Id);
 
-    private HttpResponse View(int status)
+    private HttpResponse View(int status, string? warnFor = null)
     {
         var s = engine.Settings;
         var snap = engine.Snapshot;
@@ -114,6 +115,20 @@ internal sealed class ModesApi(StationConfig config, ModesEngine engine, TimeSpa
             w.WriteStartArray("problems");
             foreach (var p in engine.Problems) w.WriteStringValue(p);
             w.WriteEndArray();
+            if (warnFor is not null)
+            {
+                w.WriteStartArray("warnings");
+                foreach (var x in engine.PolicyWarnings(warnFor))
+                {
+                    w.WriteStartObject();
+                    w.WriteNumber("action", x.Action);
+                    w.WriteString("kind", x.KindName);
+                    w.WriteString("name", x.Name);
+                    w.WriteString("command", x.Command);
+                    w.WriteEndObject();
+                }
+                w.WriteEndArray();
+            }
             w.WritePropertyName("settings");
             JsonSerializer.Serialize(w, s, ModesJson.Default.ModesSettings);
             w.WriteEndObject();

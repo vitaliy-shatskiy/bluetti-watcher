@@ -50,6 +50,13 @@ internal sealed partial record BrokerPolicy(string UserSid, IReadOnlyList<string
 
     public bool AllowsProfile(string name) => Profiles.Contains(name, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The policy file at <paramref name="path"/>; null when it is missing, unreadable or invalid.</summary>
+    public static BrokerPolicy? Read(string path)
+    {
+        try { return File.Exists(path) ? Parse(File.ReadAllText(path), out _) : null; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }   // no policy known: nothing is warned about
+    }
+
     /// <summary>The policy in <paramref name="text"/>, or null with <paramref name="error"/> naming the first problem.</summary>
     public static BrokerPolicy? Parse(string text, out string error)
     {

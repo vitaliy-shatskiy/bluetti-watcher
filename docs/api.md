@@ -173,7 +173,7 @@ mode, 409 a conflict (a built-in deleted, a mode a rule still chooses, an id tak
 | Route | Body / query | Does |
 |---|---|---|
 | `GET /api/modes` | | `{ engine, activeModeId, reason, switching, pending, emergency, actions[], restores[], problems[], settings }` |
-| `POST /api/modes` | a mode | Adds it. |
+| `POST /api/modes` | a mode | Adds it. The answer (and `PUT`'s) carries `warnings[]`: `{ action, kind, name, command }` per entry the admin broker's policy does not list (`kind` `service`, `task` or `profile`; `command` = the elevated `--broker-allow` to run). The service never elevates; while the mode is active `problems[]` names each such entry. |
 | `PUT /api/modes/{id}` | a mode, same `id` | Replaces it; a built-in stays built in. |
 | `DELETE /api/modes/{id}` | | Removes it; built-ins (`normal`, `eco`, `max`) are not deletable. |
 | `PUT /api/modes/rules` | an array of rules | Replaces the Auto rules (order = priority). |
