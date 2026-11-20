@@ -14,6 +14,9 @@ internal static class KnownFolders
     /// <summary>%ProgramData%, else the shell's CommonApplicationData.</summary>
     public static string ProgramData => Resolve("ProgramData", Environment.SpecialFolder.CommonApplicationData, Environment.GetEnvironmentVariable, Environment.GetFolderPath);
 
+    /// <summary>%ProgramFiles%, else the shell's ProgramFiles.</summary>
+    public static string ProgramFiles => Resolve("ProgramFiles", Environment.SpecialFolder.ProgramFiles, Environment.GetEnvironmentVariable, Environment.GetFolderPath);
+
     /// <summary>The variable when it holds an absolute path (a drive or UNC root); otherwise the shell's answer for <paramref name="folder"/>.</summary>
     internal static string Resolve(string variable, Environment.SpecialFolder folder, Func<string, string?> environment, Func<Environment.SpecialFolder, string> shell)
     {

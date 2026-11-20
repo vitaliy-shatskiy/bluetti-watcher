@@ -779,17 +779,27 @@ Some mode actions need administrator rights (a service's start or start type, a 
 NVIDIA driver profile). The service never runs elevated; it asks one SYSTEM scheduled task, `BluettiWatcherBroker`, with
 no trigger, which it starts on demand (`schtasks /run`), and waits up to 10 s for the answer.
 
-- Folder: `%ProgramData%\BluettiWatcher\broker`, owned by Administrators; Administrators and SYSTEM write it, the user
-  reads it and may only add files to `requests\` (never folders). `bin\` holds the copy of `BluettiWatcher.exe` the task
-  runs: SYSTEM never runs the exe in the user's own bin, which the user can replace. `install.ps1 -Broker -Apply`
-  (elevated) creates it all; the normal `install.ps1 -Apply` runs that step too when its shell is elevated, else it
-  names it as the step left to run. Once the broker is registered, the switch's old GPU cap tasks (`<prefix>GpuCap`,
+- Folders: what SYSTEM trusts sits in `%ProgramFiles%\BluettiWatcher\broker` (`bin\` with the copy of
+  `BluettiWatcher.exe` the task runs, `policy.json`, `profiles\`, `exports\`, `broker.log`); the requests and answers
+  in their own root, `%ProgramData%\BluettiWatcherBroker` (`requests\`, `responses\`), never inside the flag's folder,
+  which the user may change. Both roots are owned by Administrators with inheritance cut: Administrators and SYSTEM
+  full control, the user read and traverse only; in `requests\` the user may also add files (never folders), and on
+  the files it adds read, write and delete (the client writes `.tmp` and renames it). Every child is reset to inherit
+  only that (a pre-created one loses its own entries). SYSTEM never runs the exe in the user's own bin, which the user
+  can replace, nor an exe from the exchange root. Before anything changes, the install refuses (exit 1) when an
+  existing ancestor of either root is owned by the user or grants the user delete, delete-child, change-permissions,
+  take-ownership, add-file or add-folder (the groups every user is in: the first four) - an ACL that cannot be read
+  refuses too; after setting them it reads the ACLs back and fails on any difference. The policy's user is the user
+  the service's logon task runs as (its principal), never the elevated caller. A 1.8.0 pre-release broker under
+  `%ProgramData%\BluettiWatcher\broker` is carried out (its policy and `.nip` profiles only when Administrators own
+  them) and removed. `install.ps1 -Broker -Apply` (elevated) creates it all; the normal `install.ps1 -Apply` runs
+  that step too when its shell is elevated, else it names it as the step left to run. Once the broker is registered, the switch's old GPU cap tasks (`<prefix>GpuCap`,
   `<prefix>GpuRestore`) are removed: the broker's `gpu.setPowerLimit` replaces them. After an upgrade the copy is
   stale until that step runs again: the service compares the copy's file version with its own and names a missing or
   older broker in `/api/health` (`broker`), and an older one at start as event `broker-stale` (a tray notice).
 - Request: `requests\<id>.json` (`{ v, id, op, args, issued }`, id = 32 hex digits, written as `.tmp` and renamed into
   place); answer: `responses\<id>.json` (`{ id, ok, error, value }`), pruned after 10 minutes. The broker logs every
-  request to `broker.log` beside them.
+  request to `broker.log` in its Program Files folder.
 - Default deny. A request runs only when: `policy.json` is a plain file owned by Administrators (or SYSTEM) that no other
   account may write, and parses strictly (an unknown key, a wrong type or a bad name invalidates it - then everything
   is refused); the request file is a plain file (no link, one name) owned by the policy's user or an administrator,

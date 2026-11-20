@@ -51,20 +51,20 @@ internal static class BrokerCommands
         switch (kind)
         {
             case "service":
-                if (!BrokerPolicy.ServiceNamePattern().IsMatch(name)) return $"'{name}' is not a service key name";
+                if (!BrokerPolicy.Matches(BrokerPolicy.ServiceNamePattern(), name)) return $"'{name}' is not a service key name";
                 next = policy.AllowsService(name) ? policy : policy with { Services = [.. policy.Services, name] };
                 break;
             case "task":
-                if (!BrokerPolicy.TaskNamePattern().IsMatch(name)) return $"'{name}' is not a scheduled task's full name";
+                if (!BrokerPolicy.Matches(BrokerPolicy.TaskNamePattern(), name)) return $"'{name}' is not a scheduled task's full name";
                 next = policy.ListedTask(name) is not null ? policy : policy with { Tasks = [.. policy.Tasks, name] };
                 break;
             case "profile":
-                if (!BrokerPolicy.ProfileNamePattern().IsMatch(name)) return $"'{name}' is not a .nip file name";
+                if (!BrokerPolicy.Matches(BrokerPolicy.ProfileNamePattern(), name)) return $"'{name}' is not a .nip file name";
                 if (!File.Exists(Path.Combine(paths.Profiles, name))) return $"put {name} into {paths.Profiles} first";
                 next = policy.AllowsProfile(name) ? policy : policy with { Profiles = [.. policy.Profiles, name] };
                 break;
             case "inspector":
-                if (!BrokerCore.AdminOnlyLocation(name, paths.Root) || !File.Exists(name)) return $"'{name}' is not an existing exe under Program Files or {paths.Root}";
+                if (!BrokerCore.AdminOnlyLocation(name, paths) || !File.Exists(name)) return $"'{name}' is not an existing exe under Program Files or {paths.Root}";
                 next = policy with { ProfileInspector = Path.GetFullPath(name) };
                 break;
             default:

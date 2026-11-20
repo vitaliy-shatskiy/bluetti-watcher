@@ -42,7 +42,8 @@ internal sealed class TaskStarter(Func<Task> onRun, int exit = 0) : IProcessRunn
 public sealed class BrokerClientTests : IDisposable
 {
     private const string User = "S-1-5-21-1000000001-1000000002-1000000003-1001";
-    private readonly BrokerPaths _paths = new(Path.Combine(Path.GetTempPath(), "bw-broker-client-" + Guid.NewGuid().ToString("N")));
+    private static readonly string Dir = Path.Combine(Path.GetTempPath(), "bw-broker-client-" + Guid.NewGuid().ToString("N"));
+    private readonly BrokerPaths _paths = new(Dir, Dir);
     private readonly FakeServiceControl _services = new();
     private readonly List<string> _log = [];
 

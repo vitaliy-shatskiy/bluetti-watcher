@@ -153,7 +153,7 @@ try {
     Check 'remove wake: dry run' ($r.Code -eq 0 -and $r.Text -match "would\s+remove the wake task 'BluettiWatcherWake'" -and $r.Unchanged) $r.Text
     # -Broker without -Apply: the broker's steps alone; no installed exe = blocked, exit 1, nothing written
     $r = Invoke-DryRun -Extra @('-Broker')
-    Check 'broker: folder step' ($r.Text -match 'would\s+create .+\\BluettiWatcher\\broker with requests\\') $r.Text
+    Check 'broker: folder step' ($r.Text -match 'would\s+create .+\\BluettiWatcher\\broker with profiles\\.+ and .+\\BluettiWatcherBroker with requests\\') $r.Text
     Check 'broker: exe copy step, never the user bin' ($r.Text -match 'would\s+copy .+BluettiWatcher\.exe to .+\\broker\\bin\\BluettiWatcher\.exe \(SYSTEM runs this copy') $r.Text
     Check 'broker: task step' ($r.Text -match "would\s+register the task 'BluettiWatcherBroker': SYSTEM, no trigger") $r.Text
     Check 'broker: no exe blocks, exit 1' ($r.Code -eq 1 -and $r.Text -match 'blocked: no installed .+BluettiWatcher\.exe to copy') "exit $($r.Code)"
@@ -163,7 +163,7 @@ try {
     $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:01', '-CapacityWh', '2048')
     Check 'install: names the broker step' ($r.Text -match 'install\.ps1 -Broker -Apply in an elevated shell') $r.Text
     Check 'install: the elevated part is labelled' ($r.Text -match '(?m)^elevated part \(the admin broker') $r.Text
-    Check 'install: broker folder step is an elevated would line' ($r.Text -match 'would\s+elevated: create .+\\BluettiWatcher\\broker with requests\\') $r.Text
+    Check 'install: broker folder step is an elevated would line' ($r.Text -match 'would\s+elevated: create .+\\BluettiWatcher\\broker with profiles\\.+ and .+\\BluettiWatcherBroker with requests\\') $r.Text
     Check 'install: broker exe copy step is an elevated would line' ($r.Text -match 'would\s+elevated: copy .+BluettiWatcher\.exe to .+\\broker\\bin\\BluettiWatcher\.exe') $r.Text
     Check 'install: broker task step is an elevated would line' ($r.Text -match "would\s+elevated: register the task 'BluettiWatcherBroker': SYSTEM") $r.Text
     Check 'install: broker steps after the service steps' ($r.Text.IndexOf("register the task 'BluettiWatcherBroker'") -gt $r.Text.IndexOf("register the logon task 'BluettiWatcher'")) $r.Text
@@ -257,6 +257,8 @@ try {
     & {
         . (Join-Path $PSScriptRoot 'broker-task.ps1')
         $root = Join-Path $base 'broker'
+        $exchange = Join-Path $base 'exchange'
+        $goodAcl = { param($path) @{ owner = 'S-1-5-32-544'; protected = $true; aces = @() } }
         $src = Join-Path $base 'src-bin\BluettiWatcher.exe'
         $null = New-Item -ItemType Directory -Force -Path (Split-Path $src)
         [IO.File]::WriteAllText($src, 'exe')
@@ -267,24 +269,150 @@ try {
             Icacls   = { param([string[]] $list) $calls.Add($list -join ' ') }.GetNewClosure()
             Register = { param($name, $xml, $sddl) $registered.name = $name; $registered.xml = $xml; $registered.sddl = $sddl }.GetNewClosure()
             Query    = { param($name) $registered.xml }.GetNewClosure()
+            ReadAcl  = $goodAcl
         }
-        $r = Install-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Ops $ops
+        $r = Install-WatcherBroker -Root $root -Exchange $exchange -SourceExe $src -Sid $sid -Ops $ops
         Check 'broker: installed' $r.ok $r.text
         Check 'broker: the exe is copied into the admin folder' ((Get-Content -Raw (Join-Path $root 'bin\BluettiWatcher.exe')) -eq 'exe')
         Check 'broker: the task runs that copy as SYSTEM with --broker' ($registered.xml -match '<UserId>S-1-5-18</UserId>' -and $registered.xml.Contains("<Command>$root\bin\BluettiWatcher.exe</Command>") -and $registered.xml -match '<Arguments>--broker</Arguments>') $registered.xml
         Check 'broker: the task has no trigger' ($registered.xml -notmatch '<Triggers>') $registered.xml
         Check 'broker: the user may read and run the task only' ($registered.sddl -ceq "D:P(A;;FA;;;BA)(A;;FA;;;SY)(A;;FRFX;;;$sid)") $registered.sddl
-        Check 'broker: inheritance cut, the user reads' (@($calls | Where-Object { $_ -match '/inheritance:r' -and $_.Contains("*${sid}:(OI)(CI)RX") -and $_ -notmatch "\*${sid}:\(OI\)\(CI\)(F|M|W)" }).Count -eq 1) ($calls -join ' | ')
+        Check 'broker: inheritance cut, the user reads' (@($calls | Where-Object { $_.StartsWith("$root /inheritance:r") -and $_.Contains("*${sid}:(OI)(CI)RX") -and $_ -notmatch "\*${sid}:\(OI\)\(CI\)(F|M|W)" }).Count -eq 1) ($calls -join ' | ')
         Check 'broker: requests lets the user add files, never folders' (@($calls | Where-Object { $_ -match 'requests' -and $_.Contains("*${sid}:(WD)") -and $_ -notmatch '\(AD\)|\(CI\)' }).Count -eq 1) ($calls -join ' | ')
         Check 'broker: owner Administrators after every file is written' ($calls[$calls.Count - 1] -match '/setowner \*S-1-5-32-544 /T') ($calls -join ' | ')
         $policy = Get-Content -Raw (Join-Path $root 'policy.json') | ConvertFrom-Json
         Check 'broker: the policy names the user and allows nothing' ($policy.userSid -eq $sid -and @($policy.services).Count -eq 0 -and @($policy.tasks).Count -eq 0 -and @($policy.profiles).Count -eq 0) (Get-Content -Raw (Join-Path $root 'policy.json'))
         [IO.File]::WriteAllText((Join-Path $root 'policy.json'), '{"keep":1}')
-        $null = Install-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Ops $ops
+        $null = Install-WatcherBroker -Root $root -Exchange $exchange -SourceExe $src -Sid $sid -Ops $ops
         Check 'broker: an existing policy is never replaced' ((Get-Content -Raw (Join-Path $root 'policy.json')) -eq '{"keep":1}')
         $ops.Query = { param($name) '<Task><Principals><Principal><UserId>S-1-5-21-9</UserId></Principal></Principals></Task>' }
-        $r = Install-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Ops $ops
+        $r = Install-WatcherBroker -Root $root -Exchange $exchange -SourceExe $src -Sid $sid -Ops $ops
         Check 'broker: a task read back as another account fails' (-not $r.ok -and $r.text -match 'not registered as written') $r.text
+    }
+
+    # The broker's two folders and their ancestors, against fake icacls / ACL reads / Task Scheduler: what SYSTEM runs sits
+    # in an admin-only tree no ancestor of which the user can rename, re-own or re-permission.
+    & {
+        . (Join-Path $PSScriptRoot 'broker-task.ps1')
+        $sid = 'S-1-5-21-1-2-3-1001'
+        $src = Join-Path $base 'src-bin2\BluettiWatcher.exe'
+        $null = New-Item -ItemType Directory -Force -Path (Split-Path $src)
+        [IO.File]::WriteAllText($src, 'exe')
+        $world = {
+            param([string] $name)
+            $w = Join-Path $base $name
+            @{ Root = Join-Path $w 'pf\BluettiWatcher\broker'; Exchange = Join-Path $w 'pd\BluettiWatcherBroker'; Old = Join-Path $w 'pd\BluettiWatcher\broker' }
+        }
+        # Every path reads as admin-owned, protected, the user reading only, unless $acls says otherwise.
+        $read = 0x1200A9
+        $acl = { param([string] $owner, [int] $userRights, [bool] $inheritOnly = $false) @{ owner = $owner; protected = $true; aces = @(
+            @{ sid = 'S-1-5-32-544'; rights = 0x1F01FF; allow = $true; inheritOnly = $false }
+            @{ sid = $sid; rights = $userRights; allow = $true; inheritOnly = $inheritOnly }) } }
+        $newOps = {
+            param([hashtable] $acls)
+            $calls = [Collections.Generic.List[string]]::new()
+            $reg = @{}
+            $removed = [Collections.Generic.List[string]]::new()
+            $acl = $acl; $sid = $sid; $read = $read
+            @{
+                Calls    = $calls
+                Removed  = $removed
+                Icacls   = { param([string[]] $list) $calls.Add($list -join ' ') }.GetNewClosure()
+                Register = { param($name, $xml, $sddl) $reg[$name] = $xml }.GetNewClosure()
+                Query    = { param($name) $reg[$name] }.GetNewClosure()
+                ReadAcl  = { param([string] $path) if ($acls.ContainsKey($path)) { $a = $acls[$path]; if ($a -is [scriptblock]) { & $a } else { $a } } else { & $acl 'S-1-5-32-544' $read } }.GetNewClosure()
+                RemoveTree = { param([string] $path) $removed.Add($path); [IO.Directory]::Delete($path, $true) }.GetNewClosure()
+            }
+        }
+        $install = { param($w, $ops) Install-WatcherBroker -Root $w.Root -Exchange $w.Exchange -OldRoot $w.Old -SourceExe $src -Sid $sid -Ops $ops }
+
+        # a clean install: the exe and the policy under the admin root, requests and responses under the exchange root
+        $w = & $world 'c1-clean'
+        $ops = & $newOps @{}
+        $r = & $install $w $ops
+        Check 'c1: installed' $r.ok $r.text
+        Check 'c1: the exe SYSTEM runs is under the admin root' ((Get-Content -Raw (Join-Path $w.Root 'bin\BluettiWatcher.exe')) -eq 'exe')
+        Check 'c1: the policy is under the admin root' (Test-Path -LiteralPath (Join-Path $w.Root 'policy.json'))
+        Check 'c1: requests and responses are under the exchange root only' ((Test-Path -LiteralPath (Join-Path $w.Exchange 'requests')) -and (Test-Path -LiteralPath (Join-Path $w.Exchange 'responses')) -and -not (Test-Path -LiteralPath (Join-Path $w.Root 'requests')))
+        $calls = @($ops.Calls)
+        Check 'c1: the admin root gives the user read only' (@($calls | Where-Object { $_.StartsWith("$($w.Root) /inheritance:r") -and $_.Contains("*${sid}:(OI)(CI)RX") -and $_ -notmatch "\*${sid}:\(OI\)\(CI\)(F|M|W)" }).Count -eq 1) ($calls -join ' | ')
+        Check 'c1: the exchange root gives the user read only' (@($calls | Where-Object { $_.StartsWith("$($w.Exchange) /inheritance:r") -and $_.Contains("*${sid}:(OI)(CI)RX") }).Count -eq 1) ($calls -join ' | ')
+        Check 'c1: requests lets the user add files' (@($calls | Where-Object { $_.StartsWith((Join-Path $w.Exchange 'requests')) -and $_.Contains("*${sid}:(WD)") -and $_ -notmatch '\(AD\)|\(CI\)' }).Count -eq 1) ($calls -join ' | ')
+        Check 'c1: every child is reset to inherit, under both roots' (((@($calls | Where-Object { $_ -match '/reset /T' }) | ForEach-Object { ($_ -split ' /reset')[0] } | Sort-Object) -join ',') -ceq ((@('bin', 'exports', 'profiles' | ForEach-Object { Join-Path $w.Root $_ }) + @('requests', 'responses' | ForEach-Object { Join-Path $w.Exchange $_ }) | Sort-Object) -join ',')) ($calls -join ' | ')
+        Check 'c1: the root ACL is set before its children are reset' ([Array]::FindIndex([string[]]$calls, [Predicate[string]]{ param($c) $c -match '/inheritance:r' }) -lt [Array]::FindIndex([string[]]$calls, [Predicate[string]]{ param($c) $c -match '/reset /T' })) ($calls -join ' | ')
+
+        # an ancestor the user may delete, re-permission, re-own or add into: refused before anything changes
+        $cases = @(
+            @{ name = 'DELETE on the parent of the admin root'; path = { param($w) Split-Path $w.Root }; acl = (& $acl 'S-1-5-32-544' 0x10000) }
+            @{ name = 'WRITE_DAC on the parent of the admin root'; path = { param($w) Split-Path $w.Root }; acl = (& $acl 'S-1-5-32-544' 0x40000) }
+            @{ name = 'owner of an ancestor of the admin root'; path = { param($w) Split-Path (Split-Path $w.Root) }; acl = (& $acl $sid $read) }
+            @{ name = 'add-subfolder on the parent of the exchange root'; path = { param($w) Split-Path $w.Exchange }; acl = (& $acl 'S-1-5-32-544' 0x4) }
+            @{ name = 'delete-child on the parent of the exchange root'; path = { param($w) Split-Path $w.Exchange }; acl = (& $acl 'S-1-5-32-544' 0x40) }
+            @{ name = 'an ACL that cannot be read'; path = { param($w) Split-Path $w.Root }; acl = { throw 'access denied' } }
+        )
+        $i = 0
+        foreach ($c in $cases) {
+            $w = & $world "c1-anc-$i"; $i++
+            $null = New-Item -ItemType Directory -Force -Path (Split-Path $w.Root), (Split-Path $w.Exchange)
+            $ops = & $newOps @{ (& $c.path $w) = $c.acl }
+            $r = & $install $w $ops
+            Check "c1: refused, $($c.name)" (-not $r.ok -and $r.text -match 'refused') $r.text
+            Check "c1: nothing changed, $($c.name)" ($ops.Calls.Count -eq 0 -and -not (Test-Path -LiteralPath (Join-Path $w.Root 'bin'))) ($ops.Calls -join ' | ')
+        }
+        # inherit-only ACEs do not apply to the ancestor itself
+        $w = & $world 'c1-io'
+        $null = New-Item -ItemType Directory -Force -Path (Split-Path $w.Root)
+        $r = & $install $w (& $newOps @{ (Split-Path $w.Root) = (& $acl 'S-1-5-32-544' 0x1F01FF $true) })
+        Check 'c1: an inherit-only ACE on an ancestor is not a grant on it' $r.ok $r.text
+
+        # the ACLs are read back after they are set (a root still writable by the user fails the install)
+        $w = & $world 'c1-back'
+        $r = & $install $w (& $newOps @{ $w.Root = (& $acl 'S-1-5-32-544' 0x1301BF) })
+        Check 'c1: a root the user may still write fails the read-back' (-not $r.ok -and $r.text -match 'read back') $r.text
+        $w = & $world 'c1-back2'
+        $r = & $install $w (& $newOps @{ (Join-Path $w.Exchange 'responses') = (& $acl 'S-1-5-32-544' ($read -bor 0x2)) })
+        Check 'c1: responses the user may add to fails the read-back' (-not $r.ok -and $r.text -match 'read back') $r.text
+        $w = & $world 'c1-back3'
+        $r = & $install $w (& $newOps @{ (Join-Path $w.Exchange 'requests') = (& $acl 'S-1-5-32-544' ($read -bor 0x2)) })
+        Check 'c1: requests the user may add files to passes the read-back' $r.ok $r.text
+        $w = & $world 'c1-back4'
+        $r = & $install $w (& $newOps @{ (Join-Path $w.Root 'bin') = (& $acl $sid $read) })
+        Check 'c1: a bin the user owns fails the read-back' (-not $r.ok -and $r.text -match 'read back') $r.text
+
+        # upgrade: the old broker inside the flag folder is carried out and removed
+        $w = & $world 'c1-upgrade'
+        $null = New-Item -ItemType Directory -Force -Path (Join-Path $w.Old 'bin'), (Join-Path $w.Old 'profiles'), (Join-Path $w.Old 'requests')
+        [IO.File]::WriteAllText((Join-Path $w.Old 'bin\BluettiWatcher.exe'), 'old')
+        [IO.File]::WriteAllText((Join-Path $w.Old 'policy.json'), '{"version":1,"userSid":"S-1-5-21-1-2-3-1001","services":["WSearch"],"tasks":[],"profiles":["a.nip"],"profileInspector":""}')
+        [IO.File]::WriteAllText((Join-Path $w.Old 'profiles\a.nip'), 'nip')
+        $ops = & $newOps @{}
+        $r = & $install $w $ops
+        Check 'c1 upgrade: installed' $r.ok $r.text
+        Check 'c1 upgrade: the old broker folder is gone' (-not (Test-Path -LiteralPath $w.Old) -and $ops.Removed -contains $w.Old) ($ops.Removed -join ',')
+        Check 'c1 upgrade: the admin-owned policy is carried' ((Get-Content -Raw (Join-Path $w.Root 'policy.json')) -match 'WSearch') (Get-Content -Raw (Join-Path $w.Root 'policy.json'))
+        Check 'c1 upgrade: the admin-owned profiles are carried' ((Get-Content -Raw (Join-Path $w.Root 'profiles\a.nip')) -eq 'nip')
+        Check 'c1 upgrade: the carry is named' ($r.text -match 'carried') $r.text
+        # a policy in the old folder the user owns is not carried (the user could write it): a fresh one, the old folder still removed
+        $w = & $world 'c1-upgrade-user'
+        $null = New-Item -ItemType Directory -Force -Path $w.Old
+        [IO.File]::WriteAllText((Join-Path $w.Old 'policy.json'), '{"version":1,"userSid":"S-1-5-21-1-2-3-1001","services":["Evil"],"tasks":[],"profiles":[],"profileInspector":""}')
+        $ops = & $newOps @{ (Join-Path $w.Old 'policy.json') = (& $acl $sid $read) }
+        $r = & $install $w $ops
+        Check 'c1 upgrade: a user-owned old policy is not carried' ($r.ok -and (Get-Content -Raw (Join-Path $w.Root 'policy.json')) -notmatch 'Evil' -and -not (Test-Path -LiteralPath $w.Old)) $r.text
+
+        # W1: the policy's user is the service task's principal, not the elevated caller
+        $q = @{ Query = { param($name) if ($name -ceq 'BluettiWatcher') { '<Task><Principals><Principal id="Author"><UserId>S-1-5-21-7-7-7-1002</UserId><LogonType>InteractiveToken</LogonType></Principal></Principals></Task>' } else { $null } } }
+        Check 'w1: the service task principal SID' ((Get-WatcherServiceUserSid -TaskName 'BluettiWatcher' -Ops $q) -ceq 'S-1-5-21-7-7-7-1002')
+        Check 'w1: no service task, no SID' ($null -eq (Get-WatcherServiceUserSid -TaskName 'Missing' -Ops $q))
+        $q2 = @{ Query = { param($name) '<Task><Principals><Principal id="Author"><UserId>NT AUTHORITY\SYSTEM</UserId></Principal></Principals></Task>' } }
+        Check 'w1: a service task run as SYSTEM gives no user SID' ($null -eq (Get-WatcherServiceUserSid -TaskName 'BluettiWatcher' -Ops $q2))
+        $r = Invoke-WatcherBrokerStep -Elevated $true -Root 'x' -Exchange 'y' -SourceExe $src -Sid '' -Prefix 'MyEco' -Ops $q2
+        Check 'w1: elevated with no service user: not installed, named' (-not $r.ok -and $r.text -match 'service task''s user cannot be read') $r.text
+
+        # the old GPU cap tasks, below, against a broker in its own temp folders
+        $root = Join-Path $base 'broker-gpu'
+        $exchange = Join-Path $base 'exchange-gpu'
+        $goodAcl = { param($path) @{ owner = 'S-1-5-32-544'; protected = $true; aces = @() } }
 
         # the old GPU cap tasks: their names from config powerMode.taskPrefix (key read case-sensitively, as the service does)
         $cfgDir = Join-Path $base 'prefix'
@@ -312,6 +440,7 @@ try {
             $deleted = $deleted
             @{
                 Icacls   = { param([string[]] $list) }
+                ReadAcl  = $goodAcl
                 Register = { param($name, $xml, $sddl) $reg[$name] = $xml }.GetNewClosure()
                 Query    = { param($name) if ($reg.ContainsKey($name)) { if ($registerOk) { $reg[$name] } else { '<Task>other</Task>' } } elseif ($present.ContainsKey($name)) { $present[$name] } else { $null } }.GetNewClosure()
                 Delete   = { param($name) if (-not $deleteOk) { throw 'ERROR: Access is denied.' }; $deleted.Add($name) }.GetNewClosure()
@@ -323,43 +452,43 @@ try {
 
         # when the broker registers, then the present old task goes and the missing one is not touched
         $deleted.Clear()
-        $r = Complete-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops (& $newOps)
+        $r = Complete-WatcherBroker -Root $root -Exchange $exchange -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops (& $newOps)
         Check 'old gpu: removed after the broker registered' ($r.ok -and ($deleted -join ',') -ceq 'MyEcoGpuCap') "$($r.text) | $($deleted -join ',')"
         Check 'old gpu: the removal is named' ($r.text -match "removed the old GPU task 'MyEcoGpuCap'") $r.text
         # when the broker registration fails, then the old tasks stay (the only GPU cap path left)
         $deleted.Clear()
-        $r = Complete-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops (& $newOps $false)
+        $r = Complete-WatcherBroker -Root $root -Exchange $exchange -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops (& $newOps $false)
         Check 'old gpu: kept when the broker was not registered' (-not $r.ok -and $deleted.Count -eq 0) "$($r.text) | $($deleted -join ',')"
         Check 'old gpu: kept is named' ($r.text -match 'old GPU tasks .*kept') $r.text
         # when the broker install throws, then the old tasks stay
         $deleted.Clear()
         $ops2 = & $newOps
         $ops2.Icacls = { param([string[]] $list) throw 'icacls failed' }
-        $r = Complete-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops $ops2
+        $r = Complete-WatcherBroker -Root $root -Exchange $exchange -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops $ops2
         Check 'old gpu: kept when the broker install threw' (-not $r.ok -and $deleted.Count -eq 0) $r.text
         # when the prefix is unknown, then nothing is removed and that is named
         $deleted.Clear()
-        $r = Complete-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Prefix $null -Ops (& $newOps)
+        $r = Complete-WatcherBroker -Root $root -Exchange $exchange -SourceExe $src -Sid $sid -Prefix $null -Ops (& $newOps)
         Check 'old gpu: no prefix, nothing removed' ($deleted.Count -eq 0 -and $r.text -match 'old GPU tasks') $r.text
         # when the removal fails, then it is named and the step fails
         $deleted.Clear()
-        $r = Complete-WatcherBroker -Root $root -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops (& $newOps $true $false)
+        $r = Complete-WatcherBroker -Root $root -Exchange $exchange -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops (& $newOps $true $false)
         Check 'old gpu: a failed removal fails the step, named' (-not $r.ok -and $r.text -match "could not remove the old GPU task 'MyEcoGpuCap'") $r.text
 
         # the normal install's broker step: not elevated = one line naming the elevated step, nothing registered, not a failure
         $deleted.Clear()
         $ops3 = & $newOps
-        $r = Invoke-WatcherBrokerStep -Elevated $false -Root $root -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops $ops3
+        $r = Invoke-WatcherBrokerStep -Elevated $false -Root $root -Exchange $exchange -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops $ops3
         Check 'not elevated: ok (the service install decides the exit)' ($r.ok) $r.text
         Check 'not elevated: names the elevated step' ($r.text -match 'run install\.ps1 -Broker -Apply in an elevated shell') $r.text
         Check 'not elevated: no broker yet, nothing about a stale copy' ($r.text -notmatch 'stale') $r.text
         Check 'not elevated: nothing registered or removed' ($null -eq (& $ops3.Query 'BluettiWatcherBroker') -and $deleted.Count -eq 0)
         # an upgrade with the broker registered: its copy of the exe is stale until the elevated step runs
         $ops3.Query = { param($name) if ($name -ceq 'BluettiWatcherBroker') { '<Task>broker</Task>' } else { $null } }
-        $r = Invoke-WatcherBrokerStep -Elevated $false -Root $root -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops $ops3
+        $r = Invoke-WatcherBrokerStep -Elevated $false -Root $root -Exchange $exchange -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops $ops3
         Check 'not elevated, broker registered: the copy is stale until the step runs' ($r.ok -and $r.text -match 'stale' -and $r.text -match 'install\.ps1 -Broker -Apply in an elevated shell') $r.text
         # elevated: the broker installed and the old GPU task removed
-        $r = Invoke-WatcherBrokerStep -Elevated $true -Root $root -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops (& $newOps)
+        $r = Invoke-WatcherBrokerStep -Elevated $true -Root $root -Exchange $exchange -SourceExe $src -Sid $sid -Prefix 'MyEco' -Ops (& $newOps)
         Check 'elevated: the broker installed, the old GPU task removed' ($r.ok -and ($deleted -join ',') -ceq 'MyEcoGpuCap') "$($r.text) | $($deleted -join ',')"
     }
 }

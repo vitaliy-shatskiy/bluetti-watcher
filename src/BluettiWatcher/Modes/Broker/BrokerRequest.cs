@@ -16,17 +16,21 @@ internal sealed partial record BrokerRequest(string Id, string Operation, JsonOb
 
     private static readonly HashSet<string> Keys = new(["v", "id", "op", "args", "issued"], StringComparer.Ordinal);
 
-    [GeneratedRegex("^([0-9a-f]{32})\\.json$", RegexOptions.CultureInvariant)]
-    private static partial Regex FileNamePattern();
+    [GeneratedRegex("^([0-9a-f]{32})\\.json$", RegexOptions.CultureInvariant, BrokerPolicy.MatchTimeoutMs)]
+    internal static partial Regex FileNamePattern();
 
-    [GeneratedRegex("^[a-z]+(\\.[a-zA-Z]+)+$", RegexOptions.CultureInvariant)]
-    private static partial Regex OperationPattern();
+    [GeneratedRegex("^[a-z]+(\\.[a-zA-Z]+)+$", RegexOptions.CultureInvariant, BrokerPolicy.MatchTimeoutMs)]
+    internal static partial Regex OperationPattern();
 
     /// <summary>The id a request file name carries · null = not a request file (never answered, only removed).</summary>
     public static string? IdOf(string fileName)
     {
-        var m = FileNamePattern().Match(fileName);
-        return m.Success ? m.Groups[1].Value : null;
+        try
+        {
+            var m = FileNamePattern().Match(fileName);
+            return m.Success ? m.Groups[1].Value : null;
+        }
+        catch (RegexMatchTimeoutException) { return null; }   // not a request file: removed unanswered
     }
 
     /// <summary>The request text of the file <paramref name="id"/> names, or null with the reason.</summary>
@@ -41,7 +45,7 @@ internal sealed partial record BrokerRequest(string Id, string Operation, JsonOb
         if (extra is not null) { error = $"the request has an unknown key '{extra}'"; return null; }
         if (o["v"] is not JsonValue v || !v.TryGetValue(out int version) || version != 1) { error = "the request version is not 1"; return null; }
         if (o["id"] is not JsonValue i || !i.TryGetValue(out string? rid) || !string.Equals(rid, id, StringComparison.Ordinal)) { error = "the request id is not its file name"; return null; }
-        if (o["op"] is not JsonValue op || !op.TryGetValue(out string? operation) || !OperationPattern().IsMatch(operation)) { error = "the request has no operation"; return null; }
+        if (o["op"] is not JsonValue op || !op.TryGetValue(out string? operation) || !BrokerPolicy.Matches(OperationPattern(), operation)) { error = "the request has no operation"; return null; }
         if (o["args"] is not JsonObject args) { error = "the request args is not an object"; return null; }
         if (o["issued"] is not JsonValue t || !t.TryGetValue(out long ms) || ms < 0 || ms > 253402300799999) { error = "the request has no issue time"; return null; }
         error = "";

@@ -27,7 +27,7 @@ public sealed class BrokerCoreTests : IDisposable
         File.WriteAllText(Path.Combine(_root, "profiles", "eco.nip"), "<profiles/>");
         _tasks.Enabled["\\Vendor\\SomeTask"] = true;
         _tasks.Enabled["\\Vendor\\OtherTask"] = true;
-        _core = new BrokerCore(new BrokerPaths(_root), _services, _tasks, _gpu, _importer, _clock);
+        _core = new BrokerCore(new BrokerPaths(_root, Path.Combine(_root, "exchange")), _services, _tasks, _gpu, _importer, _clock);
     }
 
     public void Dispose() => Directory.Delete(_root, recursive: true);

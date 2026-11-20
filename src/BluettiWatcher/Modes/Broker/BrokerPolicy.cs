@@ -14,22 +14,32 @@ internal sealed partial record BrokerPolicy(string UserSid, IReadOnlyList<string
 {
     private static readonly HashSet<string> Keys = new(["version", "userSid", "services", "tasks", "profiles", "profileInspector"], StringComparer.Ordinal);
 
-    [GeneratedRegex(@"^S-1-5(-[0-9]{1,10}){1,14}$", RegexOptions.CultureInvariant)]
-    private static partial Regex SidPattern();
+    /// <summary>The match time-out of every broker pattern: the input comes from files the user writes.</summary>
+    internal const int MatchTimeoutMs = 200;
+
+    /// <summary><paramref name="input"/> matches; a match that runs out of time is no match, so the request or policy is refused.</summary>
+    internal static bool Matches(Regex pattern, string input)
+    {
+        try { return pattern.IsMatch(input); }
+        catch (RegexMatchTimeoutException) { return false; }   // refused: never a pass on input that defeats the check
+    }
+
+    [GeneratedRegex(@"^S-1-5(-[0-9]{1,10}){1,14}$", RegexOptions.CultureInvariant, BrokerPolicy.MatchTimeoutMs)]
+    internal static partial Regex SidPattern();
 
     /// <summary>A service key name: letters, digits, '_', '.', '-'; no space, no path, no wildcard.</summary>
-    [GeneratedRegex(@"^[A-Za-z0-9_][A-Za-z0-9_.\-]{0,79}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^[A-Za-z0-9_][A-Za-z0-9_.\-]{0,79}$", RegexOptions.CultureInvariant, BrokerPolicy.MatchTimeoutMs)]
     internal static partial Regex ServiceNamePattern();
 
     /// <summary>A profile file name in the profiles folder: no folder part, no leading dot, ends in .nip.</summary>
-    [GeneratedRegex(@"^[A-Za-z0-9_\-][A-Za-z0-9 _.\-]{0,95}\.nip$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^[A-Za-z0-9_\-][A-Za-z0-9 _.\-]{0,95}\.nip$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase, BrokerPolicy.MatchTimeoutMs)]
     internal static partial Regex ProfileNamePattern();
 
     /// <summary>
     /// A scheduled task's full name: folders and name of letters, digits, space, '_', '.', '-', separated by '\'; no '..'
     /// segment, no wildcard, no quote.
     /// </summary>
-    [GeneratedRegex(@"^\\?(?:(?!\.\.?\\)[A-Za-z0-9_\-.][A-Za-z0-9 _.\-]{0,99}\\){0,8}(?!\.\.?$)[A-Za-z0-9_\-.][A-Za-z0-9 _.\-]{0,199}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^\\?(?:(?!\.\.?\\)[A-Za-z0-9_\-.][A-Za-z0-9 _.\-]{0,99}\\){0,8}(?!\.\.?$)[A-Za-z0-9_\-.][A-Za-z0-9 _.\-]{0,199}$", RegexOptions.CultureInvariant, BrokerPolicy.MatchTimeoutMs)]
     internal static partial Regex TaskNamePattern();
 
     public bool AllowsService(string name) => Services.Contains(name, StringComparer.OrdinalIgnoreCase);
@@ -50,7 +60,7 @@ internal sealed partial record BrokerPolicy(string UserSid, IReadOnlyList<string
         var unknown = o.Select(p => p.Key).FirstOrDefault(k => !Keys.Contains(k));
         if (unknown is not null) { error = $"the policy has an unknown key '{unknown}'"; return null; }
         if (o["version"] is not JsonValue v || !v.TryGetValue(out int version) || version != 1) { error = "the policy version is not 1"; return null; }
-        if (o["userSid"] is not JsonValue s || !s.TryGetValue(out string? sid) || !SidPattern().IsMatch(sid)) { error = "the policy userSid is not a SID"; return null; }
+        if (o["userSid"] is not JsonValue s || !s.TryGetValue(out string? sid) || !BrokerPolicy.Matches(SidPattern(), sid)) { error = "the policy userSid is not a SID"; return null; }
         var services = Names(o["services"], ServiceNamePattern(), "services", out error);
         if (services is null) return null;
         var tasks = Names(o["tasks"], TaskNamePattern(), "tasks", out error);
@@ -76,7 +86,7 @@ internal sealed partial record BrokerPolicy(string UserSid, IReadOnlyList<string
         var list = new List<string>();
         foreach (var item in a)
         {
-            if (item is not JsonValue iv || !iv.TryGetValue(out string? name) || !pattern.IsMatch(name)) { error = $"the policy {key} holds a name that is not allowed: {item?.ToJsonString()}"; return null; }
+            if (item is not JsonValue iv || !iv.TryGetValue(out string? name) || !Matches(pattern, name)) { error = $"the policy {key} holds a name that is not allowed: {item?.ToJsonString()}"; return null; }
             list.Add(name);
         }
         return list;

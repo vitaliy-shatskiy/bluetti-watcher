@@ -9,9 +9,12 @@ install.ps1 - install Bluetti Watcher for the current user. DRY RUN by default: 
 The admin broker of the power modes (tools/broker-task.ps1) is the elevated part: -Apply in an elevated shell installs
 it after the service (step 8); -Apply in a shell that is not elevated installs the service only and names the elevated
 step, install.ps1 -Broker -Apply in an elevated shell (the service never needs elevation). The broker:
-%ProgramData%\BluettiWatcher\broker owned by Administrators (the user reads it and may only add request files), a copy of
-the installed exe in its bin\ (SYSTEM never runs the copy in the user's bin), policy.json when there is none (nothing
-allowed; BluettiWatcher.exe --broker-allow adds services, tasks, profiles, elevated), and the task
+%ProgramFiles%\BluettiWatcher\broker owned by Administrators (the user reads it) with a copy of the installed exe in its
+bin\ (SYSTEM never runs the copy in the user's bin) and policy.json when there is none (nothing allowed; the user is the
+one the service task runs as; BluettiWatcher.exe --broker-allow adds services, tasks, profiles, elevated);
+%ProgramData%\BluettiWatcherBroker for the requests (the user may only add request files); refused when an ancestor of
+either lets the user rename or re-permission it; a pre-release broker in %ProgramData%\BluettiWatcher\broker is carried
+out and removed; and the task
 "BluettiWatcherBroker": SYSTEM, no trigger, started on demand by the service. Its copy of the exe is stale after each
 upgrade until the elevated step runs again. Once the broker is registered, the old GPU cap tasks "<prefix>GpuCap" and
 "<prefix>GpuRestore" (config powerMode.taskPrefix, default BluettiWatcherEco; power-mode.ps1 gpu-task install) are
@@ -121,11 +124,12 @@ function Step([string] $text) { Write-Output "$(if ($Apply) { 'do ' } else { 'wo
 
 # The admin broker (tools/broker-task.ps1): the elevated part, after the service is installed.
 $brokerRoot = Get-WatcherBrokerRoot
-$sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$brokerExchange = Get-WatcherBrokerExchange
+$oldBrokerRoot = Get-WatcherOldBrokerRoot
 $elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $gpuTaskPrefix = Get-WatcherPowerModeTaskPrefix $config
 function Write-BrokerSteps([string] $Prefix = '') {
-    Get-WatcherBrokerSteps -Root $brokerRoot -SourceExe $exe -User "$env:USERDOMAIN\$env:USERNAME" | ForEach-Object { Step "$Prefix$_" }
+    Get-WatcherBrokerSteps -Root $brokerRoot -Exchange $brokerExchange -OldRoot $oldBrokerRoot -SourceExe $exe -User "the service's user" | ForEach-Object { Step "$Prefix$_" }
     Get-WatcherOldGpuTaskSteps -Prefix $gpuTaskPrefix | ForEach-Object { Step "$Prefix$_" }
 }
 
@@ -134,10 +138,13 @@ if ($Broker) {
     $brokerProblems = @()
     if (-not (Test-Path -LiteralPath $exe)) { $brokerProblems += "no installed $exe to copy: run install.ps1 -Apply first" }
     if ($Apply -and -not $elevated) { $brokerProblems += 'the broker is a SYSTEM task: run install.ps1 -Broker -Apply in an elevated shell' }
+    # The broker takes the requests of the user the service runs as, never of the elevated caller (another admin account).
+    $sid = if ($Apply) { Get-WatcherServiceUserSid -TaskName $task } else { $null }
+    if ($Apply -and -not $sid) { $brokerProblems += "the user the task '$task' runs as cannot be read: run install.ps1 -Apply first" }
     Write-BrokerSteps
     if ($brokerProblems) { $brokerProblems | ForEach-Object { Write-Output "blocked: $_" }; exit $(if ($Apply) { 2 } else { 1 }) }
     if (-not $Apply) { Write-Output 'dry run: nothing changed.'; exit 0 }
-    $done = Complete-WatcherBroker -Root $brokerRoot -SourceExe $exe -Sid $sid -Prefix $gpuTaskPrefix
+    $done = Complete-WatcherBroker -Root $brokerRoot -Exchange $brokerExchange -OldRoot $oldBrokerRoot -SourceExe $exe -Sid $sid -Prefix $gpuTaskPrefix
     Write-Output "install: $($done.text)"
     exit $(if ($done.ok) { 0 } else { 1 })
 }
@@ -328,7 +335,8 @@ foreach ($lnk in $shortcuts) {
 }
 
 # ---- 8. the admin broker, elevated only; then the old GPU cap tasks
-$brokerStep = Invoke-WatcherBrokerStep -Elevated $elevated -Root $brokerRoot -SourceExe $exe -Sid $sid -Prefix $gpuTaskPrefix
+$sid = if ($elevated) { Get-WatcherServiceUserSid -TaskName $task } else { $null }
+$brokerStep = Invoke-WatcherBrokerStep -Elevated $elevated -Root $brokerRoot -Exchange $brokerExchange -OldRoot $oldBrokerRoot -SourceExe $exe -Sid $sid -Prefix $gpuTaskPrefix
 Write-Output "install: $($brokerStep.text)"
 Write-Output "install: done - $url"
 exit $(if ($wakeTask.ok -and $brokerStep.ok) { 0 } else { 1 })

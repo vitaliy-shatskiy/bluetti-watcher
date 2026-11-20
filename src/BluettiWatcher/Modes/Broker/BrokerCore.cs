@@ -21,8 +21,8 @@ internal sealed partial class BrokerCore
     internal static readonly HashSet<string> AdminSids = new(
         ["S-1-5-32-544", "S-1-5-18", "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"], StringComparer.OrdinalIgnoreCase);
 
-    [GeneratedRegex("^[0-9]{1,2}$", RegexOptions.CultureInvariant)]
-    private static partial Regex GpuIdPattern();
+    [GeneratedRegex("^[0-9]{1,2}$", RegexOptions.CultureInvariant, BrokerPolicy.MatchTimeoutMs)]
+    internal static partial Regex GpuIdPattern();
 
     private sealed record Operation(string[] Args, Func<JsonObject, BrokerPolicy, CancellationToken, Task<BrokerResult>> Run);
 
@@ -115,7 +115,7 @@ internal sealed partial class BrokerCore
     private static (string? Name, BrokerResult? Refusal) ListedService(JsonObject args, BrokerPolicy policy)
     {
         string? name = Text(args, "name");
-        if (name is null || !BrokerPolicy.ServiceNamePattern().IsMatch(name)) return (null, Refused("the service name is not a service key name"));
+        if (name is null || !BrokerPolicy.Matches(BrokerPolicy.ServiceNamePattern(), name)) return (null, Refused("the service name is not a service key name"));
         if (!policy.AllowsService(name)) return (null, Refused($"the service '{name}' is not in the policy"));
         return (policy.Services.First(s => string.Equals(s, name, StringComparison.OrdinalIgnoreCase)), null);
     }
@@ -137,7 +137,7 @@ internal sealed partial class BrokerCore
     private async Task<BrokerResult> TaskAsync(JsonObject args, BrokerPolicy policy, bool enable, CancellationToken ct)
     {
         string? name = Text(args, "name");
-        if (name is null || !BrokerPolicy.TaskNamePattern().IsMatch(name)) return Refused("the task name is not a task name");
+        if (name is null || !BrokerPolicy.Matches(BrokerPolicy.TaskNamePattern(), name)) return Refused("the task name is not a task name");
         // The policy's own spelling goes to the Task Scheduler.
         return policy.ListedTask(name) is { } listed ? await _tasks.SetEnabledAsync(listed, enable, ct) : Refused($"the task '{name}' is not in the policy");
     }
@@ -162,7 +162,7 @@ internal sealed partial class BrokerCore
     private async Task<BrokerResult> SetPowerLimitAsync(JsonObject args, BrokerPolicy policy, CancellationToken ct)
     {
         string? gpu = Text(args, "gpu");
-        if (gpu is null || !GpuIdPattern().IsMatch(gpu)) return Refused("gpu is not a GPU index");
+        if (gpu is null || !BrokerPolicy.Matches(GpuIdPattern(), gpu)) return Refused("gpu is not a GPU index");
         if (args["watts"] is not JsonValue wv || !wv.TryGetValue(out double watts) || !double.IsFinite(watts)) return Refused("watts is not a number");
         var q = await _gpu.QueryAsync(ct);
         if (q.Gpus is null) return Refused($"the GPU limits could not be read ({q.Error})");
@@ -181,7 +181,7 @@ internal sealed partial class BrokerCore
     private BrokerResult? RefuseInspector(BrokerPolicy policy)
     {
         if (policy.ProfileInspector.Length == 0) return Refused("the policy names no NVIDIA Profile Inspector");
-        if (!AdminOnlyLocation(policy.ProfileInspector, _paths.Root))
+        if (!AdminOnlyLocation(policy.ProfileInspector, _paths))
             return Refused($"NVIDIA Profile Inspector at {policy.ProfileInspector} is not under Program Files or the broker folder (SYSTEM never runs an exe the user can replace)");
         return null;
     }
@@ -200,15 +200,21 @@ internal sealed partial class BrokerCore
         return new(true, null, new JsonObject { ["file"] = ExportsPrefix + Path.GetFileName(file), ["sha256"] = hash });
     }
 
-    /// <summary>A path under Program Files (both) or the broker folder: places only administrators write by default.</summary>
-    internal static bool AdminOnlyLocation(string path, string brokerRoot)
+    /// <summary>
+    /// A path under Program Files (both) or the broker's own folder (itself under Program Files): places only
+    /// administrators write by default. Never the exchange folder, where the user adds request files.
+    /// </summary>
+    internal static bool AdminOnlyLocation(string path, BrokerPaths paths)
     {
         if (!Path.IsPathFullyQualified(path)) return false;
         string full = Path.GetFullPath(path);
-        string[] roots = [Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), brokerRoot];
-        return roots.Where(r => r.Length > 0)
-            .Any(r => full.StartsWith(Path.GetFullPath(r).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+        if (Under(full, paths.Exchange)) return false;
+        string[] roots = [Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), paths.Root];
+        return roots.Any(r => Under(full, r));
     }
+
+    private static bool Under(string full, string root) =>
+        root.Length > 0 && full.StartsWith(Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 
     private async Task<BrokerResult> ApplyProfileAsync(JsonObject args, BrokerPolicy policy, CancellationToken ct)
     {
@@ -216,7 +222,7 @@ internal sealed partial class BrokerCore
         string? name = Text(args, "file");
         bool exported = name is not null && name.StartsWith(ExportsPrefix, StringComparison.Ordinal);
         string? bare = exported ? name![ExportsPrefix.Length..] : name;
-        if (bare is null || !BrokerPolicy.ProfileNamePattern().IsMatch(bare)) return Refused("the file is not a .nip file name in profiles or exports");
+        if (bare is null || !BrokerPolicy.Matches(BrokerPolicy.ProfileNamePattern(), bare)) return Refused("the file is not a .nip file name in profiles or exports");
         if (!exported && !policy.AllowsProfile(bare)) return Refused($"the profile '{bare}' is not in the policy");
         if (RefuseInspector(policy) is { } bad) return bad;
         string folder = Path.GetFullPath(exported ? _paths.Exports : _paths.Profiles);
