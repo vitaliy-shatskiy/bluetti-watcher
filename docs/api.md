@@ -158,3 +158,38 @@ mode and actions"; the power-mode commands have their own limit, `powerModeTimeo
 Answer: `{ "ok", "accepted", "manual", "modePending", "message", "code" }`. 202 = saved; the service loop applies it;
 `modePending` is the choice left for it to run (null when the press runs no command, as Auto after Max). 409 = Max or Eco refused
 during a battery emergency (`code` names it: `max-held`, `eco-held`). 400 = a body that is not JSON or a mode that is not one of the three.
+
+## Power modes (`modes.engine` = `v2`)
+
+User-defined modes, the Auto rules and per-action status ([design.md](design.md) §12). With the engine at `legacy`
+every route below answers 409; under `v2`, `POST /api/mode` selects the built-in `eco` / `max` or `auto` and answers
+like `GET /api/modes`. Writes (POST, PUT, DELETE) take the guard above (`X-Station: 1`, own or no `Origin`); bodies are
+at most 4 KB. A change is saved to `modes.json`, reconciled at once, and answered with the whole view (200); a refusal
+is text: 400 a bad body or setting (each problem names its field, `actions[0].settings.plan: required`), 404 no such
+mode, 409 a conflict (a built-in deleted, a mode a rule still chooses, an id taken, `modes.json` not writable).
+
+| Route | Body / query | Does |
+|---|---|---|
+| `GET /api/modes` | | `{ engine, activeModeId, reason, emergency, actions[], restores[], problems[], settings }` |
+| `POST /api/modes` | a mode | Adds it. |
+| `PUT /api/modes/{id}` | a mode, same `id` | Replaces it; a built-in stays built in. |
+| `DELETE /api/modes/{id}` | | Removes it; built-ins (`normal`, `eco`, `max`) are not deletable. |
+| `PUT /api/modes/rules` | an array of rules | Replaces the Auto rules (order = priority). |
+| `POST /api/modes/select` | `{ "mode": "auto" \| <id> }` | A mode is held until `auto`. |
+| `GET /api/modes/catalogue` | | `{ modules: [{ descriptor, available, unavailableReason, discovery }] }`: every action type, its settings JSON Schema and UI hints, and the live lists it offers (plans, services, ...); 3 s per module. |
+| `GET /api/modes/journal` | `?since=<seq>` | `{ pageSize, records[] }`: the journal after that sequence number, 500 at most. |
+| `PUT /api/settings/hibernate` | `{ "autoHibernate": true \| false }` | Hibernation at the hibernate level on or off (the `no-hibernate` file is still honoured). |
+
+A mode: `{ "id": "quiet", "name": "Quiet", "flagWord": "normal" | "eco" | "emergency", "actions": [{ "typeId":
+"windows.powerPlan", "enabled": true, "enforce": false, "settings": { "plan": "<GUID>" } }] }`. `id`: 1-32 of `a-z 0-9 -`.
+An action of a type this build does not know is kept and shows `unsupported`.
+
+A rule: `{ "condition": { "kind": "mainsOffFor" | "mainsOnFor" | "socBelow" | "cutWithin" | "timeWindow", "seconds",
+"percent", "minutes", "from": "HH:mm", "to": "HH:mm", "hysteresis" }, "modeId": "eco" }`; only the fields of its kind are read.
+
+`actions[]`: `{ index, typeId, status, detail }` per enabled action of the active mode; `status` is `satisfied` (already
+so, nothing to undo), `applied`, `failed`, `unsupported`, `relinquished` (changed by hand: left alone), `unknown`.
+`restores[]`: resources an earlier mode left that are not back yet: `{ key, typeId, status, detail }`
+(`restore-failed` with its try count, `relinquished`, `unknown`).
+
+Journal record: `{ seq, at, kind: "mode" | "prepared" | "applied" | "relinquished" | "restored" | "restore-failed" | "dropped", modeId, typeId, key, before, value, final, detail }`.

@@ -173,6 +173,7 @@ config.json still loads, and `service.log` names them once at start.
 | `actionTimeoutSec` | int | 30 | 1-600: time limit of each action (only actions). |
 | `actions` | object | none | Commands run when the service enters a state: keys `eco`, `emergency`, `stop`, `hibernate-warn`, `normal`; and the alert `grid-voltage-high` (grid input above 253 V, again after it was under 250 V); V2 stations also `station-warning`, `station-fault`, `station-alarm-cleared` and `station-hot`. See below. |
 | `dryRun` | bool | false | Log every power-mode command, action and hibernation instead of running it (also `--dry-run`). |
+| `modes.engine` | string | `legacy` | `legacy`: the fixed eco above and the page's Auto / Eco / Max. `v2`: user-defined power modes with Auto rules, set through the API ([design.md](design.md) §12, [api.md](api.md) Power modes); their settings live in `modes.json` in the data directory, not here. Any other value = `legacy`, named in the log. |
 
 An action is an executable followed by its arguments, started directly with no shell: a pipe, a redirect or a shell
 built-in needs `cmd /c ...`. It runs windowless, with the environment values `POWER_MODE_FILE`, `POWER_MODE_MUTEX`,
@@ -184,7 +185,8 @@ Auto-lift fire `normal`. A dry run logs the actions and their environment instea
 A flag path set while `powerMode.mutex` is left at its default is reported at start (log and event `config-warning`):
 set both, or neither.
 
-Hibernation off: create an empty file `no-hibernate` in the data directory. It is read on every poll.
+Hibernation off: create an empty file `no-hibernate` in the data directory. It is read on every poll. With
+`modes.engine` = `v2`, `PUT /api/settings/hibernate` turns it off too; the file is still honoured.
 
 ## Wake during a cut
 

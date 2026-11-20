@@ -279,6 +279,9 @@ internal sealed class StationConfig
     [JsonIgnore]
     public bool CloudHistoryOn => CloudHistory != false && CloudOn && File.Exists(CloudTokenFile);
 
+    /// <summary>The power modes engine (design.md, Power modes): <c>modes.engine</c> = legacy (default) or v2.</summary>
+    public BluettiWatcher.Modes.ModesConfig Modes { get; set => field = value ?? new(); } = new();
+
     /// <summary>The DTEK Watcher module (design.md §11 DTEK module); off until an address is given.</summary>
     public DtekConfig DtekWatcher { get; set => field = value ?? new DtekConfig(); } = new();
 
@@ -329,6 +332,7 @@ internal sealed class StationConfig
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, WriteIndented = false, ReadCommentHandling = JsonCommentHandling.Skip, UseStringEnumConverter = true)]
 [JsonSerializable(typeof(StationConfig))]
 [JsonSerializable(typeof(PowerModeConfig))]
+[JsonSerializable(typeof(BluettiWatcher.Modes.ModesConfig))]
 [JsonSerializable(typeof(StationState))]
 [JsonSerializable(typeof(DtekSnapshot))]
 [JsonSerializable(typeof(List<DtekLate>))]
