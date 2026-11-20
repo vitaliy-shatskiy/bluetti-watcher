@@ -122,19 +122,36 @@ public class V2ExtrasReaderTests
         Assert.Contains("station block temperatures not supported", Assert.Single(log), StringComparison.Ordinal);
     }
 
-    /// <summary>A silent block costs one command timeout once; it never fails the reading nor slows a later poll.</summary>
+    /// <summary>
+    /// A silent block is marked not supported after two polls in a row without its answer (a dropped link is not proof);
+    /// it never fails the reading, and later polls skip it.
+    /// </summary>
     [Fact]
-    public async Task ReadAsync_BlockNeverAnswered_ReadingStandsAndLaterPollsSkipIt()
+    public async Task ReadAsync_BlockNeverAnswered_MarkedAfterTwoMissesInARowThenSkipped()
     {
         await using var link = new ScriptedLink(r => r.Start == 122 ? [] : Station(r));
         var conn = new ScriptedConnector(() => new BleOpen(link, null));
         var reader = Reader(conn, []);
         Assert.Equal(64, (await reader.ReadAsync(CancellationToken.None))?.Soc);
-        var second = await reader.ReadAsync(CancellationToken.None);
-        Assert.Equal(64, second?.Soc);
-        Assert.Equal(52.8, second?.Extras?.PackVolt);
-        Assert.Single(link.Written, w => Range(w) == (122, 17));
-        Assert.Equal(2, conn.Opens);   // one per poll: the timed-out block dropped the first poll's link and no extra opens another
+        Assert.Equal("not asked yet", reader.StationBlocks().Single(b => b.Key == V2Extras.Alarms).Value);
+        Assert.Equal(64, (await reader.ReadAsync(CancellationToken.None))?.Soc);
+        var third = await reader.ReadAsync(CancellationToken.None);
+        Assert.Equal(64, third?.Soc);
+        Assert.Equal(52.8, third?.Extras?.PackVolt);
+        Assert.Equal(2, link.Written.Count(w => Range(w) == (122, 17)));
+        Assert.StartsWith("not supported: registers 122+17", reader.StationBlocks().Single(b => b.Key == V2Extras.Alarms).Value, StringComparison.Ordinal);
+        Assert.Equal(3, conn.Opens);   // one per poll: the timed-out block dropped its poll's link and no extra opens another
+    }
+
+    /// <summary>Misses count only in a row: an answer between two misses keeps the block supported.</summary>
+    [Fact]
+    public async Task ReadAsync_MissAnswerMiss_BlockStaysSupported()
+    {
+        int asked = 0;
+        await using var link = new ScriptedLink(r => r.Start == 122 && asked++ != 1 ? [] : Station(r));
+        var reader = Reader(new ScriptedConnector(() => new BleOpen(link, null)), []);
+        for (int i = 0; i < 4; i++) Assert.Equal(64, (await reader.ReadAsync(CancellationToken.None))?.Soc);
+        Assert.Equal(4, link.Written.Count(w => Range(w) == (122, 17)));
     }
 
     /// <summary>On the AC200PL (V1) 100-138 are other data (cell voltages): never asked, reported as not on this protocol.</summary>

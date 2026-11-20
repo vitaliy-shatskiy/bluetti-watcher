@@ -286,8 +286,14 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
                     var answer = await AskAsync(block.Start, block.Quantity);
                     asking = null;
                     if (answer is null) break;
-                    if (answer is { State: AssemblyState.Complete, Body: { } body }) { _blocks[block.Name] = BlockSupported; extraBodies[block.Name] = body; }
-                    else Unsupported(block, answer.Error ?? "no answer");
+                    if (answer is { State: AssemblyState.Complete, Body: { } body })
+                    {
+                        _blocks[block.Name] = BlockSupported;
+                        _blockMisses.TryRemove(block.Name, out _);
+                        extraBodies[block.Name] = body;
+                    }
+                    else if (answer.State == AssemblyState.Exception) Unsupported(block, answer.Error ?? "exception reply");
+                    else Missed(block, answer.Error ?? "no answer");
                 }
             }
             return Result();
@@ -295,7 +301,7 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         catch (OperationCanceledException) when (!ct.IsCancellationRequested && asking is not null)
         {
             // The reading is in; only the extra block was cut off, and it costs no later poll its time.
-            Unsupported(asking, string.Create(CultureInfo.InvariantCulture, $"no answer within readerTimeoutSec ({config.ReaderTimeoutSec} s)"));
+            Missed(asking, string.Create(CultureInfo.InvariantCulture, $"no answer within readerTimeoutSec ({config.ReaderTimeoutSec} s)"));
             return Result();
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -334,6 +340,18 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
             !v2 ? "not on this protocol (V1)" : _blocks.TryGetValue(b.Name, out var s) ? s : "not asked yet"))];
     }
 
+    /// <summary>Polls in a row in which a block went unanswered (timed out, garbled, short, the link dropped).</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _blockMisses = new(StringComparer.Ordinal);
+    /// <summary>A lost answer may be the radio, not the station: only this many in a row mark the block not supported.</summary>
+    private const int BlockMissesToGiveUp = 2;
+
+    private void Missed(ExtraBlock block, string why)
+    {
+        if (_blockMisses.AddOrUpdate(block.Name, 1, (_, n) => n + 1) >= BlockMissesToGiveUp)
+            Unsupported(block, string.Create(CultureInfo.InvariantCulture, $"{why} ({BlockMissesToGiveUp} polls in a row)"));
+    }
+
+    /// <summary>An exception reply is the station's own answer: the block is not supported at once.</summary>
     private void Unsupported(ExtraBlock block, string why)
     {
         string text = string.Create(CultureInfo.InvariantCulture, $"not supported: registers {block.Start}+{block.Quantity}, {why}");

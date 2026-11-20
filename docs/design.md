@@ -37,8 +37,9 @@ read-only features to come, are mapped in [bluetti-protocol.md](bluetti-protocol
    (`V2Extras`, docs/bluetti-protocol.md sections 2.3, 2.4 and 3): pack voltage and current (100-101), its own time to
    full and to empty (104-105, minutes likely, not confirmed), warnings and faults (122-138, decoded into the app's codes:
    prefix E, or B for a high-power inverter, warnings from 113 or 97, faults from 1) and temperatures (1151-1153,
-   u16 - 40 °C). An extra never opens a connection and is never asked again in the poll; an exception reply, a short or
-   garbled answer or no answer marks its block "not supported" until the service restarts (logged once,
+   u16 - 40 °C). An extra never opens a connection and is never asked again in the poll; an exception reply marks its block "not supported" at once,
+   a short or garbled answer or no answer in two polls in a row does too (one lost answer may be the radio); the mark
+   holds until the service restarts (logged once,
    `/api/health` `stationBlocks`), so it never fails or slows a later poll. A V1 station (the AC200PL) is never asked them:
    its registers 100-138 carry other data (105-120 are cell voltages). The station's values are stored per reading and
    shown on the page; the pack current does not feed the runtime estimate (the app reads it unsigned, so it does not say
