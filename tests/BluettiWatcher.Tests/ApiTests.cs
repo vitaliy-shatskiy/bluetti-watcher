@@ -228,6 +228,51 @@ public sealed class ApiTests : IDisposable
         Assert.DoesNotContain(StationService.MaxHeldBack, doc.RootElement.GetProperty("note").GetString(), StringComparison.Ordinal);
     }
 
+    // design.md §10 Page and times: the rejected-reading note stands only while the newest reading is the rejected one.
+    [Theory]
+    [InlineData(-1, true)]    // the last accepted reading came before the rejected one: the note stands
+    [InlineData(1, false)]    // a reading accepted after it: the note is gone
+    public async Task Now_RejectedThenAccepted_NoteOnlyWhileTheRejectedIsNewest(int acceptedAfterMin, bool shown)
+    {
+        var st = _store.LoadState();
+        st.Rejected = "incomplete (no valid output mode)";
+        st.RejectedAt = T0.AddMinutes(-5);
+        st.LastAt = T0.AddMinutes(-5 + acceptedAfterMin);
+        st.LastSoc = 80;
+        _store.SaveState(st);
+        var (s, api, _) = Fresh();
+        using (s)
+        {
+            using var doc = await GetJson(api, "/api/now");
+            var codes = doc.RootElement.GetProperty("notes").EnumerateArray().Select(n => n.GetProperty("code").GetString()).ToList();
+            Assert.Equal(shown, codes.Contains(PageCodes.ReadingRejectedIncomplete));
+            Assert.DoesNotContain(PageCodes.ReadingRejected, codes);
+        }
+    }
+
+    // design.md §10 Page and times: a rejected reading's reason is coded so the page translates it; the text stays English.
+    [Fact]
+    public void RejectedNote_BothDecisionReasons_AreCodedWithTheirArgs()
+    {
+        var cfg = new StationConfig { DataDir = _dir, Port = Port };
+        string incomplete = Decision.StationDecision.Check(new Decision.Reading(50, 0, 100, null), new Decision.StationState(), T0, cfg);
+        var n = StationApi.RejectedNote("18:32", incomplete);
+        Assert.Equal((PageCodes.ReadingRejectedIncomplete, "reading rejected at 18:32: incomplete (no valid output mode)"), (n.Code, n.Text));
+        Assert.Equal(["18:32", "output-mode"], n.Args);
+
+        string several = Decision.StationDecision.Check(new Decision.Reading(null, null, 100, null), new Decision.StationState(), T0, cfg);
+        Assert.Equal(["18:32", "soc, ac-input-power, output-mode"], StationApi.RejectedNote("18:32", several).Args);
+
+        string implausible = Decision.StationDecision.Check(new Decision.Reading(20, 0, 100, "INVERTER_OUTPUT"),
+            new Decision.StationState { LastAt = T0.AddSeconds(-60), LastSoc = 80 }, T0, cfg);
+        var m = StationApi.RejectedNote("18:32", implausible);
+        Assert.Equal(PageCodes.ReadingRejectedImplausible, m.Code);
+        Assert.Equal(["18:32", "20", "80", "60"], m.Args);
+
+        var other = StationApi.RejectedNote("18:32", "something else");
+        Assert.Equal((PageCodes.ReadingRejected, "something else"), (other.Code, other.Args[1]));
+    }
+
     // api.md Guard: every route, GET included, needs the Host on the service's own port.
     [Theory]
     [InlineData("localhost:18941")]

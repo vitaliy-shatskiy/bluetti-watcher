@@ -536,6 +536,8 @@ en: {
   n_hibernate_held: "hibernate held back until {0}: the baseline moved at {1}, the battery must stay at or under {2} %",
   n_max_held: "Max held back: battery emergency",
   n_reading_rejected: "reading rejected at {0}: {1}",
+  n_reading_rejected_incomplete: "reading rejected at {0}: incomplete (no valid {1})",
+  n_reading_rejected_implausible: "reading rejected at {0}: implausible ({1} % after {2} % {3} s earlier)",
   n_wake_disarm_failed: "the wake timer could not be turned off ({0}): retrying",
   n_eco_held: "Eco held back: battery emergency",
   n_auto_held: "Auto: eco not lifted: battery emergency",
@@ -591,6 +593,10 @@ en: {
   v_idle: "idle",
   v_waiting: "waiting for the browser",
   v_signed_in: "signed in",
+  v_soc: "SOC",
+  v_ac_input_power: "AC input power",
+  v_ac_output_power: "AC output power",
+  v_output_mode: "output mode",
   srcTitle: "Reading source",
   srcAria: "Reading source",
   srcAuto: "Auto",
@@ -918,6 +924,8 @@ uk: {
   n_hibernate_held: "гібернацію відкладено до {0}: точка відліку змістилася о {1}, батарея має триматися на рівні {2} % або нижче",
   n_max_held: "Макс не ввімкнено: батарея на аварійному рівні",
   n_reading_rejected: "показання відхилено о {0}: {1}",
+  n_reading_rejected_incomplete: "показання відхилено о {0}: неповне (немає коректного значення: {1})",
+  n_reading_rejected_implausible: "показання відхилено о {0}: неправдоподібне ({1} % після {2} % {3} с тому)",
   n_wake_disarm_failed: "таймер пробудження не вимкнувся ({0}): пробую знову",
   n_eco_held: "Еко-режим не ввімкнено: батарея на аварійному рівні",
   n_auto_held: "Авто: еко-режим не знято, батарея на аварійному рівні",
@@ -973,6 +981,10 @@ uk: {
   v_idle: "не запущено",
   v_waiting: "чекаю на браузер",
   v_signed_in: "вхід виконано",
+  v_soc: "заряд (SOC)",
+  v_ac_input_power: "вхідна потужність AC",
+  v_ac_output_power: "вихідна потужність AC",
+  v_output_mode: "режим виходу",
   srcTitle: "Джерело даних",
   srcAria: "Джерело даних",
   srcAuto: "Авто",
@@ -1019,8 +1031,8 @@ const fmt = (x, d = 1) => { if (x === null || x === undefined || !Number.isFinit
 const has = (k) => Object.prototype.hasOwnProperty.call(I18N.en, k);
 // A code the service sends as a value (a state, a source, a mode): its word in the page's language, else as sent.
 const val = (code) => { const k = 'v_' + String(code ?? '').toLowerCase().replace(/-/g, '_'); return has(k) ? t(k) : String(code ?? ''); };
-// A coded server note in the page's language, its args filled (value codes among them translated); an unknown code keeps the server's text.
-function noteText(n) { if (!n) return ''; const k = 'n_' + String(n.code || '').replace(/-/g, '_'); if (!n.code || !has(k)) return n.text || ''; const p = {}; (n.args || []).forEach((a, i) => { p[i] = val(qd(a)); }); return t(k, p); }
+// A coded server note in the page's language, its args filled (value codes among them translated, a ', ' list item by item); an unknown code keeps the server's text.
+function noteText(n) { if (!n) return ''; const k = 'n_' + String(n.code || '').replace(/-/g, '_'); if (!n.code || !has(k)) return n.text || ''; const p = {}; (n.args || []).forEach((v, i) => { p[i] = String(v ?? '').split(', ').map((a) => val(qd(a))).join(', '); }); return t(k, p); }
 // A queue as the page shows it: GPV1.1 -> 1.1, a set GPV1.1+GPV2.1 -> 1.1 + 2.1 (the API keeps the full code).
 const qd = (q) => String(q ?? '').split('+').map((x) => x.replace(/^GPV(?=\d)/, '')).join(' + ');
 const notesText = (list, fallback) => (list && list.length ? list.map(noteText).join(' · ') : fallback || '');

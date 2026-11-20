@@ -15,6 +15,8 @@ internal static class PageCodes
     public const string HibernateHeld = "hibernate-held";
     public const string MaxHeld = "max-held";
     public const string ReadingRejected = "reading-rejected";
+    public const string ReadingRejectedIncomplete = "reading-rejected-incomplete";
+    public const string ReadingRejectedImplausible = "reading-rejected-implausible";
     public const string WakeDisarmFailed = "wake-disarm-failed";
     // modeError and the POST's answer
     public const string EcoHeld = "eco-held";
@@ -54,7 +56,7 @@ internal static class PageCodes
     /// <summary>Every note code above (no reflection: the service is NativeAOT; a test compares it with the constants).</summary>
     public static IReadOnlyList<string> Notes { get; } =
     [
-        StationSilent, HibernateHeld, MaxHeld, ReadingRejected, WakeDisarmFailed, EcoHeld, AutoHeld, FlagUnreadable, ModeDroppedBack, ModeDroppedLost, ModeDropped,
+        StationSilent, HibernateHeld, MaxHeld, ReadingRejected, ReadingRejectedIncomplete, ReadingRejectedImplausible, WakeDisarmFailed, EcoHeld, AutoHeld, FlagUnreadable, ModeDroppedBack, ModeDroppedLost, ModeDropped,
         ModeFailed, ModeOther, MaxPinnedCut, MaxPinnedMains, EcoPinnedCut, EcoPinnedMains, AutoNext, EcoEmergency, EcoEmergencyOver, EcoMains, EcoUntil, DtekQueuesUnknown, DtekNoSchedule, DtekStale, DtekQueueNotFixed,
         DtekGroupRefuted, DtekGroupNotHouse, DtekUpdateUnreadable, DtekDatasetFailed, DtekSiteBlocked, DtekSiteFailed, DtekConfig, DtekNotStarted,
         DtekModuleError,
@@ -62,11 +64,12 @@ internal static class PageCodes
 
     /// <summary>
     /// Codes sent as values: DTEK states and sources, source states, read error classes, the page's modes, "battery lasts",
-    /// the reading sources, the cloud's states and the sign-in's (GET /api/cloud).
+    /// the reading sources, the cloud's states and the sign-in's (GET /api/cloud), the fields a rejected reading lacked.
     /// </summary>
     public static IReadOnlyList<string> Values { get; } =
         ["off", "ok", "stale", "none", "blocked", "failed", "network", "format", "dataset", "site", "auto", "eco", "max", "yes", "no", "unknown",
-         "bluetooth", "cloud", "signed-out", "sign-in-needed", "error", "idle", "waiting", "signed-in"];
+         "bluetooth", "cloud", "signed-out", "sign-in-needed", "error", "idle", "waiting", "signed-in",
+         "soc", "ac-input-power", "ac-output-power", "output-mode"];
 
     /// <summary>The station's output modes (bluetti_bt_lib enums/output_mode.py), CLOUD_MAINS (a cloud reading with AC input, design.md §4 AC2a) and BLE_MAINS (the same from a Bluetooth model with no output-mode field).</summary>
     public static IReadOnlyList<string> OutputModes { get; } = ["STOP", "INVERTER_OUTPUT", "BYPASS_OUTPUT_C", "BYPASS_OUTPUT_D", "LOAD_MATCHING", "CLOUD_MAINS", "BLE_MAINS"];

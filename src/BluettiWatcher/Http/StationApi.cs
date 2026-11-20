@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using BluettiWatcher.Decision;
 using BluettiWatcher.DtekWatcher;
 using BluettiWatcher.Io;
@@ -17,7 +18,7 @@ namespace BluettiWatcher.Http;
 /// /api/settings/notifications (<see cref="Tray.NotificationSettingsApi"/>).
 /// from / to: ISO 8601 or Unix milliseconds; step: seconds (default 60).
 /// </summary>
-internal sealed class StationApi(StationConfig config, StationService service, StationStore store, TimeProvider time, DateTimeOffset startedAt, IDtekWatcher? dtek = null, Action<string>? log = null,
+internal sealed partial class StationApi(StationConfig config, StationService service, StationStore store, TimeProvider time, DateTimeOffset startedAt, IDtekWatcher? dtek = null, Action<string>? log = null,
     Func<bool>? bluetoothEncrypted = null, Func<bool>? bluetoothStalled = null, Func<(string Guid, string Name)>? activePlan = null, CloudAccount? cloud = null,
     Func<IReadOnlyList<KeyValuePair<string, string>>>? stationBlocks = null, ModesApi? modes = null, Tray.NotificationSettingsStore? notificationSettings = null,
     Func<Modes.Broker.BrokerStatus>? broker = null)
@@ -435,6 +436,35 @@ internal sealed class StationApi(StationConfig config, StationService service, S
         return string.Join(' ', words).ToLowerInvariant();
     }
 
+    /// <summary>
+    /// The rejected-reading note, coded so the page translates its reason: <see cref="StationDecision.Check"/>'s two forms
+    /// get their own codes, the missing fields as value codes or the numbers as args. Any other reason keeps the plain code
+    /// with the English reason as its arg.
+    /// </summary>
+    internal static PageNote RejectedNote(string clock, string why)
+    {
+        string text = $"reading rejected at {clock}: {why}";
+        var incomplete = IncompleteReason().Match(why);
+        if (incomplete.Success)
+        {
+            var fields = incomplete.Groups[1].Value.Split(", ").Select(f => f switch
+            {
+                "SOC" => "soc", "AC input power" => "ac-input-power", "AC output power" => "ac-output-power", "output mode" => "output-mode", _ => null,
+            }).ToList();
+            if (fields.TrueForAll(f => f is not null)) return new(PageCodes.ReadingRejectedIncomplete, text, clock, string.Join(", ", fields));
+        }
+        var implausible = ImplausibleReason().Match(why);
+        if (implausible.Success)
+            return new(PageCodes.ReadingRejectedImplausible, text, clock, implausible.Groups[1].Value, implausible.Groups[2].Value, implausible.Groups[3].Value);
+        return new(PageCodes.ReadingRejected, text, clock, why);
+    }
+
+    [GeneratedRegex(@"^incomplete \(no valid (.+)\)$")]
+    private static partial Regex IncompleteReason();
+
+    [GeneratedRegex(@"^implausible \(([0-9.]+) % after ([0-9.]+) % (-?[0-9]+) s earlier\)$")]
+    private static partial Regex ImplausibleReason();
+
     private byte[] Now(DateTimeOffset now, (string Id, string Name) plan)
     {
         var s = service.State;
@@ -449,8 +479,9 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             notes.Insert(0, new(PageCodes.HibernateHeld, $"hibernate held back until {until}: the baseline moved at {moved}, the battery must stay at or under {level} %", until, moved, level));
         }
         if (s.Manual == ManualMode.Max && service.EmergencyHolds(flag)) notes.Insert(0, new(PageCodes.MaxHeld, StationService.MaxHeldBack));
-        if (s.Rejected.Length > 0 && s.RejectedAt is { } ra && (now - ra).TotalHours < 6)
-            notes.Add(new(PageCodes.ReadingRejected, $"reading rejected at {Clock(ra)}: {s.Rejected}", Clock(ra), s.Rejected));
+        // Shown only while the newest reading is the rejected one: an accepted reading after it ends the note (the log keeps it).
+        if (s.Rejected.Length > 0 && s.RejectedAt is { } ra && (now - ra).TotalHours < 6 && !(s.LastAt is { } la && la > ra))
+            notes.Add(RejectedNote(Clock(ra), s.Rejected));
         var wake = service.Wake;
         if (wake is { Error.Length: > 0 }) notes.Add(new(PageCodes.WakeDisarmFailed, $"the wake timer could not be turned off ({wake.Error}): retrying", wake.Error));
         var runtime = Runtime(last, now);

@@ -521,7 +521,11 @@ changes a decision. Use it to stop a heavy program when eco starts, or to notify
   switch in the header remembers the choice in the browser.
 - Prose the page shows also comes with a stable code it translates by (`notes`, `ecoNote`, `modeErrorNote`,
   `dtekWatcher.notes`: `{code, text, args}`; `modeCode`, the station's output mode; the mode POST's `code`); an unknown
-  code shows the server's text.
+  code shows the server's text. A rejected reading's reason has its own codes (`reading-rejected-incomplete` with the
+  missing fields as value codes, `reading-rejected-implausible` with the two levels and the seconds); logs and the
+  note's `text` stay English.
+- The rejected-reading note stands only while the newest reading is the rejected one (at most 6 hours): a reading
+  accepted after it ends the note; the log keeps the rejection.
 - Times shown to people (page, notes, log texts) use the PC's local time zone. API times are ISO 8601 with the local
   offset. DTEK schedule math stays in Europe/Kyiv time, because the source publishes Kyiv wall time.
 
