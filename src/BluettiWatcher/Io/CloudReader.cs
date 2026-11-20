@@ -172,13 +172,15 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
         if (config.Source == ReadingSource.Bluetooth) return new CloudStatus("off", "the reading source is Bluetooth only", null);
         if (config.Source == ReadingSource.Auto && config.CloudEnabled == false) return new CloudStatus("off", "cloudEnabled is false", null);
         if (!File.Exists(config.CloudTokenFile)) return new CloudStatus("signed-out", "no token: sign in to the BLUETTI cloud", null);
-        if (_refused is { } refused)
-            return new CloudStatus("sign-in-needed", Invariant($"the token refresh was refused (HTTP {refused.Http}): sign in again"), refused.At);
-        if (_outcome is { } o) return o.Ok ? new CloudStatus("ok", "the last read answered", o.At) : new CloudStatus("error", o.Why, o.At);
+        // the page words the state itself; Until is when the access token runs out (a refresh moves it on)
         var (t, why) = LoadToken();
+        DateTimeOffset? until = t?.ExpiresAt;
+        if (_refused is { } refused)
+            return new CloudStatus("sign-in-needed", Invariant($"the token refresh was refused (HTTP {refused.Http}): sign in again"), refused.At, until);
+        if (_outcome is { } o) return o.Ok ? new CloudStatus("ok", "the last read answered", o.At, until) : new CloudStatus("error", o.Why, o.At, until);
         return t is null
             ? new CloudStatus("error", why, null)
-            : new CloudStatus("ok", Invariant($"signed in, not read yet; the access token {(t.ExpiresAt > time.GetUtcNow() ? "is valid until" : "expired at")} {t.ExpiresAt:yyyy-MM-dd'T'HH:mm:ss'Z'}"), null);
+            : new CloudStatus("ok", Invariant($"signed in, not read yet; the access token {(t.ExpiresAt > time.GetUtcNow() ? "is valid until" : "expired at")} {t.ExpiresAt:yyyy-MM-dd'T'HH:mm:ss'Z'}"), null, until);
     }
 
     /// <summary>A token pair older than this is refreshed by <see cref="KeepAliveAsync"/> even when no read needs the cloud.</summary>

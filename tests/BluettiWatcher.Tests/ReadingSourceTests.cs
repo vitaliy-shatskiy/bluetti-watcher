@@ -536,6 +536,18 @@ public sealed class ReadingSourceTests : IDisposable
         Assert.Empty(_http.Calls);
     }
 
+    [Fact]
+    public async Task Api_Cloud_SaysUntilWhenTheTokenRuns()
+    {
+        Token();
+        using var w = new World(this);
+        var cloud = JsonElement.Parse((await Send(w.Api, Req("GET", "/api/cloud"))).Body).GetProperty("cloud");
+        Assert.Equal("ok", cloud.GetProperty("state").GetString());
+        Assert.Equal(T0.AddSeconds(2678400), DateTimeOffset.Parse(cloud.GetProperty("until").GetString()!, System.Globalization.CultureInfo.InvariantCulture));
+        File.Delete(TokenPath);
+        Assert.Equal(JsonValueKind.Null, JsonElement.Parse((await Send(w.Api, Req("GET", "/api/cloud"))).Body).GetProperty("cloud").GetProperty("until").ValueKind);
+    }
+
     /// <summary>GET /api/cloud until the sign-in state passes <paramref name="done"/>; fails after 10 s (an event the test awaits, bounded).</summary>
     private static async Task<JsonElement> Poll(StationApi api, Func<string, bool> done)
     {

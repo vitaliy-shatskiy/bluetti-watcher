@@ -16,6 +16,12 @@ The release notes on GitHub are this file's section for the tag.
   is followed to its end, and a repaint touches only what changed, so the buttons no longer flicker.
 - Page: the rows the charts draw are merged in one place, in time order and one per time, so a row that arrives out of
   order can no longer draw a line back across the chart or the load sparkline.
+- Page: the Reading source card no longer shows the service's English text, the token file's path or an ISO UTC time. The
+  cloud chip's tooltip and the line under the buttons are worded in the page's language (for example "Signed in until
+  21.12.2026 21:06", local time); a failed sign-in says one short sentence. Signed in with a token that still runs, the
+  Sign in button is hidden.
+- API: `GET /api/cloud` and `/api/health` give `cloud.until`, when the access token runs out (null without a readable
+  token).
 
 ### Changed
 

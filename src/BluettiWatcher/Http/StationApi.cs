@@ -777,6 +777,7 @@ internal sealed partial class StationApi(StationConfig config, StationService se
         w.WriteString("state", c.State);
         w.WriteString("detail", c.Detail);
         if (c.At is { } at) w.WriteString("at", Iso(at)); else w.WriteNull("at");
+        if (c.Until is { } until) w.WriteString("until", Iso(until)); else w.WriteNull("until");
         w.WriteEndObject();
     }
 

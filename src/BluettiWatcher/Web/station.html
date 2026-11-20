@@ -627,14 +627,18 @@ en: {
   cloudSignOut: "Sign out",
   cloudSignOutTip: "Deletes the cloud token from this PC",
   cloudChipText: "cloud: {s}",
-  cloudFrom: "source set {f}",
-  cloudFromPage: "on this page",
-  cloudFromConfig: "in config.json",
-  cloudFromDefault: "by default",
-  cloudSignInLine: "sign-in: {s}",
-  cloudSaveFailed: "not saved: {e}",
   cloudPopupBlocked: "the browser blocked the new tab: open the sign-in with the link below",
   cloudOpenLink: "Open the BLUETTI sign-in",
+  cloudTipOk: "Signed in until {d}",
+  cloudTipSignedOut: "Not signed in to the BLUETTI cloud",
+  cloudTipSignInNeeded: "The BLUETTI cloud asks you to sign in again",
+  cloudTipError: "The last cloud reading failed",
+  cloudTipOff: "The cloud is not used",
+  cloudWaiting: "Finish the sign-in in the BLUETTI tab",
+  cloudSignInFailed: "Sign-in failed. Try again",
+  cloudSourceRefused: "Not saved. With this source nothing could read the station",
+  cloudNotSaved: "Not saved. Try again",
+  cloudNoService: "The service does not answer. Try again in a minute",
   om_STOP: "output stopped",
   om_INVERTER_OUTPUT: "inverter output",
   om_BYPASS_OUTPUT_C: "bypass output (C)",
@@ -1029,14 +1033,18 @@ uk: {
   cloudSignOut: "Вийти",
   cloudSignOutTip: "Видаляє токен хмари з цього ПК",
   cloudChipText: "хмара: {s}",
-  cloudFrom: "джерело задано {f}",
-  cloudFromPage: "на цій сторінці",
-  cloudFromConfig: "у config.json",
-  cloudFromDefault: "за замовчуванням",
-  cloudSignInLine: "вхід: {s}",
-  cloudSaveFailed: "не збережено: {e}",
   cloudPopupBlocked: "браузер заблокував нову вкладку: відкрийте вхід за посиланням нижче",
   cloudOpenLink: "Відкрити вхід BLUETTI",
+  cloudTipOk: "Вхід дійсний до {d}",
+  cloudTipSignedOut: "Вхід у хмару BLUETTI не виконано",
+  cloudTipSignInNeeded: "Хмара BLUETTI просить увійти знову",
+  cloudTipError: "Останнє читання з хмари не вдалося",
+  cloudTipOff: "Хмара не використовується",
+  cloudWaiting: "Завершіть вхід у вкладці BLUETTI",
+  cloudSignInFailed: "Не вдалося увійти. Спробуйте ще раз",
+  cloudSourceRefused: "Не збережено. З цим джерелом станцію нічим читати",
+  cloudNotSaved: "Не збережено. Спробуйте ще раз",
+  cloudNoService: "Служба не відповідає. Спробуйте за хвилину",
   om_STOP: "вихід вимкнено",
   om_INVERTER_OUTPUT: "від інвертора",
   om_BYPASS_OUTPUT_C: "байпас (C)",
@@ -2281,6 +2289,12 @@ load().then(() => { settle(); schedule(); });
 let cloudNow = null, cloudErr = '', cloudTimer = null, cloudBusy = false, cloudUrl = '';
 const CLOUD_CHIP = { ok: 'ok', 'signed-out': 'warn', 'sign-in-needed': 'bad', error: 'bad' };
 const SIGNIN_ORIGIN = 'https://sso.bluettipower.com/';
+const CLOUD_TIP = { ok: 'cloudTipOk', 'signed-out': 'cloudTipSignedOut', 'sign-in-needed': 'cloudTipSignInNeeded', error: 'cloudTipError', off: 'cloudTipOff' };
+// An ISO time from the service as the page shows dates: DD.MM.YYYY HH:mm, local, 24-hour.
+function cloudDate(iso) {
+  const d = new Date(iso), p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 function paintCloud() {
   const c = cloudNow;
   $('srcCard').hidden = !c;
@@ -2289,18 +2303,21 @@ function paintCloud() {
   const st = c.cloud.state, chip = $('cloudChip');
   chip.className = 'chip' + (CLOUD_CHIP[st] ? ' ' + CLOUD_CHIP[st] : '');
   chip.lastChild.textContent = t('cloudChipText', { s: val(st) });
-  chip.title = c.cloud.detail || '';
+  // the page words the state itself: the service's detail is English for its log, never shown
+  const until = c.cloud.until ? cloudDate(c.cloud.until) : '';
+  chip.title = t(CLOUD_TIP[st] || 'cloudTipOff', { d: until });
   $('srcResetBox').hidden = c.readingSourceFrom !== 'page';
   $('srcReset').disabled = cloudBusy;
   const waiting = c.signIn.state === 'waiting';
   $('cloudSignIn').disabled = cloudBusy;
+  // signed in with a token that still runs: no sign-in button, only Sign out and until when
+  const signInBox = $('cloudSignIn').parentNode;
+  if (signInBox) signInBox.hidden = st === 'ok' && !!c.cloud.until && Date.parse(c.cloud.until) > Date.now();
   $('cloudSignOut').disabled = cloudBusy || st === 'signed-out';
-  const from = c.readingSourceFrom === 'page' ? t('cloudFromPage') : c.readingSourceFrom === 'config' ? t('cloudFromConfig') : t('cloudFromDefault');
-  const parts = [t('cloudFrom', { f: from })];
-  if (st === 'error' || st === 'sign-in-needed') parts.push(c.cloud.detail);
-  if (c.signIn.state !== 'idle') parts.push(t('cloudSignInLine', { s: val(c.signIn.state) }) + (c.signIn.message ? ` (${c.signIn.message})` : ''));
-  if (cloudErr) parts.push(cloudErr);
-  $('cloudLine').textContent = parts.filter(Boolean).join(' · ');
+  // one short sentence: what is wrong and what to do, else until when the sign-in holds; the source buttons say the rest
+  const line = cloudErr || (waiting ? t('cloudWaiting') : c.signIn.state === 'failed' ? t('cloudSignInFailed')
+    : st === 'sign-in-needed' ? t('cloudTipSignInNeeded') : st === 'error' ? t('cloudTipError') : until && st === 'ok' ? t('cloudTipOk', { d: until }) : '');
+  $('cloudLine').textContent = line;
   const link = $('cloudLink');
   link.hidden = !(waiting && cloudUrl);
   if (waiting && cloudUrl) link.href = cloudUrl; else link.removeAttribute('href');
@@ -2323,9 +2340,9 @@ async function cloudPost(path, body) {
   try {
     const r = await fetch(path, { method: 'POST', headers: { 'X-Station': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
     if (r.ok) { const j = await r.json(); cloudNow = j; return j; }
-    cloudErr = t('cloudSaveFailed', { e: (await r.text()) || `HTTP ${r.status}` });
+    cloudErr = r.status === 409 ? t('cloudSourceRefused') : t('cloudNotSaved');   // the service's reason goes to its log
   } catch (e) {
-    cloudErr = t('cloudSaveFailed', { e: e.message });
+    cloudErr = t('cloudNoService');
   } finally {
     cloudBusy = false; paintCloud();
   }
