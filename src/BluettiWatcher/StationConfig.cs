@@ -291,7 +291,7 @@ internal sealed class StationConfig
     [JsonIgnore]
     public bool CloudHistoryOn => CloudHistory != false && CloudOn && File.Exists(CloudTokenFile);
 
-    /// <summary>The power modes engine (design.md, Power modes): <c>modes.engine</c> = legacy (default) or v2.</summary>
+    /// <summary>The power modes engine (design.md, Power modes): <c>modes.engine</c> = v2 (default) or legacy.</summary>
     public BluettiWatcher.Modes.ModesConfig Modes { get; set => field = value ?? new(); } = new();
 
     /// <summary>The DTEK Watcher module (design.md §11 DTEK module); off until an address is given.</summary>
