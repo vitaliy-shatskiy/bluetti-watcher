@@ -195,9 +195,16 @@ file) · `ok` (the last read answered, or signed in and not read yet; the detail
 - AC2a: the cloud has no output mode, and a reading without one is incomplete (section 3). The mode is derived:
   `GridAllTotalPower` > 0 = `CLOUD_MAINS` (mains is on whatever the mode); `GridAllTotalPower` 0 with `SetCtrlAc` 1
   and `ACLoadAllTotalPower` > 0 = `INVERTER_OUTPUT` (the AC load runs from the battery); anything else = no mode, so
-  the reading is incomplete. The cloud has answered an all-zero device state (SOC 0 %, 0 W in, 0 W out) while the
-  station ran on Bluetooth at a real charge: that answer derives no mode and is rejected as incomplete, which keeps a
-  false 0 % away from the stop and hibernate levels.
+  the reading is incomplete.
+- AC2b: the cloud has answered an all-zero device state (SOC 0 %, 0 W in, 0 W out) while the station ran on Bluetooth
+  at a real charge, and its history API went on answering. Such an answer is no live state: never a reading, so a
+  false 0 % never reaches the stop and hibernate levels nor a stored row. Its newest point of today on the history's
+  power curve (§4a, the same read-only call) is the reading instead, `lastSource` `cloud-history`, while it is at most
+  `cloudHistoryMaxAgeMin` (10) minutes old; its mode is derived as in AC2a with the AC output taken as on when it feeds
+  a load, and the decision's checks (AC9 stale included) apply as to any cloud reading. At most one history call each
+  5 minutes (the last answer serves between them), counted in the back-fill's daily cap of 40 calls. An older or
+  missing point, a failed call or the cap reached is a plain miss (no reading). "cloud: no live state (all values
+  zero)" is logged once until the device list answers again; the history's outcome once each time it changes.
 - AC3: when the device is offline (`online` not "1"), the answer is not `msgCode` 0, `SOC` is missing or not a
   number, HTTP fails or times out (15 s cap; a device list request with no answer at all is sent once more), or the
   token file is missing or unreadable, the result is a miss with one log line naming why, never the token.

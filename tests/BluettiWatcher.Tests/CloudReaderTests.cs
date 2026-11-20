@@ -63,7 +63,9 @@ public sealed class CloudReaderTests : IDisposable
 
     /// <summary>The two calls the cloud client may make (design.md §4 AC5).</summary>
     internal static bool Allowed(HttpMethod method, string url) =>
-        (method == HttpMethod.Get && url == Devices) || (method == HttpMethod.Post && url == TokenUrl);
+        (method == HttpMethod.Get && url == Devices) || (method == HttpMethod.Post && url is TokenUrl or PowerUrl);
+
+    private const string PowerUrl = "https://gw.bluettipower.com/api/bluiotdata/dashboard/v2/getDevicePowerStatistics";
 
     [Fact]
     public void The_allow_list_refuses_any_other_call()
@@ -159,15 +161,59 @@ public sealed class CloudReaderTests : IDisposable
         "error":null,"code":0}
         """;
 
-    // design.md §4 AC2a: the all-zero device state derives no mode, so a false 0 % never reaches the stop and hibernate levels
+    // design.md §4 AC2b: the all-zero device state is no live state: a plain miss, so a false 0 % is never a reading
     [Fact]
-    public async Task The_live_all_zero_answer_reads_as_zeros_and_is_rejected_as_incomplete()
+    public async Task The_live_all_zero_answer_without_the_history_is_a_miss_named_no_live_state()
     {
         Token(Now);
         _http.Json(AllZeroAnswer);
-        var r = await Cloud.ReadAsync(CancellationToken.None);
-        Assert.Equal(new Reading(0, 0, 0, null, Source: "cloud"), r);
-        Assert.Contains("output mode", StationDecision.Check(r!, new StationState(), T0, Config()), StringComparison.Ordinal);
+        Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
+        Assert.Equal("cloud: no live state (all values zero)", Assert.Single(_log));
+    }
+
+    /// <summary>A history day (local labels "yyyy-MM-dd HH:mm" at +03:00) whose points are <paramref name="labels"/>: SOC 64 %, no grid, 300 W AC out.</summary>
+    private static string HistoryAnswer(params string[] labels)
+    {
+        string Series(string title, string v) => $$"""{"title":"{{title}}","data":[{{string.Join(',', labels.Select(_ => v))}}]}""";
+        string xs = string.Join(',', labels.Select(l => $"\"{l}\""));
+        string ys = string.Join(',', Series("soc", "64"), Series("grid", "0"), Series("ac", "300"), Series("pv", "0"), Series("dc", "0"));
+        return $$"""{"code":200,"msgCode":0,"message":"OK","data":{"chart_x":[{{xs}}],"chart_y":[{{ys}}]} }""";
+    }
+
+    // design.md §4 AC2b: the all-zero device list is replaced by the cloud history's newest point while it is fresh
+    [Fact]
+    public async Task An_all_zero_answer_reads_the_fresh_newest_history_point_as_cloud_history()
+    {
+        Token(Now);
+        using var store = new StationStore(Path.Combine(_dir, "station.db"));
+        using var history = new CloudHistoryReader(_http);
+        _cloud = BluettiCloudReader.ForService(Config(), _http, _clock, _log.Add, store, history);
+        _http.Json(AllZeroAnswer);
+        _http.Json(HistoryAnswer("2026-10-06 19:50", "2026-10-06 19:55"));   // T0 is 20:00 +03:00: the newest point is 5 min old
+        var r = await new FallbackReader(new QueueReader(), Cloud).ReadAsync(CancellationToken.None);
+        Assert.NotNull(r);
+        Assert.Equal(new Reading(64, 0, 300, "INVERTER_OUTPUT", Source: "cloud-history"), r with { InDc = null, OutDc = null });
+        Assert.Equal("", StationDecision.Check(r, new StationState(), T0, Config()));
+        Assert.Equal(HttpMethod.Post, _http.Calls[1].Method);
+        Assert.Contains(_log, l => l == "cloud: no live state (all values zero)");
+    }
+
+    // design.md §4 AC2b: an old history point is a plain miss (no reading, so no row with SOC 0), said once per outage
+    [Fact]
+    public async Task An_all_zero_answer_with_an_old_history_point_is_a_miss_said_once()
+    {
+        Token(Now);
+        using var store = new StationStore(Path.Combine(_dir, "station.db"));
+        using var history = new CloudHistoryReader(_http);
+        _cloud = BluettiCloudReader.ForService(Config(), _http, _clock, _log.Add, store, history);
+        _http.Json(AllZeroAnswer);
+        _http.Json(HistoryAnswer("2026-10-06 19:35", "2026-10-06 19:40"));   // 20 min old
+        Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
+        _clock.Now = T0.AddMinutes(1);
+        _http.Json(AllZeroAnswer);   // within 5 minutes of the last history call: no second one
+        Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
+        Assert.Equal(3, _http.Calls.Count);
+        Assert.Single(_log, l => l.Contains("no live state", StringComparison.Ordinal));
     }
 
     // design.md §4 AC9: a frozen cloud cache is a miss

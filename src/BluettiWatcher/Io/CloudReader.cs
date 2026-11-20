@@ -26,7 +26,7 @@ internal sealed class FallbackReader(IStationReader bluetooth, IStationReader? c
         {
             var only = cloudReady ? await cloud!.ReadAsync(ct) : null;
             State(only is null ? "no source answers (cloud only)" : "cloud answers (cloud only)");
-            return only is null ? null : only with { Source = "cloud" };
+            return only is null ? null : Cloud(only);
         }
         var r = await bluetooth.ReadAsync(ct);
         if (r is not null)
@@ -41,7 +41,7 @@ internal sealed class FallbackReader(IStationReader bluetooth, IStationReader? c
             if (again is not null && (check?.Invoke(again) ?? "").Length == 0)
             {
                 State($"cloud answers: the Bluetooth reading is {why}");
-                return again with { Source = "cloud" };
+                return Cloud(again);
             }
             State($"Bluetooth answers, though {why}: the cloud has no usable reading either");
             return r with { Source = "bluetooth" };
@@ -49,8 +49,11 @@ internal sealed class FallbackReader(IStationReader bluetooth, IStationReader? c
         if (!cloudReady) return null;
         var c = await cloud!.ReadAsync(ct);
         State(c is null ? "no source answers" : "cloud answers: Bluetooth gave no reading");
-        return c is null ? null : c with { Source = "cloud" };
+        return c is null ? null : Cloud(c);
     }
+
+    /// <summary>A cloud reading keeps the cloud history's mark (design.md §4 AC2b); any other is "cloud".</summary>
+    private static Reading Cloud(Reading r) => r.Source == BluettiCloudReader.HistorySource ? r : r with { Source = "cloud" };
 
     private void State(string text)
     {
@@ -70,8 +73,8 @@ internal sealed record CloudToken(string Access, string Refresh, string TokenTyp
 
 /// <summary>
 /// The BLUETTI cloud as the fallback reading (design.md §4 Cloud fallback), through the API of the official Home Assistant integration.
-/// READ ONLY, FOREVER, as the Bluetooth path: the only calls are the device list (GET) and the token refresh (POST); no
-/// control, fulfillment or bind call exists here. No token ever reaches a log line: a failure names its kind only.
+/// READ ONLY, FOREVER, as the Bluetooth path: the only calls are the device list (GET), the token refresh (POST) and,
+/// through <see cref="CloudHistoryReader"/>'s own allow-list, the history's power curve; no control, fulfillment or bind call exists here. No token ever reaches a log line: a failure names its kind only.
 /// </summary>
 internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandler handler, TimeProvider time, Action<string> log) : IStationReader, IDisposable
 {
@@ -124,8 +127,14 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
     }
 
     /// <summary>The service's reader: it starts with the serial saved for its own station type (<see cref="CloudBackfill.SavedSerial"/>).</summary>
-    internal static BluettiCloudReader ForService(StationConfig config, HttpMessageHandler handler, TimeProvider time, Action<string> log, Storage.StationStore store) =>
-        new(config, handler, time, log) { KnownSerial = CloudBackfill.SavedSerial(store, config.Type) };
+    internal static BluettiCloudReader ForService(StationConfig config, HttpMessageHandler handler, TimeProvider time, Action<string> log, Storage.StationStore store,
+        CloudHistoryReader? history = null) =>
+        new(config, handler, time, log) { KnownSerial = CloudBackfill.SavedSerial(store, config.Type), History = history, Store = store };
+
+    /// <summary>The history API the all-zero device list falls back to (design.md §4 AC2b); null = that answer is a miss.</summary>
+    internal CloudHistoryReader? History { get; init; }
+    /// <summary>Holds the daily history call count shared with <see cref="CloudBackfill"/>; null = no history call.</summary>
+    internal Storage.StationStore? Store { get; init; }
 
     /// <summary>The history API refused the serial: the next history session reads the device list again.</summary>
     internal void ForgetSerial() => _serial = null;
@@ -142,7 +151,8 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
         try
         {
             var (r, why) = await ReadOnceAsync(ct);
-            if (r is null) log($"cloud: no reading - {why}");
+            // A miss for no live state is said once per outage (ReadOnceAsync), not each poll.
+            if (r is null && !why.StartsWith(NoLiveState, StringComparison.Ordinal)) log($"cloud: no reading - {why}");
             _outcome = new Outcome(r is not null, why, time.GetUtcNow());
             return r;
         }
@@ -243,7 +253,70 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
     private async Task<(Reading? Reading, string Why)> ReadOnceAsync(CancellationToken ct)
     {
         var (answer, why) = await DevicesWithTokenAsync(ct);
+        if (why == NoLiveState)
+        {
+            if (!_noLiveState) log($"cloud: {NoLiveState}");
+            _noLiveState = true;
+            (answer, why) = await NewestHistoryAsync(ct);
+        }
+        else if (answer is not null)
+        {
+            _noLiveState = false;
+            _historyNote = null;
+        }
         return answer is null ? (null, why) : Stale(answer, time.GetUtcNow()) is { } stale ? (null, stale) : (answer, "");
+    }
+
+    /// <summary>The device list's all-zero answer: no live state, a plain miss unless the history replaces it (design.md §4 AC2b).</summary>
+    internal const string NoLiveState = "no live state (all values zero)";
+    /// <summary>The source of a reading taken from the cloud history's newest point.</summary>
+    internal const string HistorySource = "cloud-history";
+    /// <summary>At most one history call this often for the live reading; between calls the last newest point is used.</summary>
+    internal static readonly TimeSpan HistoryEvery = TimeSpan.FromMinutes(5);
+    private bool _noLiveState;
+    private string? _historyNote;
+    private HistoryPoint? _historyPoint;
+    private DateTimeOffset? _historyCalledAt;
+
+    /// <summary>
+    /// design.md §4 AC2b: with the device list answering no live state, the history's newest point of today is the reading
+    /// while it is no older than cloudHistoryMaxAgeMin; older, missing, or no call allowed (the 5-minute spacing keeps the
+    /// last answer, the daily cap is shared with the back-fill) is a miss. Its outcome is logged when it changes.
+    /// </summary>
+    private async Task<(Reading? Reading, string Why)> NewestHistoryAsync(CancellationToken ct)
+    {
+        int maxAge = config.CloudHistoryMaxAgeMin;
+        if (History is null || Store is null || maxAge <= 0 || config.CloudHistory == false || _serial is not { } serial) return (null, NoLiveState);
+        var now = time.GetUtcNow();
+        var zone = time.LocalTimeZone;
+        if (_historyCalledAt is not { } called || now - called >= HistoryEvery)
+        {
+            var (token, why) = CurrentToken();
+            if (token is null) return HistoryMiss(why);
+            if (!CloudBackfill.TryCountCall(Store, now, zone, CloudBackfill.DefaultCallsPerDay))
+                return HistoryMiss(Invariant($"the daily cap of {CloudBackfill.DefaultCallsPerDay} history calls is reached"));
+            _historyCalledAt = now;
+            var day = await History.PowerDayAsync(token.Access, serial, DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime), zone, ct);
+            _historyPoint = day.Points.MaxBy(p => p.At);
+            if (day.Why.Length > 0) return HistoryMiss($"the history answered: {day.Why}");
+        }
+        if (_historyPoint is not { } point) return HistoryMiss("the history has no point today");
+        if (now - point.At > TimeSpan.FromMinutes(maxAge)) return HistoryMiss(Invariant($"the history's newest point is older than {maxAge} min"));
+        HistoryNote("its newest point is the reading");
+        return (new Reading(point.Soc, point.InAc, point.OutAc, DerivedMode(point.InAc, point.OutAc, point.OutAc > 0), point.InDc, point.OutDc, Source: HistorySource), "");
+    }
+
+    private (Reading? Reading, string Why) HistoryMiss(string why)
+    {
+        HistoryNote(why);
+        return (null, $"{NoLiveState}; {why}");
+    }
+
+    private void HistoryNote(string text)
+    {
+        if (string.Equals(text, _historyNote, StringComparison.Ordinal)) return;
+        _historyNote = text;
+        log($"cloud history (live): {text}");
     }
 
     /// <summary>
@@ -397,12 +470,16 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
             double? Num(string k) => f.TryGetValue(k, out var v) && double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) && double.IsFinite(n) ? n : null;
             if (Num("SOC") is not { } soc) return (code, null, "no numeric SOC in the cloud answer");
             double? inAc = Num("GridAllTotalPower"), outAc = Num("ACLoadAllTotalPower");
-            // The cloud has no output mode: mains in = mains on; no AC in while the AC output feeds a load = the inverter; else unknown.
-            string? mode = inAc > 0 ? "CLOUD_MAINS" : inAc == 0 && Num("SetCtrlAc") == 1 && outAc > 0 ? "INVERTER_OUTPUT" : null;
-            return (code, new Reading(soc, inAc, outAc, mode, Source: "cloud"), "");
+            // A running station is never at 0 % with nothing flowing: the cloud holds no live state for it.
+            if (soc == 0 && (inAc ?? 0) == 0 && (outAc ?? 0) == 0) return (code, null, NoLiveState);
+            return (code, new Reading(soc, inAc, outAc, DerivedMode(inAc, outAc, Num("SetCtrlAc") == 1), Source: "cloud"), "");
         }
         return (code, null, $"no {type} in the cloud account");
     }
+
+    /// <summary>The cloud has no output mode: mains in = mains on; no AC in while the AC output is on and feeds a load = the inverter; else unknown.</summary>
+    private static string? DerivedMode(double? inAc, double? outAc, bool acOn) =>
+        inAc > 0 ? "CLOUD_MAINS" : inAc == 0 && acOn && outAc > 0 ? "INVERTER_OUTPUT" : null;
 
     /// <summary>A refused refresh token still held back: no call goes out with it until a new sign-in or the hold passes.</summary>
     private Refusal? HeldRefusal(CloudToken token)

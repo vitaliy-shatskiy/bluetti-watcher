@@ -323,11 +323,11 @@ public sealed class ReadingSourceTests : IDisposable
 
     /// <summary>
     /// Every reading rejected that way since 30.10.2026 carried SOC 0 %, 0 W in and 0 W out: a device state with nothing
-    /// live in it. No mode can be derived from it, and the decision must not take SOC 0 % as the battery (a stop and a
-    /// hibernation would follow), so the rejection stands. A real state on the inverter or on mains derives its mode.
+    /// live in it. The decision must not take SOC 0 % as the battery (a stop and a hibernation would follow): such an answer
+    /// is no live state, a plain miss with no reading at all (design.md §4 AC2b). A real state on the inverter or on mains derives its mode.
     /// </summary>
     [Theory]
-    [InlineData("0", "0", "0", "1", false)]     // the answer the cloud gave 306 times: rejected, never SOC 0 %
+    [InlineData("0", "0", "0", "1", false)]     // the answer the cloud gave 306 times: no reading, never SOC 0 %
     [InlineData("0", "0", "0", "0", false)]
     [InlineData("64", "0", "169", "1", true)]   // mains off, AC on, a load: the inverter
     [InlineData("64", "250", "169", "1", true)] // on mains
@@ -338,10 +338,36 @@ public sealed class ReadingSourceTests : IDisposable
         Token();
         _http.Json(Answer(soc, grid, acLoad, ctrlAc));
         var r = await Cloud.ReadAsync(CancellationToken.None);
+        if (!accepted)
+        {
+            Assert.Null(r);
+            return;
+        }
         Assert.NotNull(r);
-        string why = StationDecision.Check(r, new StationState(), T0, _cfg);
-        Assert.Equal(accepted, why.Length == 0);
-        if (!accepted) Assert.Equal("incomplete (no valid output mode)", why);
+        Assert.Equal("", StationDecision.Check(r, new StationState(), T0, _cfg));
+    }
+
+    /// <summary>design.md §4 AC2b: the all-zero answer is stored as a plain miss: a row with no SOC, never one with SOC 0.</summary>
+    [Fact]
+    public async Task Poll_AllZeroCloudAnswer_StoresAPlainMissWithNoSocZeroRow()
+    {
+        _cfg.PageSource = ReadingSource.Cloud;
+        Token();
+        _http.Json(Answer("0", "0", "0", "1"));
+        string db = Path.Combine(_dir, "station.db");
+        using (var store = new StationStore(db))
+        using (var service = new StationService(_cfg, new FallbackReader(new QueueReader(), Cloud, cloudOnly: () => true), new FakeActions(), new FakeHibernator(true),
+            new FixedFlag(FlagView.Normal), store, _clock, Log))
+            await service.PollAsync(CancellationToken.None);
+        await using var c = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={db};Pooling=False");
+        await c.OpenAsync(TestContext.Current.CancellationToken);
+        await using var q = c.CreateCommand();
+        q.CommandText = "SELECT status, soc FROM reading";
+        await using var rows = await q.ExecuteReaderAsync(TestContext.Current.CancellationToken);
+        Assert.True(await rows.ReadAsync(TestContext.Current.CancellationToken));
+        Assert.Equal((long)ReadingStatus.Missed, rows.GetInt64(0));
+        Assert.True(await rows.IsDBNullAsync(1, TestContext.Current.CancellationToken));
+        Assert.False(await rows.ReadAsync(TestContext.Current.CancellationToken));
     }
 
     // --- the page's controls -------------------------------------------------------------------------------------------

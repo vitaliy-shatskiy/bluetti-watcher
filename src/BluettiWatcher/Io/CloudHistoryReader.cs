@@ -197,7 +197,28 @@ internal sealed class CloudBackfill(StationConfig config, CloudHistoryReader rea
     private DateTimeOffset? _lastAccepted;
 
     public int CallsPerRun { get; init; } = 4;
-    public int CallsPerDay { get; init; } = 40;
+    public int CallsPerDay { get; init; } = DefaultCallsPerDay;
+    /// <summary>History calls a local day, the back-fill's and the live reading's together (<see cref="TryCountCall"/>).</summary>
+    internal const int DefaultCallsPerDay = 40;
+
+    /// <summary>
+    /// Counts one history call in today's count (<see cref="CallsKey"/>), before the call so a crash mid-call still counts;
+    /// false, nothing counted, when <paramref name="perDay"/> is reached.
+    /// </summary>
+    internal static bool TryCountCall(StationStore store, DateTimeOffset now, TimeZoneInfo zone, int perDay)
+    {
+        string today = TimeZoneInfo.ConvertTime(now, zone).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        int calls = CallsToday(store, today);
+        if (calls >= perDay) return false;
+        store.SetMeta(CallsKey, Invariant($"{today} {calls + 1}"));
+        return true;
+    }
+
+    private static int CallsToday(StationStore store, string today)
+    {
+        string[] calls = (store.GetMeta(CallsKey) ?? "").Split(' ');
+        return calls.Length == 2 && calls[0] == today && int.TryParse(calls[1], NumberStyles.None, CultureInfo.InvariantCulture, out int n) ? n : 0;
+    }
 
     public void Dispose() => _gapEnded.Dispose();
 
@@ -252,8 +273,7 @@ internal sealed class CloudBackfill(StationConfig config, CloudHistoryReader rea
         if (days.Count == 0) return 0;
 
         string today = TimeZoneInfo.ConvertTime(now, zone).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        string[] calls = (store.GetMeta(CallsKey) ?? "").Split(' ');
-        int callsToday = calls.Length == 2 && calls[0] == today && int.TryParse(calls[1], NumberStyles.None, CultureInfo.InvariantCulture, out int n) ? n : 0;
+        int callsToday = CallsToday(store, today);
         string? access = null, serial = null;
         int made = 0;
         bool refreshed = false;
@@ -264,7 +284,8 @@ internal sealed class CloudBackfill(StationConfig config, CloudHistoryReader rea
         }
         Task<HistoryDay> CallAsync(DateOnly day)
         {
-            callsToday++;
+            // Read again: the live reading may have counted calls since this run started.
+            callsToday = CallsToday(store, today) + 1;
             made++;
             store.SetMeta(CallsKey, Invariant($"{today} {callsToday}"));   // counted before the call: a crash mid-call still counts
             return reader.PowerDayAsync(access!, serial!, day, zone, ct);
