@@ -112,6 +112,23 @@ internal sealed class WinRtBleLink(BluetoothLEDevice device) : IBleLink
 
     public ChannelReader<byte[]> Notifications => _notes.Reader;
 
+    /// <summary>Null when subscribed, otherwise the status. The handler goes on first so no early notification is lost.</summary>
+    private async Task<string?> SubscribeAsync(GattCharacteristic notify, CancellationToken ct)
+    {
+        bool subscribed = false;
+        notify.ValueChanged += OnValueChanged;
+        try
+        {
+            var sub = await notify.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify).AsTask(ct);
+            subscribed = sub == GattCommunicationStatus.Success;
+            return subscribed ? null : sub.ToString();
+        }
+        finally
+        {
+            if (!subscribed) notify.ValueChanged -= OnValueChanged;
+        }
+    }
+
     /// <summary>Null when the link is ready; otherwise why not.</summary>
     internal async Task<string?> InitAsync(int attempts, Action<string> stage, CancellationToken ct)
     {
@@ -132,23 +149,6 @@ internal sealed class WinRtBleLink(BluetoothLEDevice device) : IBleLink
         var r = await device.GetGattServicesAsync(mode).AsTask(ct);
         _services.AddRange(r.Services);
         return (r.Status, r.ProtocolError, r.Services is { } list ? [.. list] : []);
-    }
-
-    /// <summary>Null when subscribed, otherwise the status. The handler goes on first so no early notification is lost.</summary>
-    private async Task<string?> SubscribeAsync(GattCharacteristic notify, CancellationToken ct)
-    {
-        bool subscribed = false;
-        notify.ValueChanged += OnValueChanged;
-        try
-        {
-            var sub = await notify.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify).AsTask(ct);
-            subscribed = sub == GattCommunicationStatus.Success;
-            return subscribed ? null : sub.ToString();
-        }
-        finally
-        {
-            if (!subscribed) notify.ValueChanged -= OnValueChanged;
-        }
     }
 
     private static async Task<GattCharacteristic?> FindAsync(GattDeviceService service, Guid uuid, BluetoothCacheMode mode, CancellationToken ct)
