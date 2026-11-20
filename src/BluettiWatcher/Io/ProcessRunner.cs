@@ -72,9 +72,10 @@ internal sealed class ProcessRunner : IProcessRunner, ICommandLineRunner
     private static async Task<ProcessResult> RunAsync(ProcessStartInfo psi, TimeSpan timeout, CancellationToken ct)
     {
         var lines = new List<string>();
+        var gate = new Lock();
         using var p = new Process { StartInfo = psi };
-        p.OutputDataReceived += (_, e) => { if (e.Data is not null) lock (lines) lines.Add(e.Data); };
-        p.ErrorDataReceived += (_, e) => { if (e.Data is not null) lock (lines) lines.Add(e.Data); };
+        p.OutputDataReceived += (_, e) => { if (e.Data is not null) lock (gate) lines.Add(e.Data); };
+        p.ErrorDataReceived += (_, e) => { if (e.Data is not null) lock (gate) lines.Add(e.Data); };
         p.Start();
         p.StandardInput.Close();
         p.BeginOutputReadLine();
@@ -93,6 +94,6 @@ internal sealed class ProcessRunner : IProcessRunner, ICommandLineRunner
             await p.WaitForExitAsync(CancellationToken.None);
             if (!timedOut) throw;
         }
-        lock (lines) return new ProcessResult(timedOut ? -1 : p.ExitCode, [.. lines], timedOut);
+        lock (gate) return new ProcessResult(timedOut ? -1 : p.ExitCode, [.. lines], timedOut);
     }
 }

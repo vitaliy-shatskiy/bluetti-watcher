@@ -59,12 +59,13 @@ internal sealed partial class PowerModeSwitch
         };
         var stdout = new List<string>();
         var stderr = new List<string>();
+        var gate = new Lock();
         // Each stream's end (a null line): signalled from the reader threads, never disposed, so a late end cannot throw.
         var outEnd = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var errEnd = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var p = new Process { StartInfo = psi };
-        p.OutputDataReceived += (_, e) => { if (e.Data is null) outEnd.TrySetResult(); else lock (stdout) stdout.Add(e.Data); };
-        p.ErrorDataReceived += (_, e) => { if (e.Data is null) errEnd.TrySetResult(); else lock (stderr) stderr.Add(e.Data); };
+        p.OutputDataReceived += (_, e) => { if (e.Data is null) outEnd.TrySetResult(); else lock (gate) stdout.Add(e.Data); };
+        p.ErrorDataReceived += (_, e) => { if (e.Data is null) errEnd.TrySetResult(); else lock (gate) stderr.Add(e.Data); };
         try { p.Start(); }
         catch (Exception e) when (e is Win32Exception or InvalidOperationException or IOException) { return new(-1, [$"{name} could not start: {e.Message}"]); }
         p.BeginOutputReadLine();
@@ -85,7 +86,7 @@ internal sealed partial class PowerModeSwitch
             // The kill closes the pipes: the lines the readers have not delivered yet still come, up to both ends, bounded.
             _ = Task.WaitAll([outEnd.Task, errEnd.Task], DrainMs);
         }
-        lock (stdout) lock (stderr) return new(p.ExitCode, [.. stdout.Concat(stderr).Where(l => l.Trim().Length > 0)]);
+        lock (gate) return new(p.ExitCode, [.. stdout.Concat(stderr).Where(l => l.Trim().Length > 0)]);
     }
 
     /// <summary>How long a tool that has exited may keep its output open before the rest of its tree is stopped.</summary>
