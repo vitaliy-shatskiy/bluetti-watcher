@@ -8,7 +8,11 @@ using System.Text;
 namespace BluettiWatcher.Http;
 
 internal sealed record HttpRequest(string Method, string Path, IReadOnlyDictionary<string, string> Query,
-    IReadOnlyDictionary<string, string> Headers, byte[] Body);
+    IReadOnlyDictionary<string, string> Headers, byte[] Body)
+{
+    /// <summary>When its connection was accepted (<see cref="System.Diagnostics.Stopwatch"/> timestamp): the server's <see cref="MiniHttpServer.RequestLimit"/> counts from it.</summary>
+    public long StartedAt { get; init; } = System.Diagnostics.Stopwatch.GetTimestamp();
+}
 
 /// <summary>An answer. <see cref="ContentEncoding"/> set = the body is already encoded; <see cref="VaryEncoding"/> = it depends on Accept-Encoding.</summary>
 internal sealed record HttpResponse(int Status, string ContentType, byte[] Body)
@@ -157,10 +161,14 @@ internal sealed class MiniHttpServer(IPAddress address, int port, Func<HttpReque
         }
     }
 
+    /// <summary>The most one connection lives, from its accept to its last byte written.</summary>
+    internal static readonly TimeSpan RequestLimit = TimeSpan.FromSeconds(10);
+
     private async Task ServeAsync(TcpClient client, CancellationToken ct)
     {
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromSeconds(10));
+        cts.CancelAfter(RequestLimit);
         try
         {
             var stream = client.GetStream();
@@ -173,7 +181,7 @@ internal sealed class MiniHttpServer(IPAddress address, int port, Func<HttpReque
                 (req, bad) = await ReadRequestAsync(stream, head.Token);
             }
             HttpResponse resp;
-            try { resp = bad ?? await handler(req!, cts.Token); }
+            try { resp = bad ?? await handler(req! with { StartedAt = started }, cts.Token); }
             catch (Exception e) when (e is not OperationCanceledException)
             {
                 // Every handler failure is answered: bad input 400, anything else 500; both logged.

@@ -50,12 +50,13 @@ internal sealed class StationApi(StationConfig config, StationService service, S
         if (await CloudRouteAsync(r, ct) is { } cloudAnswer) return cloudAnswer;
         if (r.Method != "GET") return HttpResponse.Text(405, "GET only");
         // /api/now?settle=1: answers once the saved page choice is applied, refused or failed (bounded under the server's 10 s).
-        if (r.Path == "/api/now" && r.Query.TryGetValue("settle", out var settle) && settle == "1") await service.WaitModeSettledAsync(SettleWait, ct);
+        // Both waits count against the time left in the request, so a request that started late still answers in time.
+        if (r.Path == "/api/now" && r.Query.TryGetValue("settle", out var settle) && settle == "1") await service.WaitModeSettledAsync(Bounded(SettleWait, Left(r) - PlanWait), ct);
         var now = time.GetLocalNow();
         return r.Path switch
         {
             "/" or "/index.html" => Page.Value.Respond(r),
-            "/api/now" => HttpResponse.Json(200, Now(now, await ActivePlanAsync(ct))),
+            "/api/now" => HttpResponse.Json(200, Now(now, await ActivePlanAsync(Bounded(PlanWait, Left(r)), ct))),
             "/api/health" => HttpResponse.Json(200, Health(now)),
             "/api/history" => History(r, now),
             "/api/events" => Events(r, now),
@@ -159,6 +160,16 @@ internal sealed class StationApi(StationConfig config, StationService service, S
 
     /// <summary>The longest a request waits for a fresh read of the active plan; past it the last one known answers.</summary>
     internal static readonly TimeSpan PlanWait = TimeSpan.FromSeconds(2);
+
+    /// <summary>Kept free at the end of a request to write its answer.</summary>
+    internal static readonly TimeSpan AnswerReserve = TimeSpan.FromSeconds(1);
+
+    /// <summary>What is left of the server's request limit, less the answer's reserve (real time: the limit is).</summary>
+    private static TimeSpan Left(HttpRequest r) =>
+        MiniHttpServer.RequestLimit - System.Diagnostics.Stopwatch.GetElapsedTime(r.StartedAt) - AnswerReserve;
+
+    /// <summary>The wait, at most <paramref name="left"/>, never under zero.</summary>
+    private static TimeSpan Bounded(TimeSpan wait, TimeSpan left) => left <= TimeSpan.Zero ? TimeSpan.Zero : wait < left ? wait : left;
     private readonly Lock _planGate = new();
     private (string Id, string Name) _plan = ("", "");
     private long _planEpoch = -1;
@@ -168,9 +179,9 @@ internal sealed class StationApi(StationConfig config, StationService service, S
     /// <summary>
     /// The active Windows plan for the page: id high | balanced | saver | other ("" = unknown) and its name. Read again only
     /// after a poll, an applied page choice or a plan write moved the epoch; one read at a time, off the request thread
-    /// (powercfg could hang), waited for at most <see cref="PlanWait"/>.
+    /// (powercfg could hang), waited for at most <paramref name="wait"/> (<see cref="PlanWait"/> or less).
     /// </summary>
-    private async Task<(string Id, string Name)> ActivePlanAsync(CancellationToken ct)
+    private async Task<(string Id, string Name)> ActivePlanAsync(TimeSpan wait, CancellationToken ct)
     {
         if (activePlan is null) return ("", "");
         long epoch = service.PlanEpoch + Interlocked.Read(ref _planWrites);
@@ -188,7 +199,7 @@ internal sealed class StationApi(StationConfig config, StationService service, S
         }
         try
         {
-            var (guid, name) = await read.WaitAsync(PlanWait, ct);
+            var (guid, name) = await read.WaitAsync(wait, ct);
             lock (_planGate) { _plan = (PlanId(guid), name); if (ReferenceEquals(_planRead, read)) _planRead = null; return _plan; }
         }
         catch (TimeoutException) { lock (_planGate) return _plan; }

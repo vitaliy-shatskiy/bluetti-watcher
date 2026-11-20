@@ -195,6 +195,23 @@ public sealed class ModeFeedbackApiTests : IDisposable
         }
         finally { hold.Set(); }
     }
+    // A request that already spent 9 s of the server's 10 (a slow head, a busy machine) gets what is left, never a
+    // fresh settle window plus the plan wait: it answers at once with the state as it is.
+    [Fact]
+    public async Task Settle_and_plan_waits_are_bounded_by_the_time_left_in_the_request()
+    {
+        using var hold = new ManualResetEventSlim(false);
+        var api = Api(() => { hold.Wait(TimeSpan.FromSeconds(30)); return ("", ""); });
+        try
+        {
+            Assert.Equal(202, (await Press(api, "eco")).Status);
+            var late = Req("GET", "/api/now?settle=1") with { StartedAt = System.Diagnostics.Stopwatch.GetTimestamp() - 9 * System.Diagnostics.Stopwatch.Frequency };
+            var r = await api.HandleAsync(late, TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Equal(200, r.Status);
+        }
+        finally { hold.Set(); }
+    }
+
     /// <summary>A station read that never answers until released, as a Bluetooth read stuck on its timeout.</summary>
     private sealed class HangingReader : IStationReader
     {

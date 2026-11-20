@@ -19,7 +19,7 @@ The dashboard page (`text/html`). Also `/index.html`.
 
 ## GET /api/now
 
-The current state, for the page. `?settle=1` answers once a saved page choice (`modePending`) is applied, refused or failed, at most 8 s later; at once when none waits.
+The current state, for the page. `?settle=1` answers once a saved page choice (`modePending`) is applied, refused or failed, at most 8 s later; at once when none waits. Every wait counts against the time left in the request's 10 s: a request that started late answers sooner, with the state as it is.
 
 | Field | Meaning |
 |---|---|
