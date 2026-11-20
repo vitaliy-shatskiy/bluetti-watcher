@@ -197,6 +197,11 @@ Bluetti Watcher - незалежний проєкт, не пов'язаний з
 Налаштування: [docs/configuration.md](docs/configuration.md), HTTP API: [docs/api.md](docs/api.md), оновлення й
 видалення: [README.md](README.md#update-and-uninstall), зміни: [CHANGELOG.md](CHANGELOG.md) (усе англійською).
 
+Повернення з 1.7 на 1.6 чи старішу: з 1.7 задача кінця eco запускає `bin\BluettiWatcherService.exe`, якого старіші
+версії не мають, тож після заміни вона не стартує й eco не закінчується вчасно. Вийдіть з eco перед встановленням
+старішої версії (`power-mode.ps1 off`) або виконайте цю команду один раз після заміни: вона завершує eco й прибирає
+ту задачу; eco, увімкнене після цього, реєструє задачу вже на старіший exe.
+
 Командний рядок: `--help`, `--version` і перемикач режиму живлення (`power-mode status` лише читає прапорець).
 
 <p align="center">

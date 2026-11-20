@@ -280,6 +280,11 @@ To update, run `install.ps1 -Apply` from the new release's folder. `config.json`
 the new exe is staged next to the running one and swapped in seconds, and a failed health check puts the previous
 version back. What changed: [CHANGELOG.md](CHANGELOG.md).
 
+Going back from 1.7 to 1.6 or older: from 1.7 an eco's end task starts `bin\BluettiWatcherService.exe`, which older
+releases do not have, so after the swap that task cannot start and the eco does not end at its time. Leave eco before
+installing the older release (`power-mode.ps1 off`, step 2 below), or run it once after the swap: it ends the eco and
+removes that end task; an eco set after that registers its end task against the older exe.
+
 <details>
 <summary>Uninstall</summary>
 
