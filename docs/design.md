@@ -735,3 +735,29 @@ Off by default (`legacy`: §5's fixed eco). Code in `src/BluettiWatcher/Modes/`;
 7. **Flag.** The active mode's flag word is written through the switch's own flag code (same lock, same format; the
    battery fields and any plan or GPU limit an older eco still owes are carried over), so its readers are unchanged.
    Under `v2` the station's eco and mains-back run no switch command; the station emergency still does (§6).
+
+## 13. Admin broker (power modes)
+
+Some mode actions need administrator rights (a service's start or start type, a scheduled task, a GPU power limit, an
+NVIDIA driver profile). The service never runs elevated; it asks one SYSTEM scheduled task, `BluettiWatcherBroker`, with
+no trigger, which it starts on demand (`schtasks /run`), and waits up to 10 s for the answer.
+
+- Folder: `%ProgramData%\BluettiWatcher\broker`, owned by Administrators; Administrators and SYSTEM write it, the user
+  reads it and may only add files to `requests\` (never folders). `bin\` holds the copy of `BluettiWatcher.exe` the task
+  runs: SYSTEM never runs the exe in the user's own bin, which the user can replace. `install.ps1 -Broker -Apply`
+  (elevated) creates it all; run it again after an upgrade to refresh the copy.
+- Request: `requests\<id>.json` (`{ v, id, op, args, issued }`, id = 32 hex digits, written as `.tmp` and renamed into
+  place); answer: `responses\<id>.json` (`{ id, ok, error, value }`), pruned after 10 minutes. The broker logs every
+  request to `broker.log` beside them.
+- Default deny. A request runs only when: `policy.json` is a plain file owned by Administrators (or SYSTEM) that no other
+  account may write, and parses strictly (an unknown key, a wrong type or a bad name invalidates it - then everything
+  is refused); the request file is a plain file (no link, one name) owned by the policy's user or an administrator,
+  opened without following links and deleted through the same handle; it is under 4 KB, well-formed, issued within the
+  last 30 s; its operation is known and its arguments are exactly the operation's.
+- Operations: `service.query|start|stop|setStartType` and `task.enable|disable` for names the policy lists;
+  `gpu.query`, `gpu.setPowerLimit` within the GPU's own min..max read at the time; `nvidia.exportProfiles` (Profile
+  Inspector `-exportCustomized`; the file is moved into `exports\` and answered with its SHA-256) and
+  `nvidia.applyProfile` (`-silentImport -replaceImport`) for a listed `.nip` in `profiles\` or a file in `exports\`.
+  Profile Inspector must sit under Program Files or the broker folder. Nothing from a request reaches a shell: services
+  and tasks go by their policy spelling, numbers are re-formatted, files are names joined to a fixed folder.
+- `BluettiWatcher.exe --broker-allow service|task|profile|inspector <name>` (elevated) adds to the policy.
