@@ -78,6 +78,22 @@ public class NativeBleRetryTests
         Assert.Contains(TimeSpan.FromSeconds(1), clock.Held);   // the poll's budget runs on the reader's clock
     }
 
+    /// <summary>
+    /// An open cut at its cap names the step it hung in (the last the connector reported): the log then tells a station
+    /// Windows never connected to from a GATT setup that stalled after the connection.
+    /// </summary>
+    [Fact]
+    public async Task ReadAsync_OpenHangsInAStep_TheMissNamesThatStep()
+    {
+        var conn = new SequenceConnector(_ => new TaskCompletionSource<BleOpen>().Task, "finding the device", "GATT services, try 2 (the last answered Unreachable)");
+        var log = new List<string>();
+        var reader = new NativeBleReader(new StationConfig { Mac = "AA:BB:CC:DD:EE:FF", Type = "AC200PL", ReaderTimeoutSec = 1 }, conn, log.Add,
+            TimeSpan.FromSeconds(0.3), time: new CapsOnlyClock(TimeSpan.FromSeconds(1)));
+        Assert.Null(await reader.ReadAsync(CancellationToken.None));
+        Assert.Contains("no reading: the connection did not open within 0.4 s (hung in: GATT services, try 2 (the last answered Unreachable))",
+            Assert.Single(log), StringComparison.Ordinal);
+    }
+
     /// <summary>A clock whose timers shorter than <c>hold</c> fire at once and whose longer ones never fire.</summary>
     private sealed class CapsOnlyClock(TimeSpan hold) : TimeProvider
     {
@@ -136,10 +152,14 @@ public class NativeBleRetryTests
     }
 
     /// <summary>A connector answering each open (numbered from 1) with the task the script gives; a never-completing task ignores its cancellation.</summary>
-    private sealed class SequenceConnector(Func<int, Task<BleOpen>> open) : IBleConnector
+    private sealed class SequenceConnector(Func<int, Task<BleOpen>> open, params string[] stages) : IBleConnector
     {
         public int Opens { get; private set; }
 
-        public Task<BleOpen> OpenAsync(ulong address, CancellationToken ct) => open(++Opens);
+        public Task<BleOpen> OpenAsync(ulong address, Action<string> stage, CancellationToken ct)
+        {
+            foreach (var s in stages) stage(s);
+            return open(++Opens);
+        }
     }
 }

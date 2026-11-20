@@ -25,17 +25,27 @@ internal sealed class WinRtBleConnector : IBleConnector
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
         Justification = "The link is disposed in finally unless handed over in BleOpen; the reader disposes it (await using).")]
-    public async Task<BleOpen> OpenAsync(ulong address, CancellationToken ct)
+    public async Task<BleOpen> OpenAsync(ulong address, Action<string> stage, CancellationToken ct)
     {
+        bool scanned = false;
         var (device, notFound) = await FindAsync(
-            async c => await BluetoothLEDevice.FromBluetoothAddressAsync(address).AsTask(c),
-            (cap, c) => ScanAsync(address, cap, c), ct);
+            async c =>
+            {
+                stage(scanned ? "finding the device after the scan" : "finding the device");
+                return await BluetoothLEDevice.FromBluetoothAddressAsync(address).AsTask(c);
+            },
+            (cap, c) =>
+            {
+                scanned = true;
+                stage("scanning for its advertisement");
+                return ScanAsync(address, cap, c);
+            }, ct);
         if (device is null) return new BleOpen(null, notFound);
         WinRtBleLink? link = null;
         try
         {
             link = new WinRtBleLink(device);
-            string? failure = await link.InitAsync(ServiceAttempts, ct);
+            string? failure = await link.InitAsync(ServiceAttempts, stage, ct);
             if (failure is not null) return new BleOpen(null, failure);
             var open = new BleOpen(link, null);
             link = null;   // handed over: the reader disposes it
@@ -103,11 +113,14 @@ internal sealed class WinRtBleLink(BluetoothLEDevice device) : IBleLink
     public ChannelReader<byte[]> Notifications => _notes.Reader;
 
     /// <summary>Null when the link is ready; otherwise why not.</summary>
-    internal async Task<string?> InitAsync(int attempts, CancellationToken ct)
+    internal async Task<string?> InitAsync(int attempts, Action<string> stage, CancellationToken ct)
     {
         GattDeviceServicesResult? services = null;
         for (int i = 1; i <= attempts; i++)
         {
+            // The first try is where Windows makes the connection; a later one names what the last answered.
+            stage(services is null ? "GATT services (connecting)"
+                : string.Create(CultureInfo.InvariantCulture, $"GATT services, try {i} (the last answered {services.Status})"));
             services = await device.GetGattServicesAsync(BluetoothCacheMode.Uncached).AsTask(ct);
             if (services.Status == GattCommunicationStatus.Success) break;
             if (i < attempts) await Task.Delay(TimeSpan.FromSeconds(1), ct);
@@ -115,6 +128,7 @@ internal sealed class WinRtBleLink(BluetoothLEDevice device) : IBleLink
         if (services is null || services.Status != GattCommunicationStatus.Success)
             return string.Create(CultureInfo.InvariantCulture, $"GATT {services?.Status} after {attempts} tries{(services?.ProtocolError is { } pe ? $" (protocol error {pe})" : "")}");
         _services.AddRange(services.Services);
+        stage("the ff01/ff02 characteristics");
         foreach (var s in _services)
         {
             _notify ??= await Find(s, WinRtBleConnector.NotifyUuid, ct);
@@ -122,6 +136,7 @@ internal sealed class WinRtBleLink(BluetoothLEDevice device) : IBleLink
         }
         if (_notify is null || _write is null) return "the station has no ff01/ff02 characteristic";
         _notify.ValueChanged += OnValueChanged;
+        stage("the notification subscription");
         var sub = await _notify.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify).AsTask(ct);
         if (sub != GattCommunicationStatus.Success) return $"notification subscription: {sub}";
         // Windows raises Disconnected during the GATT setup above while the link goes on working: watched only from here on.

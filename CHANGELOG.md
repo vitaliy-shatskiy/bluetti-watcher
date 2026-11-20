@@ -13,6 +13,9 @@ The release notes on GitHub are this file's section for the tag.
   page. Without that shortcut (a run without the installer, or an install before this version until `install.ps1`
   runs again) they stay tray balloons, which Windows keeps nowhere; the log says which (`tray: notices are ...`).
   The exe grows by 29 KB.
+- A Bluetooth connection open cut at its cap says which step it hung in, for example
+  `the connection did not open within 12 s (hung in: GATT services (connecting))`: a station Windows never connected
+  to is told from a GATT setup that stalled after the connection.
 
 ## [1.10.0] - 2026-11-20
 

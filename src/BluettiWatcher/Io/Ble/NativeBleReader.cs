@@ -44,7 +44,8 @@ internal sealed record BleOpen(IBleLink? Link, string? Failure);
 
 internal interface IBleConnector
 {
-    Task<BleOpen> OpenAsync(ulong address, CancellationToken ct);
+    /// <summary><paramref name="stage"/> is told each step as it starts, so an open cut at its cap names the step it hung in.</summary>
+    Task<BleOpen> OpenAsync(ulong address, Action<string> stage, CancellationToken ct);
 }
 
 /// <summary>
@@ -339,7 +340,9 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
     private async Task<BleOpen> OpenCappedAsync(ulong address, CancellationToken budget)
     {
         var cap = TimeSpan.FromSeconds(Math.Max(1, config.ReaderTimeoutSec) * OpenShare);
-        var open = OpenWithinAsync(connector, address, cap, budget);
+        // The step the open is in, written on its flow and read here when the cap cuts it.
+        var stage = new System.Runtime.CompilerServices.StrongBox<string?>();
+        var open = OpenWithinAsync(connector, address, s => Volatile.Write(ref stage.Value, s), cap, budget);
         try
         {
             return await open.WaitAsync(cap, _time, budget);
@@ -347,7 +350,8 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         catch (Exception e) when (e is TimeoutException || (e is OperationCanceledException && !budget.IsCancellationRequested))
         {
             _ = ReleaseLateAsync(open);
-            return new BleOpen(null, string.Create(CultureInfo.InvariantCulture, $"the connection did not open within {cap.TotalSeconds:0.#} s"));
+            string step = Volatile.Read(ref stage.Value) is { } s ? $" (hung in: {s})" : "";
+            return new BleOpen(null, string.Create(CultureInfo.InvariantCulture, $"the connection did not open within {cap.TotalSeconds:0.#} s{step}"));
         }
         catch (OperationCanceledException)
         {
@@ -357,11 +361,11 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
     }
 
     /// <summary>The open itself, asked to stop at <paramref name="cap"/>; its token source lives until the open ends, as a hung open still holds the token.</summary>
-    private async Task<BleOpen> OpenWithinAsync(IBleConnector connector, ulong address, TimeSpan cap, CancellationToken budget)
+    private async Task<BleOpen> OpenWithinAsync(IBleConnector connector, ulong address, Action<string> stage, TimeSpan cap, CancellationToken budget)
     {
         using var capTimer = new CancellationTokenSource(cap, _time);
         using var capped = CancellationTokenSource.CreateLinkedTokenSource(budget, capTimer.Token);
-        return await connector.OpenAsync(address, capped.Token);
+        return await connector.OpenAsync(address, stage, capped.Token);
     }
 
     /// <summary>An open given up (its cap or the poll's budget ran out): a link it hands over later is disposed; a late failure is dropped, as the open already counted as one.</summary>

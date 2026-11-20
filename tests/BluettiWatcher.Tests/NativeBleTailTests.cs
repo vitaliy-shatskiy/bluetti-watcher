@@ -33,7 +33,7 @@ internal sealed class TaskConnector(Func<int, Task<BleOpen>> open) : IBleConnect
     private int _opens;
     public int Opens => Volatile.Read(ref _opens);
 
-    public Task<BleOpen> OpenAsync(ulong address, CancellationToken ct) => open(Interlocked.Increment(ref _opens));
+    public Task<BleOpen> OpenAsync(ulong address, Action<string> stage, CancellationToken ct) => open(Interlocked.Increment(ref _opens));
 }
 
 public class NativeBleSingleFlightTests

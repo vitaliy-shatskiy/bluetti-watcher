@@ -539,7 +539,7 @@ internal sealed class ScriptedConnector(Func<BleOpen> open) : IBleConnector
     public int Opens { get; private set; }
     public ulong? Address { get; private set; }
 
-    public Task<BleOpen> OpenAsync(ulong address, CancellationToken ct)
+    public Task<BleOpen> OpenAsync(ulong address, Action<string> stage, CancellationToken ct)
     {
         Opens++;
         Address = address;
