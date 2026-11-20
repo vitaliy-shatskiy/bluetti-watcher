@@ -576,15 +576,14 @@ internal sealed class StationService(StationConfig config, IStationReader reader
     private bool HibernateOff => File.Exists(KillSwitch) || Modes is { AutoHibernate: false };
 
     /// <summary>
-    /// Under v2 the station's eco and mains-back run no switch command (the modes own the plan and the flag word); the
-    /// state is completed and the config's <c>actions</c> entries still fire on the transition.
+    /// Under v2 the station's eco and mains-back run no switch command (the modes own the plan and the flag word) and no
+    /// <c>actions.eco</c> / <c>actions.normal</c> line: those are the built-in Eco's command pair, run on entering and leaving it.
     /// </summary>
     private void ModesTransition(StationAction a, DateTimeOffset now)
     {
         bool eco = a == StationAction.EcoOn;
         store.AddEvent(now, eco ? "eco-on" : "mains-back", "modes v2: the Auto rules choose the mode");
         if (!eco) Complete(a, now);
-        onState?.Enter(eco ? StateActions.Eco : StateActions.Normal);
     }
 
     /// <summary>The modes' poll: the Auto rules see mains and battery as this poll left them. A failure never stops the poll.</summary>

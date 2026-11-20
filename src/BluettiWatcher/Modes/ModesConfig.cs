@@ -7,10 +7,13 @@ internal sealed class ModesConfig
     public const string V2 = "v2";
 
     /// <summary>
-    /// <c>legacy</c> (default): the switch's fixed eco and the page's Auto / Eco / Max · <c>v2</c>: user-defined modes, Auto
-    /// rules and the ownership-aware reconciler (docs/design.md, Power modes). Any other value = legacy, named in the log.
+    /// <c>v2</c> (default): user-defined modes, Auto rules and the ownership-aware reconciler (docs/design.md, Power modes) ·
+    /// <c>legacy</c>: the switch's fixed eco and the page's Auto / Eco / Max. Any other value = legacy, named in the log.
     /// </summary>
-    public string Engine { get; set; } = Legacy;
+    public string Engine { get; set; } = V2;
+
+    /// <summary>The named commands a mode's <c>command.pair</c> action may run; only this file defines them.</summary>
+    public Dictionary<string, ModeCommandConfig> Commands { get; set => field = value ?? []; } = [];
 
     public bool V2On => string.Equals(Engine, V2, StringComparison.OrdinalIgnoreCase);
 }

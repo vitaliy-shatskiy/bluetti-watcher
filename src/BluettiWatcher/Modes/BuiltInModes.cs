@@ -1,4 +1,6 @@
 using System.Text.Json.Nodes;
+using BluettiWatcher.Io;
+using BluettiWatcher.Modes.Modules;
 using BluettiWatcher.PowerMode;
 
 namespace BluettiWatcher.Modes;
@@ -24,12 +26,14 @@ internal static class BuiltInModes
 
     /// <summary>A fresh install (public defaults): Eco = Power saver; the GPU limit is listed but off; Max = High performance.</summary>
     public static ModesSettings Defaults(int mainsLostSec, int mainsBackSec) =>
-        Build(normalPlan: null, gpuCap: false, mainsLostSec, mainsBackSec, autoHibernate: true);
+        Build(normalPlan: null, gpuCap: false, mainsLostSec, mainsBackSec, autoHibernate: true, enterCommand: "", leaveCommand: "");
 
     /// <summary>
     /// An install that ran the switch before: <c>returnPlan</c> becomes Normal's plan (<c>previous</c> = no plan action:
     /// leaving Eco restores whatever plan was active before it), <c>gpuCap</c> turns Eco's GPU limit on or off, and the
-    /// <c>no-hibernate</c> file turns auto-hibernate off.
+    /// <c>no-hibernate</c> file turns auto-hibernate off. The config's <c>actions.eco</c> / <c>actions.normal</c> become Eco's
+    /// command pair (the commands <c>eco</c> / <c>normal</c>, <see cref="ModuleCatalog.Commands"/>): run on entering and on
+    /// leaving Eco, as they ran on the station's eco and mains-back.
     /// </summary>
     public static ModesSettings Migrate(StationConfig config)
     {
@@ -37,7 +41,8 @@ internal static class BuiltInModes
         var pm = PowerModeSwitch.ReadConfig(config.FlagFile);
         string? normalPlan = pm.ReturnPlan == "previous" ? null : pm.ReturnPlan;
         bool hibernate = !File.Exists(Path.Combine(config.DataDir, "no-hibernate"));
-        return Build(normalPlan, pm.GpuCap, config.MainsLostSec, config.MainsBackSec, hibernate);
+        string Command(string key) => string.IsNullOrWhiteSpace(config.Actions?.GetValueOrDefault(key)) ? "" : key;
+        return Build(normalPlan, pm.GpuCap, config.MainsLostSec, config.MainsBackSec, hibernate, Command(StateActions.Eco), Command(StateActions.Normal));
     }
 
     /// <summary>The switch has run here before: its flag or its config file exists.</summary>
@@ -50,7 +55,8 @@ internal static class BuiltInModes
     /// <summary>A built-in mode as a fresh install has it (the target of re-adding one missing from a stored file).</summary>
     public static Mode Fresh(string id) => Defaults(0, 0).Modes.First(m => m.Id == id);
 
-    private static ModesSettings Build(string? normalPlan, bool gpuCap, int mainsLostSec, int mainsBackSec, bool autoHibernate) => new()
+    private static ModesSettings Build(string? normalPlan, bool gpuCap, int mainsLostSec, int mainsBackSec, bool autoHibernate,
+        string enterCommand, string leaveCommand) => new()
     {
         Modes =
         [
@@ -62,7 +68,21 @@ internal static class BuiltInModes
             new Mode
             {
                 Id = Eco, Name = "Eco", FlagWord = FlagWord.Eco, BuiltIn = true,
-                Actions = [Plan(PowerModeSwitch.SaverPlan), new ModeAction { TypeId = GpuLimitType, Enabled = gpuCap, Settings = new JsonObject { ["limit"] = "min" } }],
+                // The optional actions are listed off and empty: a backup pause (a command pair), services to stop (Windows
+                // Search, Xbox gaming services, ...), Phone Link closed, the GPU idle watcher logging what holds the GPU at P0.
+                Actions =
+                [
+                    Plan(PowerModeSwitch.SaverPlan),
+                    new ModeAction { TypeId = GpuLimitType, Enabled = gpuCap, Settings = new JsonObject { ["limit"] = "min" } },
+                    new ModeAction
+                    {
+                        TypeId = CommandPairModule.Id, Enabled = enterCommand.Length + leaveCommand.Length > 0,
+                        Settings = new JsonObject { ["name"] = "actions", ["enter"] = enterCommand, ["leave"] = leaveCommand },
+                    },
+                    new ModeAction { TypeId = ServiceStateModule.Id, Enabled = false, Settings = new JsonObject { ["services"] = new JsonArray() } },
+                    new ModeAction { TypeId = PhoneLinkModule.Id, Enabled = false, Settings = [] },
+                    new ModeAction { TypeId = GpuIdleWatcherModule.TypeId, Enabled = false, Settings = new JsonObject { ["minutes"] = 5, ["minClockMhz"] = 1000, ["maxUtilization"] = 2 } },
+                ],
             },
             new Mode { Id = Max, Name = "Max", FlagWord = FlagWord.Normal, BuiltIn = true, Actions = [Plan(PowerModeSwitch.HighPlan)] },
         ],
