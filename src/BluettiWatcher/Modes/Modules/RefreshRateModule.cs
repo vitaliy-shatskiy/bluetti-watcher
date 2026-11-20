@@ -36,7 +36,7 @@ internal sealed class RefreshRateModule(IDisplayConfig display) : IActionModule
               "additionalProperties": false
             }
             """)!,
-        (JsonObject)JsonNode.Parse("""{ "monitors": { "widget": "list", "list": "monitors", "label": "Refresh rate per monitor" } }""")!,
+        (JsonObject)JsonNode.Parse("""{ "monitors": { "widget": "list", "list": "monitors", "label": "Refresh rate per monitor", "help": "A refresh-rate change can crash a browser's GPU process: it falls back to software rendering until the browser restarts." } }""")!,
         ["monitors"], RestorationClass.Reversible, NeedsAdmin: false,
         (JsonObject)JsonNode.Parse("""{ "monitors": [] }""")!);
 

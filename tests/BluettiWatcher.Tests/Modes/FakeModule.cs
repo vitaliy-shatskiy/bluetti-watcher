@@ -16,6 +16,8 @@ internal sealed class FakeMachine
     public List<string> Writes { get; } = [];
     /// <summary>Awaited before a write to this key, with the token the module was given: a slow or blocking action.</summary>
     public Dictionary<string, Func<CancellationToken, Task>> Hold { get; } = new(StringComparer.Ordinal);
+    /// <summary>Run inside each settings validation: a module whose check blocks (it enumerates displays, runs a tool).</summary>
+    public Action? OnValidate { get; set; }
 
     public string? Text(string key) => Values.TryGetValue(key, out var v) ? v?.ToJsonString() : null;
 }
@@ -51,7 +53,11 @@ internal sealed class FakeModule(string typeId, FakeMachine machine, Restoration
         Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<DiscoveredItem>>>(
             new Dictionary<string, IReadOnlyList<DiscoveredItem>> { ["things"] = [new DiscoveredItem("a", "Thing A")] });
 
-    public IReadOnlyList<string> Validate(JsonObject settings) => [];
+    public IReadOnlyList<string> Validate(JsonObject settings)
+    {
+        machine.OnValidate?.Invoke();
+        return [];
+    }
 
     public IReadOnlyList<ResourceIntent> Expand(JsonObject settings) =>
         [new ResourceIntent(settings["key"]?.GetValue<string>() ?? "plan", (settings["value"] ?? settings["plan"])?.DeepClone())];

@@ -44,8 +44,14 @@ public sealed class ModesTransitionTests : IDisposable
 
     private static JsonElement Json(HttpResponse r) => JsonDocument.Parse(r.Body).RootElement.Clone();
 
-    private async Task AddTwoAsync(ModesApi api) =>
-        Assert.Equal(200, (await api.HandleAsync(Req("POST", "/api/modes", TwoActions), TestContext.Current.CancellationToken)).Status);
+    /// <summary>Adds mode two through the API and waits for the change (an api built with no wait answers 202 at once).</summary>
+    private async Task AddTwoAsync(ModesApi api)
+    {
+        int status = (await api.HandleAsync(Req("POST", "/api/modes", TwoActions), TestContext.Current.CancellationToken)).Status;
+        Assert.True(status is 200 or 202, $"add answered {status}");
+        await _engine.Pending;
+        Assert.Contains(_engine.Settings.Modes, m => m.Id == "two");
+    }
 
     [Fact]
     public async Task Select_RequestCancelledMidTransition_StillRunsEveryActionAndPublishesTheMode()
@@ -70,8 +76,9 @@ public sealed class ModesTransitionTests : IDisposable
     {
         var api = new ModesApi(_config, _engine, changeWait: TimeSpan.Zero);
         await AddTwoAsync(api);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _m.Hold["k1"] = _ => release.Task;
+        _m.Hold["k1"] = _ => { entered.TrySetResult(); return release.Task; };
 
         var answer = api.HandleAsync(Req("POST", "/api/modes/select", """{"mode":"two"}"""), TestContext.Current.CancellationToken);
 
@@ -79,7 +86,9 @@ public sealed class ModesTransitionTests : IDisposable
         var r = await answer;
         Assert.Equal(202, r.Status);
         Assert.True(Json(r).GetProperty("pending").GetBoolean());
-        Assert.Equal("two", Json(r).GetProperty("switching").GetString());
+        // The change runs on the thread pool: once its action is under way the view names the mode being entered.
+        await entered.Task.WaitAsync(AnswerBound, TestContext.Current.CancellationToken);
+        Assert.Equal("two", Json(await api.HandleAsync(Req("GET", "/api/modes"), TestContext.Current.CancellationToken)).GetProperty("switching").GetString());
         release.SetResult();
         await _engine.Pending;
         var view = Json(await api.HandleAsync(Req("GET", "/api/modes"), TestContext.Current.CancellationToken));
@@ -105,6 +114,97 @@ public sealed class ModesTransitionTests : IDisposable
         Assert.True(answer.IsCompleted, "the request answered within its wait, before the shutdown");
         Assert.Null(_m.Text("k1"));
         Assert.Null(_m.Text("k2"));
+    }
+
+    private const string TwoK2Off = """
+        {"id":"two","name":"Two","flagWord":"eco","actions":[
+          {"typeId":"fake.a","enabled":true,"settings":{"key":"k1","value":"on"}},
+          {"typeId":"fake.a","enabled":true,"settings":{"key":"k2","value":"off"}}]}
+        """;
+
+    /// <summary>The longest a test waits for an answer that must come at once: past it the request was held (red).</summary>
+    private static readonly TimeSpan AnswerBound = TimeSpan.FromSeconds(5);
+
+    private async Task ActivateTwoAsync(ModesApi api)
+    {
+        await AddTwoAsync(api);
+        await api.HandleAsync(Req("POST", "/api/modes/select", """{"mode":"two"}"""), TestContext.Current.CancellationToken);
+        await _engine.Pending;
+        Assert.Equal("two", _engine.Snapshot.ModeId);
+    }
+
+    /// <summary>
+    /// The PUT on a thread of its own, its answer awaited at most <see cref="AnswerBound"/>: a handler that blocks its caller
+    /// expires the wait (TimeoutException) instead of hanging the test.
+    /// </summary>
+    private Task<HttpResponse> PutBoundedAsync(ModesApi api, string body) =>
+        Task.Run(() => api.HandleAsync(Req("PUT", "/api/modes/two", body), TestContext.Current.CancellationToken), TestContext.Current.CancellationToken)
+            .WaitAsync(AnswerBound, TestContext.Current.CancellationToken);
+
+    [Fact]
+    public async Task Put_ModuleBlocksItsThreadWhileApplying_Answers202ThenTheChangeIsApplied()
+    {
+        // The live case: display.refreshRate's ChangeDisplaySettingsEx blocks its thread while the screens resync.
+        var api = new ModesApi(_config, _engine, changeWait: TimeSpan.Zero);
+        await ActivateTwoAsync(api);
+        using var release = new ManualResetEventSlim();
+        _m.Hold["k2"] = _ => { release.Wait(TestContext.Current.CancellationToken); return Task.CompletedTask; };
+        try
+        {
+            var r = await PutBoundedAsync(api, TwoK2Off);
+
+            Assert.Equal(202, r.Status);
+            Assert.True(Json(r).GetProperty("pending").GetBoolean());
+        }
+        finally { release.Set(); }
+        await _engine.Pending;
+        Assert.Equal("off", _m.Text("k2")?.Trim('"'));
+    }
+
+    [Fact]
+    public async Task Put_ModuleValidationBlocks_Answers202ThenTheModeIsSaved()
+    {
+        var api = new ModesApi(_config, _engine, changeWait: TimeSpan.Zero);
+        await ActivateTwoAsync(api);
+        using var release = new ManualResetEventSlim();
+        _m.OnValidate = () => release.Wait(TestContext.Current.CancellationToken);
+        try
+        {
+            var r = await PutBoundedAsync(api, TwoK2Off);
+
+            Assert.Equal(202, r.Status);
+        }
+        finally { release.Set(); }
+        await _engine.Pending;
+        Assert.Equal("off", _engine.Settings.Modes.Single(m => m.Id == "two").Actions[1].Settings["value"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Put_WhileATransitionHoldsTheEngine_Answers202ThenTheModeIsSaved()
+    {
+        var api = new ModesApi(_config, _engine, changeWait: TimeSpan.Zero);
+        await ActivateTwoAsync(api);
+        var three = JsonSerializer.Deserialize("""
+            {"id":"three","name":"Three","flagWord":"eco","actions":[{"typeId":"fake.a","enabled":true,"settings":{"key":"k3","value":"on"}}]}
+            """, ModesJson.Default.Mode) ?? throw new InvalidOperationException("no mode");
+        await _engine.PutModeAsync(three, create: true, TestContext.Current.CancellationToken);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _m.Hold["k3"] = _ => { entered.TrySetResult(); return release.Task; };
+        // The transition to three holds the engine's lock until its action ends.
+        _ = _engine.SelectAsync("three", TestContext.Current.CancellationToken);
+        await entered.Task.WaitAsync(AnswerBound, TestContext.Current.CancellationToken);
+        try
+        {
+            var r = await PutBoundedAsync(api, TwoK2Off);
+
+            Assert.Equal(202, r.Status);
+            Assert.Equal("three", Json(r).GetProperty("switching").GetString());
+        }
+        finally { release.SetResult(); }
+        await _engine.Pending;
+        Assert.Equal("three", _engine.Snapshot.ModeId);
+        Assert.Equal("off", _engine.Settings.Modes.Single(m => m.Id == "two").Actions[1].Settings["value"]?.GetValue<string>());
     }
 
     [Fact]

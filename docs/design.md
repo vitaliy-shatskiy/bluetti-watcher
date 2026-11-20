@@ -734,7 +734,8 @@ in [api.md](api.md), Power modes.
    - `gpu.powerLimit`* (reversible): the NVIDIA board power limit of one GPU (`gpu`: its index), set as exactly one of
      `percent` of its default limit, `watts`, or `limit: "min"` (the card's own minimum, read from nvidia-smi: a percent
      cannot name it portably); the broker checks the card's min..max again. Eco's built-in GPU action is `limit: "min"`.
-   - `display.refreshRate` (reversible), `display.brightness` (reversible, DDC/CI monitors).
+   - `display.refreshRate` (reversible; its form warns that a refresh-rate change can crash a browser's GPU process,
+     which then renders in software until the browser restarts), `display.brightness` (reversible, DDC/CI monitors).
    - `nvidia.profile`* (compensatable): a Profile Inspector `.nip` imported, the customised profiles exported first
      and imported back on leaving. Its read is a broker export, so it is read and written on entering and leaving the
      mode, not at every poll; a failed read is tried again at the next poll.
