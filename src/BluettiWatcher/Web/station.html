@@ -2014,6 +2014,8 @@ function mpEl(tag, props, ...kids) {
     if (v === null || v === undefined || v === false) continue;
     if (MP_PROPS.has(k)) e[k] = v; else e.setAttribute(k, v === true ? '' : String(v));
   }
+  // every form field carries a name (autofill and the browser's form checks want one)
+  if ((tag === 'input' || tag === 'select' || tag === 'textarea') && !e.id && !e.name) e.name = 'mf' + (++mpSeq);
   return e;
 }
 function mpSet(box, ...kids) { box.replaceChildren(...kids.flat(Infinity).filter(mpKeep)); }
