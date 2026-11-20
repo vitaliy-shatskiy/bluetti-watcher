@@ -391,7 +391,7 @@ public sealed class ReadingSourceTests : IDisposable
         // A second press while it waits: the same address, no second catcher.
         Assert.Equal(url.AbsoluteUri, JsonDocument.Parse((await Send(w.Api, Req("POST", "/api/cloud/sign-in"))).Body).RootElement.GetProperty("authorizeUrl").GetString());
 
-        using (var client = new HttpClient())
+        using (var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) })
         {
             using var forged = await client.GetAsync(new Uri($"{redirect}?code=X&state=forged"), TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.BadRequest, forged.StatusCode);
@@ -414,7 +414,7 @@ public sealed class ReadingSourceTests : IDisposable
         using var w = new World(this);
         var url = new Uri(JsonDocument.Parse((await Send(w.Api, Req("POST", "/api/cloud/sign-in"))).Body).RootElement.GetProperty("authorizeUrl").GetString()!);
         var q = url.Query.TrimStart('?').Split('&').Select(kv => kv.Split('=')).ToDictionary(p => p[0], p => Uri.UnescapeDataString(p[1]));
-        using (var client = new HttpClient())
+        using (var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) })
         using (await client.GetAsync(new Uri($"{q["redirect_uri"]}?error=access_denied&state={q["state"]}"), TestContext.Current.CancellationToken)) { }
         var state = await Poll(w.Api, s => s != "waiting");
         Assert.Equal("failed", state.GetProperty("signIn").GetProperty("state").GetString());

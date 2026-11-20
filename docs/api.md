@@ -8,7 +8,7 @@ or Unix milliseconds.
 
 - Every request: the `Host` header must be exactly `127.0.0.1:<port>` or `localhost:<port>`; anything else is `403
   forbidden: foreign Host`. This blocks DNS rebinding.
-- `POST /api/mode` and `POST /api/return-plan` also need the header `X-Station: 1` and an `Origin` that is absent or the service's own
+- `POST /api/mode`, `POST /api/return-plan`, `POST /api/reading-source`, `POST /api/cloud/sign-in` and `POST /api/cloud/sign-out` also need the header `X-Station: 1` and an `Origin` that is absent or the service's own
   (`http://127.0.0.1:<port>` or `http://localhost:<port>`); else 403 with the reason. A web page on another origin
   cannot send the custom header without a CORS preflight, and the service never sends a CORS header.
 - Wrong method: 405 (`POST only` for `/api/mode`, `GET only` elsewhere; `/api/return-plan` takes both). Unknown path: 404.
@@ -104,6 +104,8 @@ Stored events, same time defaults: `{ "events": [ { "at", "kind", "detail" } ] }
 | `lastPollAt`, `lastAcceptedAt` | Times of the last poll and the last accepted reading, or null. |
 | `lastSource` | `bluetooth` or `cloud`: the source of the last accepted reading, or null. |
 | `bluetoothEncrypted` | true once the station opened the encrypted Bluetooth handshake: the built-in reader reads unencrypted stations only, so it is not connected to again until the service restarts and the cloud fallback answers. Information, not a problem: `ok` does not change. false otherwise. |
+| `readingSource` | The source in force: `auto`, `bluetooth` or `cloud` (see `/api/cloud`). |
+| `cloud` | The cloud's state `{ "state", "detail", "at" }`: `off` (the source never calls it) · `signed-out` (no token) · `ok` · `sign-in-needed` (the server refused the token refresh: sign in again) · `error` (the last read failed; `detail` names why). `at` = when it was seen, or null. Never a token. |
 | `bluetoothStalled` | true while a Bluetooth read abandoned at `readerTimeoutSec` plus 2 s (a Bluetooth call that ignored its timeout) is still running: no new Bluetooth read starts and the cloud fallback answers, until it ends or, after max(4 x that bound, 2 minutes), is given up. Information, not a problem: `ok` does not change. false otherwise. |
 | `misses` | Misses in a row. |
 | `silent` | true while the station does not answer. |
@@ -115,6 +117,28 @@ The power plan every end of eco sets: `returnPlan` in `power-mode.config.json` b
 GET answers `{ "returnPlan": "high" | "balanced" | "previous" | "custom" }` (`custom` = a plan GUID set by hand; no file = `high`); `/api/now` carries the same field.
 POST body `{"returnPlan": "high" | "balanced" | "previous"}`, headers per the guard above; every other key of the file is kept, the write is a temp file moved over it.
 Answer `{ "ok", "returnPlan", "message" }`: 200 saved · 400 a body that is not JSON or another value · 409 the flag folder does not exist yet or the file is not a JSON object (nothing written) · 500 the write failed (the old file stays).
+
+## GET /api/cloud, POST /api/reading-source, POST /api/cloud/sign-in, POST /api/cloud/sign-out
+
+The reading source and the BLUETTI cloud account ([design.md §4](design.md#reading-source)). Every answer of the four is
+the same object:
+
+```json
+{ "readingSource": "auto", "readingSourceFrom": "default", "cloud": { "state": "ok", "detail": "...", "at": null },
+  "signIn": { "state": "idle", "message": "", "at": null } }
+```
+
+| Field | Meaning |
+|---|---|
+| `readingSource` | `auto`, `bluetooth` or `cloud`. |
+| `readingSourceFrom` | `page` (saved by the page, `reading-source.json`), `config` (`readingSource` or `cloudEnabled: false` in config.json) or `default`. |
+| `cloud` | As in `/api/health`. |
+| `signIn` | The page's sign-in: `idle`, `waiting` (for the browser, at most 5 minutes), `signed-in`, `failed`; `message` the last line in English (never a token). |
+| `authorizeUrl` | Only in the answer of `POST /api/cloud/sign-in`: the BLUETTI sign-in address for the page to open. |
+
+- `POST /api/reading-source` body `{"readingSource": "auto" | "bluetooth" | "cloud"}`: saved and in force from the next poll, no restart. 200 · 400 another body · 500 not written (nothing changed).
+- `POST /api/cloud/sign-in`: starts the `--cloud-login` flow inside the service, its catcher on `127.0.0.1` at a port the OS assigns. 202 with `authorizeUrl`; a second call while one waits answers the same address · 502 it could not start.
+- `POST /api/cloud/sign-out`: stops a waiting sign-in and deletes the token file. 200 · 503 a cloud read holds the reader past 5 s (try again) · 500 the file could not be deleted.
 
 ## POST /api/mode
 

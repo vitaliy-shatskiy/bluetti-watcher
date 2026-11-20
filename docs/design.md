@@ -123,10 +123,46 @@ store's upserts need it), named in one `service.log` line with the version found
 When Bluetooth does not answer, the reading may come from the BLUETTI cloud
 (`GET https://gw.bluettipower.com/api/bluiotdata/ha/v2/devices`, the API of BLUETTI's official Home Assistant
 integration) with the token in `cloud-token.json` (`cloudTokenPath`, default the data directory). It is opt-in:
-`cloudEnabled` not set = on when the token file exists at start; `true` = on; `false` = off.
+`cloudEnabled` not set = on when the token file exists (checked at each poll); `true` = on; `false` = off.
+
+### Reading source
+
+`readingSource` picks where readings come from; the page's Reading source buttons set the same choice:
+
+- `auto` (the default): Bluetooth first, the cloud when Bluetooth misses, as above (`cloudEnabled` applies).
+- `bluetooth`: Bluetooth only. The cloud is never called, no token is needed, and the cloud history (§4a) does not run.
+- `cloud`: the cloud only. Bluetooth is never opened, so no `mac` is needed and any model the cloud lists is read.
+
+Not set = `auto`, or `bluetooth` when `cloudEnabled` is `false` (the key that switched the cloud off before
+`readingSource` existed). The page's choice is saved in `reading-source.json` in the data directory and wins over the
+key from the next poll on, no restart; deleting that file returns to the key. The source in force is read at each
+poll, by the reader and by the history back-fill alike.
+
+### Cloud sign-in
 
 `BluettiWatcher.exe --cloud-login` signs in once: it opens BLUETTI's OAuth login in the browser, catches the answer on
 a localhost address, writes the token file and exits. It never prints the token.
+
+The page's "Sign in to BLUETTI cloud" runs the same authorization-code flow inside the running service
+(`POST /api/cloud/sign-in`): the service starts a one-shot catcher on `127.0.0.1` at a port the OS assigns (never the
+dashboard's), answers the authorize address, and the page opens it in a new tab. The catcher accepts only the `state`
+it issued; it waits 5 minutes. The token is written under the cloud reader's lock, so no read in flight writes an
+older refreshed pair over it, and what the reader held for the old token (a refusal, an unsaved pair) is dropped.
+A second press while one sign-in waits gets the same address. "Sign out" (`POST /api/cloud/sign-out`) stops a waiting
+sign-in and deletes the token file. Both routes sit behind the write guard of `/api/mode`; no answer and no log line
+carries a token, and the authorize address (its one-time `state`) goes only to the page.
+
+### Cloud state
+
+The page and `/api/health` show the cloud's state: `off` (the source never calls the cloud) · `signed-out` (no token
+file) · `ok` (the last read answered, or signed in and not read yet; the detail names the access token's expiry) ·
+`sign-in-needed` (the server refused the refresh token) · `error` (the last read failed; the detail names why).
+
+- AC10: a refresh answered HTTP 400, 401 or 403 is a refused grant, not a hiccup: the state turns `sign-in-needed`, the
+  refused refresh token is not sent again for 6 hours, and while the access token is known dead (it answered 805)
+  no device-list call goes out either: each poll's miss names "sign-in needed" without a request. A new token (the
+  page's sign-in, or `--cloud-login` writing the file) ends the hold at once. Any other failed refresh (429, 5xx, no
+  answer) is retried as before.
 
 - AC1: when Bluetooth returns a reading, the cloud is not called.
 - AC2: when Bluetooth returns nothing and the cloud returns the station (model starting with `type`, `online` "1",
@@ -135,7 +171,9 @@ a localhost address, writes the token file and exits. It never prints the token.
 - AC2a: the cloud has no output mode, and a reading without one is incomplete (section 3). The mode is derived:
   `GridAllTotalPower` > 0 = `CLOUD_MAINS` (mains is on whatever the mode); `GridAllTotalPower` 0 with `SetCtrlAc` 1
   and `ACLoadAllTotalPower` > 0 = `INVERTER_OUTPUT` (the AC load runs from the battery); anything else = no mode, so
-  the reading is incomplete.
+  the reading is incomplete. The cloud has answered an all-zero device state (SOC 0 %, 0 W in, 0 W out) while the
+  station ran on Bluetooth at a real charge: that answer derives no mode and is rejected as incomplete, which keeps a
+  false 0 % away from the stop and hibernate levels.
 - AC3: when the device is offline (`online` not "1"), the answer is not `msgCode` 0, `SOC` is missing or not a
   number, HTTP fails or times out (15 s cap; a device list request with no answer at all is sent once more), or the
   token file is missing or unreadable, the result is a miss with one log line naming why, never the token.
