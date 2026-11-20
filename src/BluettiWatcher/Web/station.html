@@ -10,45 +10,41 @@ main{max-width:1200px;margin:0 auto;display:grid;gap:10px}
 .card{background:var(--bg);border:1px solid var(--edge);border-radius:14px;padding:18px 20px;min-width:0}
 h1{font-size:16px;line-height:22px;margin:0;font-weight:600}
 h2{font-size:16px;line-height:22px;margin:0 0 12px;font-weight:600;color:var(--text)}
-.head{display:grid;grid-template-columns:1fr auto;grid-template-areas:"brand lang" "chips mode";align-items:center;gap:12px 20px}
+.head{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:"brand chips lang" "mode mode mode";align-items:center;gap:14px 20px}
 .head .sp{display:none}
-.head .brand{grid-area:brand}.head .chips{grid-area:chips}.head .modebox{grid-area:mode;align-self:end}.head #langSeg{grid-area:lang;justify-self:end;align-self:start}
+.head .brand{grid-area:brand}.head .chips{grid-area:chips}.head .modebox{grid-area:mode}.head #langSeg{grid-area:lang;justify-self:end}
 .brand{display:flex;align-items:center;gap:12px}
 .brand svg{width:34px;height:34px;flex:none}
-.brand .sub{color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums}
-.chips{display:flex;gap:6px;flex-wrap:wrap}
+.brand .sub{color:var(--dim);font-size:13px;line-height:18px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 /* the power controls: one grid, a label column and a control column; both groups the same height, segment width and right edge */
-.modebox{display:grid;grid-template-columns:auto auto;align-items:center;gap:8px 12px}
+.modebox{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;min-width:0}
 .modebox .cl{color:var(--dim);font-size:12px;text-align:right;white-space:nowrap}
-.modebox .seg{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(64px,auto)}
-#modeSeg button{min-width:0;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#modeMore{all:unset;cursor:pointer;height:30px;line-height:30px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 14px;border-radius:5px;font-size:13px;color:var(--dim)}#modeMore[aria-pressed=true]{background:var(--accent);color:#fff}#modeMore:focus-visible{outline:1px solid var(--accent)}
-#modeSeg button,#planSeg button{height:30px;padding:0 14px;font-size:13px;text-align:center}
-.modebox .hint{grid-column:1/-1;width:0;min-width:100%;min-height:18px;color:var(--dim);font-size:12px;text-align:right}
-/* the language: a small text toggle in the corner, the chosen one bright */
-.lang{display:flex;align-items:center;font-size:12px;line-height:18px}
-.lang button{all:unset;cursor:pointer;padding:2px 4px;color:var(--dim);letter-spacing:.04em}
-.lang button:hover{color:var(--text)}
-.lang button[aria-pressed=true]{color:var(--text);font-weight:600}
-.lang button+button{margin-left:8px}
-.lang button:focus-visible{outline:1px solid var(--accent)}
+.modebox .seg{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(72px,auto);flex:none}
+#modeSeg button{white-space:nowrap}
+#modeSeg button,#planSeg button{height:30px;line-height:30px;padding:0 16px}
+.pick{gap:8px;min-width:140px;justify-content:space-between;background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;position:relative}.pick svg{width:16px;height:16px}
+.menu{position:absolute;z-index:20;min-width:180px;display:grid;padding:4px;background:var(--raised);border:1px solid #3a3d44;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.menu button{all:unset;cursor:pointer;height:32px;line-height:32px;padding:0 12px;border-radius:6px;font-size:14px;white-space:nowrap}.menu button:hover{background:rgba(255,255,255,.06)}.menu button[aria-checked=true]{background:var(--accent);color:#fff;font-weight:600}
+.modebox .hint{display:flex;align-items:center;gap:10px;min-height:20px;color:var(--dim);font-size:13px}
+/* the language: a small segmented control in the corner */
+.seg.lang button{height:24px;line-height:24px;padding:0 10px;font-size:13px}
 .chip{display:inline-flex;align-items:center;gap:6px;min-height:20px;max-width:100%;padding:2px 8px;border-radius:4px;background:var(--raised);font-size:12px;line-height:16px;color:var(--text);cursor:default;border:0;font-family:inherit}button.chip{cursor:pointer}
 .chip i{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}
 #ecoChip{font-variant-numeric:tabular-nums}
 .chip.ok{background:rgba(95,173,101,.13);color:#9bd59f}.chip.warn{background:rgba(224,165,58,.13);color:#efc36f}.chip.bad{background:rgba(219,92,92,.14);color:#ef9191}.chip.acc{background:rgba(84,138,247,.14);color:#94b6fb}
 .chip.ok i{background:var(--ok)}.chip.warn i{background:var(--warn)}.chip.bad i{background:var(--bad)}.chip.acc i{background:var(--accent)}
-.top{display:grid;grid-template-columns:310px 1fr;gap:10px}
+/* the tiles share rows: label, value, chart or meter, line; a value and a line sit on one baseline across a row of tiles */
 .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.k{color:var(--dim);font-size:13px;line-height:18px;font-weight:500;margin-bottom:6px}
+.tiles>.card{display:grid;grid-row:span 4;grid-template-rows:subgrid;row-gap:4px}
+.tiles .x{display:flex;align-items:center;min-height:0}
+.meter{position:relative;flex:1;height:6px;border-radius:3px;background:var(--raised)}.meter i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;transition:width .8s}.meter b{position:absolute;top:-4px;bottom:-4px;width:1px;background:var(--text);opacity:.7}
+.k{color:var(--dim);font-size:13px;line-height:18px;font-weight:500}
 .v{font-size:28px;line-height:36px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .v .na{font-size:16px;font-weight:400;color:var(--dim)}
-.v small{font-size:14px;font-weight:400;color:var(--dim);margin:0 6px 0 4px}
+.v small{font-size:16px;font-weight:400;color:var(--dim);margin:0 8px 0 3px}.v small:last-child{margin-right:0}.v.dimv{font-size:18px;font-weight:500;color:var(--dim)}
 .s{color:var(--dim);font-size:13px;line-height:18px;min-height:18px}
 .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}.dim{color:var(--dim)}
-.ring{display:grid;place-items:center;position:relative;background:radial-gradient(circle at 50% 45%,rgba(255,255,255,.035),transparent 65%),var(--bg)}
-.ring svg{width:240px;height:240px;display:block}
-.ring .mid{position:absolute;text-align:center;pointer-events:none}
-.ring .pct{font-size:56px;line-height:60px;font-variant-numeric:tabular-nums;font-weight:600;letter-spacing:-.02em}
-.ring .wh{color:var(--dim);font-size:12px}
 .bar{display:flex;gap:8px;align-items:center}
 .seg{display:flex;background:var(--frame);border:1px solid var(--edge);border-radius:8px;padding:2px;gap:2px}
 .seg button{all:unset;cursor:pointer;height:26px;line-height:26px;padding:0 12px;border-radius:6px;font-size:14px;color:var(--dim);text-align:center;transition:background .15s,color .15s}
@@ -121,7 +117,7 @@ details summary{cursor:pointer;color:var(--dim);font-size:12px}
 @keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(224,165,58,.0)}50%{box-shadow:0 0 12px 2px rgba(224,165,58,.55)}}
 main>*{animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
 main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12s}main>*:nth-child(4){animation-delay:.18s}main>*:nth-child(5){animation-delay:.24s}main>*:nth-child(n+6){animation-delay:.3s}
-.top>.card,.tiles>.card{animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
+.tiles>.card{animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
 .tiles>.card:nth-child(2){animation-delay:.08s}.tiles>.card:nth-child(3){animation-delay:.16s}.tiles>.card:nth-child(4){animation-delay:.1s}.tiles>.card:nth-child(5){animation-delay:.18s}.tiles>.card:nth-child(6){animation-delay:.26s}
 .card{transition:border-color .2s,background-color .2s}
 .card:hover{border-color:rgba(255,255,255,.11)}
@@ -184,31 +180,27 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 :is(button,a,summary,input,select,textarea,[tabindex]):focus-visible{outline:2px solid #fff!important;outline-offset:2px!important}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 /* wide monitors (2K): a wider page, the same layout */
-@media(min-width:1800px){main{max-width:1560px}body{padding:28px}.top{grid-template-columns:360px 1fr}.ring svg{width:280px;height:280px}.ring .pct{font-size:64px;line-height:68px}.v{font-size:34px;line-height:42px}}
+@media(min-width:1800px){main{max-width:1560px}body{padding:28px}.v{font-size:34px;line-height:42px}}
 @media(min-width:2200px){html{zoom:1.15}}
-@media(max-width:900px){.head{grid-template-columns:1fr auto;grid-template-areas:"brand lang" "chips chips" "mode mode"}.top{grid-template-columns:1fr}.tiles{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.modebox{grid-template-columns:auto 1fr}.modebox .cl{text-align:left}.modebox .hint{text-align:left}.dgrid{grid-template-columns:repeat(6,1fr)}}
+@media(max-width:900px){.head{grid-template-columns:1fr auto;grid-template-areas:"brand lang" "chips chips" "mode mode"}.tiles{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.dgrid{grid-template-columns:repeat(6,1fr)}}
 /* phones */
 @media(max-width:600px){body{padding:10px}main{gap:8px}.card{padding:14px;border-radius:12px}.tiles{gap:8px}.v{font-size:24px;line-height:30px}.v small{font-size:12px;margin:0 4px 0 2px}
-  .ring svg{width:200px;height:200px}.ring .pct{font-size:46px;line-height:50px}
-  #modeSeg button,#planSeg button{padding:0 6px}#modeMore{padding:0 6px;max-width:90px}
+  #modeSeg button,#planSeg button{padding:0 10px}
   .dgrid{gap:4px}.dgrid .c{height:48px;font-size:11px;gap:3px}.dban b{font-size:14px}
   #dtekBody .rowbar{grid-template-columns:1fr!important;gap:0;margin-bottom:6px}
   .ring svg{width:220px;height:220px}.ring .wh{font-size:11px;line-height:15px}.ring{padding:12px}
   td,th{padding:6px 4px;font-size:11px}.bar{flex-wrap:wrap}}
 </style></head><body><main>
-<div class="card head"><div class="brand"><svg viewBox="0 0 34 34" aria-hidden="true"><rect x="1" y="1" width="32" height="32" rx="9" fill="#26282c"/><rect x="8" y="11" width="16" height="12" rx="2.5" fill="none" stroke="#5fad65" stroke-width="2"/><rect x="24.5" y="14.5" width="2.5" height="5" rx="1" fill="#5fad65"/><path d="M17 13.5l-3.5 4.5h3l-1 3.5 3.5-4.5h-3z" fill="#5fad65"/></svg><div><h1 id="title"></h1><div class="sub" id="readAt"></div></div></div><div class="chips"><span class="chip" id="gridChip"><i></i><span></span></span><span class="chip" id="ecoChip" hidden><i></i><span></span></span><span class="chip" id="planChip" hidden><i></i><span></span></span><button type="button" class="chip warn" id="srcAlert" hidden><i></i><span></span></button><span class="chip warn" id="staleChip" hidden><i></i><span></span></span><span class="chip acc" id="maxChip" hidden><i></i><span></span></span><span class="chip" id="noteChip" hidden><i></i><span></span></span></div><span class="sp"></span><div class="modebox"><span class="cl" data-i18n="powerLabel"></span><div class="seg" id="modeSeg" role="group" data-i18n-aria="powerMode"><button data-m="auto" data-i18n="modeAuto" data-i18n-title="modeAutoTip"></button><button data-m="eco" data-i18n="modeEco" data-i18n-title="modeEcoTip"></button><button data-m="max" data-i18n="modeMax" data-i18n-title="modeMaxTip"></button></div><span class="cl" id="planLabel" data-i18n="afterEco"></span><div class="seg" id="planSeg" role="group" data-i18n-aria="afterEcoAria"><button data-p="balanced" data-i18n="planBalanced" data-i18n-title="planBalancedTip"></button><button data-p="high" data-i18n="planHigh" data-i18n-title="planHighTip"></button><button data-p="previous" data-i18n="planPrevious" data-i18n-title="planPreviousTip"></button></div><div class="hint" id="modeLine" role="status" aria-live="polite"></div></div><div class="lang" id="langSeg" role="group" data-i18n-aria="language"><button data-lang="en" data-i18n="langEn"></button><button data-lang="uk" data-i18n="langUk"></button></div></div>
+<div class="card head"><div class="brand"><svg viewBox="0 0 34 34" aria-hidden="true"><rect x="1" y="1" width="32" height="32" rx="9" fill="#26282c"/><rect x="8" y="11" width="16" height="12" rx="2.5" fill="none" stroke="#5fad65" stroke-width="2"/><rect x="24.5" y="14.5" width="2.5" height="5" rx="1" fill="#5fad65"/><path d="M17 13.5l-3.5 4.5h3l-1 3.5 3.5-4.5h-3z" fill="#5fad65"/></svg><div><h1 id="title"></h1><div class="sub" id="readAt"></div></div></div><div class="chips"><span class="chip" id="gridChip"><i></i><span></span></span><span class="chip" id="ecoChip" hidden><i></i><span></span></span><button type="button" class="chip warn" id="srcAlert" hidden><i></i><span></span></button><span class="chip warn" id="staleChip" hidden><i></i><span></span></span><span class="chip" id="noteChip" hidden><i></i><span></span></span></div><div class="modebox"><span class="cl" id="planLabel" data-i18n="afterEco" hidden></span><div class="seg" id="planSeg" role="group" data-i18n-aria="afterEcoAria" hidden><button data-p="balanced" data-i18n="planBalanced" data-i18n-title="planBalancedTip"></button><button data-p="high" data-i18n="planHigh" data-i18n-title="planHighTip"></button><button data-p="previous" data-i18n="planPrevious" data-i18n-title="planPreviousTip"></button></div><div class="seg" id="modeSeg" role="group" data-i18n-aria="powerMode"><button data-m="auto" data-i18n="modeAuto" data-i18n-title="modeAutoTip"></button><button data-m="eco" data-i18n="modeEco"></button><button data-m="max" data-i18n="modeMax"></button></div><button type="button" class="btn pick" id="modePick" hidden aria-haspopup="menu" aria-expanded="false" aria-controls="modeMenu"><span></span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button><div class="menu" id="modeMenu" role="menu" hidden></div><div class="hint" id="modeLine" role="status" aria-live="polite"></div></div><div class="seg lang" id="langSeg" role="group" data-i18n-aria="language"><button data-lang="en" data-i18n="langEn"></button><button data-lang="uk" data-i18n="langUk"></button></div></div>
 
-<div class="top">
-  <div class="card ring"><svg id="ring" viewBox="0 0 240 240" aria-hidden="true"><circle cx="120" cy="120" r="100" fill="none" stroke="#26282c" stroke-width="16"/><g transform="rotate(-90 120 120)" fill="none" stroke-width="16"><circle id="zoneR" cx="120" cy="120" r="100" stroke="#db5c5c" stroke-opacity=".22"/><circle id="zoneA" cx="120" cy="120" r="100" stroke="#e0a53a" stroke-opacity=".22"/><circle class="arc" id="arc" cx="120" cy="120" r="100" stroke="#5fad65" stroke-linecap="round" style="stroke-dasharray:0 629"/></g><g id="ticks"></g></svg>
-    <div class="mid"><div class="pct" id="pct"></div><div class="wh" id="wh"></div><div class="wh" id="trend"></div></div></div>
-  <div class="tiles">
-    <div class="card"><div class="k" data-i18n="loadNow"></div><div class="v" id="load"></div><svg id="spark" viewBox="0 0 200 34" style="width:100%;height:34px;display:block"></svg><div class="s" id="loadSub"></div></div>
-    <div class="card"><div class="k" data-i18n="timeLeft"></div><div class="v" id="left"></div><div class="s" id="leftSub"></div></div>
-    <div class="card"><div class="k" id="cutK" data-i18n="thisCut"></div><div class="v" id="cut"></div><div class="s" id="cutSub"></div><div class="s" id="cutSub2"></div></div>
-    <div class="card"><div class="k" data-i18n="reaches"></div><div id="reach"></div></div>
-    <div class="card"><div class="k" data-i18n="output"></div><div class="v" id="volt"></div><div class="s" id="voltSub"></div></div>
-    <div class="card"><div class="k" data-i18n="today"></div><div class="v" id="today"></div><div class="s" id="todaySub"></div><div class="s" id="todaySub2"></div></div>
-  </div>
+<!-- the live tiles: one row structure (label, value, chart or meter, one line) on a subgrid, so values and lines share baselines -->
+<div class="tiles">
+  <div class="card"><div class="k" data-i18n="battery"></div><div class="v" id="pct"></div><div class="x"><div class="meter" id="meter"><i id="meterFill"></i><b id="meterTick"></b></div></div><div class="s" id="wh"></div></div>
+  <div class="card"><div class="k" data-i18n="loadNow"></div><div class="v" id="load"></div><div class="x"><svg id="spark" viewBox="0 0 200 34" style="width:100%;height:34px;display:block"></svg></div><div class="s" id="loadSub"></div></div>
+  <div class="card"><div class="k" id="leftK" data-i18n="lastsUntil"></div><div class="v" id="left"></div><div class="x"></div><div class="s" id="leftSub"></div></div>
+  <div class="card"><div class="k" id="cutK" data-i18n="thisCut"></div><div class="v" id="cut"></div><div class="x"></div><div class="s" id="cutSub"></div></div>
+  <div class="card"><div class="k" data-i18n="output"></div><div class="v" id="volt"></div><div class="x"></div><div class="s" id="voltSub"></div></div>
+  <div class="card"><div class="k" data-i18n="offToday"></div><div class="v" id="today"></div><div class="x"></div><div class="s" id="todaySub"></div></div>
 </div>
 
 <div class="card" id="dtekCard" hidden><div class="bar"><h2 style="margin:0" data-i18n="dtekTitle"></h2><span style="flex:1"></span><span class="chip" id="dtekChip"><i></i><span></span></span></div>
@@ -268,8 +260,6 @@ en: {
   modeEcoTip: "Eco now",
   modeMax: "Max",
   modeMaxTip: "Full performance until mains changes",
-  powerLabel: "Power",
-  planChip: "Plan: {p}",
   afterEco: "After eco",
   afterEcoCustom: "After eco: a plan from the config file",
   afterEcoAria: "Power plan after eco",
@@ -283,7 +273,7 @@ en: {
   planPreviousTip: "The plan that was on before eco (High performance when unknown)",
   modeApplying: "Applying {m}…",
   modeNow: "Now: {m}",
-  modeNowPlan: "Now: {m} · {p} plan",
+  modeNowPlan: "Now {m} with the {p} plan",
   pmNormal: "normal mode",
   pmEco: "eco",
   pmEmergency: "emergency",
@@ -292,7 +282,23 @@ en: {
   activeBalanced: "Balanced",
   activeSaver: "Power saver",
   loadNow: "Load now",
-  timeLeft: "Time left",
+  lastsUntil: "Battery lasts until",
+  leftFor: "{d} left",
+  leftForTomorrow: "{d} left, until tomorrow",
+  offToday: "Off mains today",
+  cutsN_one: "{n} outage",
+  cutsN_few: "{n} outages",
+  cutsN_many: "{n} outages",
+  cutsN_other: "{n} outages",
+  modeRetry: "Try again",
+  stAmp: "Pack current",
+  stEmptyK: "Station's time to empty",
+  stFullK: "Station's time to full",
+  stOursK: "Our time to empty",
+  stGapK: "Difference from ours",
+  stTempAmb: "Ambient temperature",
+  stTempInv: "Inverter temperature",
+  stTempPv: "Solar converter temperature",
   thisCut: "This power cut",
   lastCut: "Last power cut",
   reaches: "Reaches",
@@ -330,13 +336,10 @@ en: {
   colUsed: "Used",
   lastReadings: "Last readings",
   stationOwn: "Station's own values",
-  stPack: "Battery pack",
-  stTime: "Station's time to empty / full",
-  stTimeVal: "{e} / {f} min (ours: {o})",
-  stGap: "gap {g} h",
+  stPack: "Pack voltage",
+  stGap: "{g} h",
   stAlarms: "Warnings and faults",
   stNone: "none",
-  stTemps: "Temperatures (ambient, inverter, solar)",
   modesTitle: "Power modes",
   modesChoose: "Power mode",
   modesNowAuto: "In force: {m} · Auto, rule {n}: {c}",
@@ -439,34 +442,23 @@ en: {
   uV: "V",
   uHz: "Hz",
   noReadings: "no readings yet",
-  gridOn: "Grid on · charging {w}",
-  gridOff: "Grid off · on battery",
+  gridOn: "On mains",
+  gridOff: "On battery",
   readAt: "Updated {at}",
-  noReadingFor: "no reading for {d}",
-  tabTitle: "{soc}% · {state} · Bluetti Watcher",
-  tabGridOn: "grid on",
+  noReadingFor: "No data since {at}",
+  tabTitle: "{soc} % {state}",
+  tabGridOn: "on mains",
   tabOnBattery: "on battery",
-  whAbout: "about {now} of {cap}",
   charging: "charging",
   discharging: "discharging",
   perHour: "−{r} % per hour",
-  lastHourLoad: "last hour {mn}–{mx} · avg {avg}",
-  input: "input {w}",
-  emptyAbout: "empty about {at}",
-  emptyBetween: "empty {a}–{b}",
+  lastHourLoad: "Last hour",
+  input: "charging at {w}",
   tomorrow: "tomorrow",
-  fromMeasured: "By the measured drop",
-  fromModel: "By this station's fitted discharge model",
-  byCapacity: "By capacity, no measured drop yet",
-  recordedSince: "recorded since {at} · {from}% → {to}%",
-  usedSockets: "{e} used",
+  recordedSince: "since {at}",
   noneRecorded: "none recorded",
   noneRecordedYet: "none recorded yet",
   passed: "passed",
-  aboutAt: "about {at}",
-  levelsRaised: "levels raised for a drain of {r} %/h: hibernate warning at {w} %",
-  todayOnBattery: "on battery, cuts: {n}",
-  todayEnergy: "{e} used",
   nowForecast: "now · forecast",
   tipGrid: "grid {s}",
   on: "on",
@@ -491,10 +483,9 @@ en: {
   statEnergy: "Energy",
   cutNow: "now",
   unknown: "unknown",
-  maxChip: "Max · about {h} of battery at the current load",
   dryRun: "dry run",
   serviceDown: "service not answering ({e})",
-  ecoIn: "Eco in {m}:{s} · at {at}",
+  ecoIn: "Eco in {m}:{s}",
   ecoNext: "Eco at the next reading",
   dtekOk: "schedule received",
   dtekStale: "stale schedule",
@@ -539,11 +530,6 @@ en: {
   cyclesTip: "Cycle: 35 W or more above base for 2–45 min",
   loadTip: "Base: the quietest 15 % of the period",
   hoursTip: "The current hour is paler",
-  ringOk: "{a}–100 %: normal",
-  ringEmergency: "{a}–{b} %: emergency",
-  ringStop: "{a}–{b} %: stop, save your work",
-  ringWarn: "{a}–{b} %: hibernation soon",
-  ringHibernate: "0–{b} %: hibernation",
   ago: "{d} ago",
   dtekNoCuts: "No outages in the schedule",
   dtekBannerOff: "Scheduled outage now",
@@ -683,8 +669,6 @@ uk: {
   modeEcoTip: "Еко-режим зараз",
   modeMax: "Макс",
   modeMaxTip: "Повна продуктивність до зміни мережі",
-  powerLabel: "Живлення",
-  planChip: "Схема: {p}",
   afterEco: "Після еко",
   afterEcoCustom: "Після еко: схема з файлу налаштувань",
   afterEcoAria: "Схема живлення після еко",
@@ -698,7 +682,7 @@ uk: {
   planPreviousTip: "Схема, що була до еко (висока продуктивність, коли невідомо)",
   modeApplying: "Застосовую: {m}…",
   modeNow: "Зараз: {m}",
-  modeNowPlan: "Зараз: {m} · схема {p}",
+  modeNowPlan: "Зараз {m}, схема {p}",
   pmNormal: "звичайний режим",
   pmEco: "еко",
   pmEmergency: "аварійний режим",
@@ -707,7 +691,23 @@ uk: {
   activeBalanced: "Збалансована",
   activeSaver: "Економія енергії",
   loadNow: "Навантаження зараз",
-  timeLeft: "Залишилось",
+  lastsUntil: "Батареї вистачить до",
+  leftFor: "ще {d}",
+  leftForTomorrow: "ще {d}, до завтра",
+  offToday: "Без мережі сьогодні",
+  cutsN_one: "{n} відключення",
+  cutsN_few: "{n} відключення",
+  cutsN_many: "{n} відключень",
+  cutsN_other: "{n} відключення",
+  modeRetry: "Повторити",
+  stAmp: "Струм батареї",
+  stEmptyK: "Час станції до розряду",
+  stFullK: "Час станції до заряду",
+  stOursK: "Наш час до розряду",
+  stGapK: "Різниця з нашим",
+  stTempAmb: "Температура довкілля",
+  stTempInv: "Температура інвертора",
+  stTempPv: "Температура сонячного перетворювача",
   thisCut: "Поточне відключення",
   lastCut: "Останнє відключення",
   reaches: "Дійде до",
@@ -745,13 +745,10 @@ uk: {
   colUsed: "Витрата",
   lastReadings: "Останні показання",
   stationOwn: "Власні показники станції",
-  stPack: "Батарея",
-  stTime: "Час станції до розряду / заряду",
-  stTimeVal: "{e} / {f} хв (наш: {o})",
-  stGap: "різниця {g} год",
+  stPack: "Напруга батареї",
+  stGap: "{g} год",
   stAlarms: "Попередження та збої",
   stNone: "немає",
-  stTemps: "Температури (довкілля, інвертор, сонячний)",
   modesTitle: "Режими живлення",
   modesChoose: "Режим живлення",
   modesNowAuto: "Діє: {m} · Авто, правило {n}: {c}",
@@ -854,34 +851,23 @@ uk: {
   uV: "В",
   uHz: "Гц",
   noReadings: "показань ще немає",
-  gridOn: "Мережа є · заряджання {w}",
-  gridOff: "Мережі немає · від батареї",
+  gridOn: "Від мережі",
+  gridOff: "Від батареї",
   readAt: "Оновлено {at}",
-  noReadingFor: "немає показань уже {d}",
-  tabTitle: "{soc}% · {state} · Bluetti Watcher",
-  tabGridOn: "мережа є",
+  noReadingFor: "Немає даних з {at}",
+  tabTitle: "{soc} % {state}",
+  tabGridOn: "від мережі",
   tabOnBattery: "від батареї",
-  whAbout: "близько {now} з {cap}",
   charging: "заряджається",
   discharging: "розряджається",
   perHour: "−{r} % за годину",
-  lastHourLoad: "за годину {mn}–{mx} · у середньому {avg}",
-  input: "вхід {w}",
-  emptyAbout: "розрядиться близько {at}",
-  emptyBetween: "розрядиться {a}–{b}",
+  lastHourLoad: "Остання година",
+  input: "заряджається, {w}",
   tomorrow: "завтра",
-  fromMeasured: "За виміряним розрядом",
-  fromModel: "За моделлю розряду цієї станції",
-  byCapacity: "За ємністю, розряд ще не виміряно",
-  recordedSince: "з {at} · {from}% → {to}%",
-  usedSockets: "витрачено {e}",
+  recordedSince: "з {at}",
   noneRecorded: "не було",
   noneRecordedYet: "ще не було",
   passed: "пройдено",
-  aboutAt: "близько {at}",
-  levelsRaised: "рівні підняті через розряд {r} %/год: попередження про гібернацію на {w} %",
-  todayOnBattery: "від батареї, відключень: {n}",
-  todayEnergy: "витрачено {e}",
   nowForecast: "зараз · прогноз",
   tipGrid: "мережа: {s}",
   on: "є",
@@ -906,10 +892,9 @@ uk: {
   statEnergy: "Енергія",
   cutNow: "зараз",
   unknown: "невідомо",
-  maxChip: "Макс · приблизно {h} від батареї за поточного навантаження",
   dryRun: "пробний режим",
   serviceDown: "сервіс не відповідає ({e})",
-  ecoIn: "Еко-режим через {m}:{s} · о {at}",
+  ecoIn: "Еко через {m}:{s}",
   ecoNext: "Еко-режим із наступним зчитуванням",
   dtekOk: "графік отримано",
   dtekStale: "графік застарів",
@@ -954,11 +939,6 @@ uk: {
   cyclesTip: "Цикл: 35 Вт і більше понад базу 2–45 хв",
   loadTip: "База: найтихіші 15 % періоду",
   hoursTip: "Поточна година блідіша",
-  ringOk: "{a}–100 %: норма",
-  ringEmergency: "{a}–{b} %: аварійний режим",
-  ringStop: "{a}–{b} %: стоп, збережіть роботу",
-  ringWarn: "{a}–{b} %: скоро гібернація",
-  ringHibernate: "0–{b} %: гібернація",
   ago: "{d} тому",
   dtekNoCuts: "Відключень у графіку немає",
   dtekBannerOff: "Світла немає за графіком",
@@ -1093,6 +1073,8 @@ function startLang() {
 }
 let lang = startLang();
 function t(key, p) { let s = I18N[lang][key] ?? I18N.en[key] ?? key; if (p) for (const k of Object.keys(p)) s = s.split(`{${k}}`).join(String(p[k])); return s; }
+// a count with its noun in the language's plural form: keys base_one, base_few, base_many, base_other
+const plural = (base, n) => { const k = `${base}_${new Intl.PluralRules(lang).select(n)}`; return t(has(k) ? k : base + '_other', { n }); };
 const uW = (n) => `${n} ${t('uW')}`, uWh = (n) => `${n} ${t('uWh')}`;
 // Decimals: a point in English, a comma in Ukrainian.
 const fmt = (x, d = 1) => { if (x === null || x === undefined || !Number.isFinite(Number(x))) return '–'; const s = Number(x).toFixed(d); return lang === 'uk' ? s.replace('.', ',') : s; };
@@ -1103,7 +1085,8 @@ const val = (code) => { const k = 'v_' + String(code ?? '').toLowerCase().replac
 function noteText(n) { if (!n) return ''; const k = 'n_' + String(n.code || '').replace(/-/g, '_'); if (!n.code || !has(k)) return n.text || ''; const p = {}; (n.args || []).forEach((v, i) => { p[i] = String(v ?? '').split(', ').map((a) => val(qd(a))).join(', '); }); return t(k, p); }
 // A queue as the page shows it: GPV1.1 -> 1.1, a set GPV1.1+GPV2.1 -> 1.1 + 2.1 (the API keeps the full code).
 const qd = (q) => String(q ?? '').split('+').map((x) => x.replace(/^GPV(?=\d)/, '')).join(' + ');
-const notesText = (list, fallback) => (list && list.length ? list.map(noteText).join(' · ') : fallback || '');
+// several notes read as sentences one after another, never joined by a separator
+const notesText = (list, fallback) => (list && list.length ? list.map(noteText).filter(Boolean).map((s) => (/[.!?…]$/.test(s) ? s : s + '.')).join(' ') : fallback || '');
 const $ = (id) => document.getElementById(id);
 const pad = (n) => String(n).padStart(2, '0');
 // The markup carries no text: every element with data-i18n* gets it here, again on a language switch.
@@ -1161,17 +1144,17 @@ const row = (k, val) => `<div class="rowbar" style="grid-template-columns:1fr 1f
 const codes = [...(s.faults || []), ...(s.warnings || [])];
 const ours = D.hoursLeft == null ? '–' : Math.round(D.hoursLeft * 60);
 document.getElementById('stationBody').innerHTML =
-  row('stPack', `${v(s.packVolt, 'V')} · ${v(s.packAmp, 'A')}`)
-  + row('stTime', t('stTimeVal', { e: s.minutesToEmpty ?? '–', f: s.minutesToFull ?? '–', o: ours }) + (s.emptyGapHours == null ? '' : ` · ${t('stGap', { g: s.emptyGapHours })}`))
+  row('stPack', v(s.packVolt, 'V')) + row('stAmp', v(s.packAmp, 'A'))
+  + row('stEmptyK', v(s.minutesToEmpty, t('uMin'))) + row('stFullK', v(s.minutesToFull, t('uMin'))) + row('stOursK', ours === '–' ? ours : `${ours} ${t('uMin')}`)
+  + (s.emptyGapHours == null ? '' : row('stGapK', t('stGap', { g: s.emptyGapHours })))
   + row('stAlarms', codes.length ? esc(codes.join(', ')) : t('stNone'))
-  + row('stTemps', [s.tempAmbient, s.tempInverter, s.tempPvDcDc].map((x) => v(x, '°C')).join(' · '));
+  + [['stTempAmb', s.tempAmbient], ['stTempInv', s.tempInverter], ['stTempPv', s.tempPvDcDc]].map(([k, x]) => row(k, v(x, '°C'))).join('');
 }
 function render(D) {
 clearInterval(ecoTimer); ecoTimer = null;
 // the plan the end of eco sets, shown with no readings too: a plan GUID put in the config by hand presses no button and says so
 // under v2 the power group is the modes view's (paintModesV2); /api/now's manual and returnPlan are the legacy engine's
-if (mpView) paintPlanChip(D);
-else {
+if (!mpView) {
   document.querySelectorAll('#planSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.p === D.returnPlan)));
   $('planLabel').textContent = t(D.returnPlan === 'custom' ? 'afterEcoCustom' : 'afterEco');
   paintMode(D);
@@ -1215,15 +1198,14 @@ const cls = (v) => (v <= D.thresholds.stopAt ? 'bad' : v <= D.thresholds.emergen
 // Header
 $('title').textContent = t('appName');
 $('readAt').textContent = D.type;   // the model on its own muted line under the name
-const gc = $('gridChip'); gc.className = 'chip ' + (now.mains ? 'ok' : 'warn'); gc.lastChild.textContent = now.mains ? t('gridOn', { w: uW(now.inp) }) : t('gridOff');
-// Eco on: its line. Mains off and the confirmation running: a countdown to the moment the station switches eco on.
-{ const e = $('ecoChip'); e.hidden = !D.eco && !D.ecoAt;
-  if (D.eco) { e.className = 'chip acc'; e.lastChild.textContent = D.ecoNote ? noteText(D.ecoNote) : D.eco; }
-  else if (D.ecoAt) { const at = Date.parse(D.ecoAt); e.className = 'chip warn';
+const gc = $('gridChip'); gc.className = 'chip ' + (now.mains ? 'ok' : 'warn'); gc.lastChild.textContent = now.mains ? t('gridOn') : t('gridOff');
+// Mains off and the confirmation running: a countdown to the moment Auto turns Eco on (Eco itself shows in the mode switch).
+{ const e = $('ecoChip'); e.hidden = !D.ecoAt || !!D.eco;
+  if (!e.hidden) { const at = Date.parse(D.ecoAt); e.className = 'chip warn';
     const tick = () => { const s = Math.ceil((at - Date.now()) / 1000); e.lastChild.textContent = s > 0 ? t('ecoIn', { m: Math.floor(s / 60), s: pad(s % 60), at: hm(at) }) : t('ecoNext'); };
     tick(); if (!document.hidden) ecoTimer = setInterval(tick, 1000); } }
 $('footAt').textContent = t('readAt', { at: `${new Date(now.t).toDateString() === new Date(NOW).toDateString() ? '' : dmy(now.t) + ' '}${hm(now.t)}` });
-{ const s = $('staleChip'); s.hidden = !(NOW - now.t > 5 * 60000); if (!s.hidden) s.lastChild.textContent = t('noReadingFor', { d: dur(NOW - now.t) }); }
+{ const s = $('staleChip'); s.hidden = !(NOW - now.t > 5 * 60000); if (!s.hidden) s.lastChild.textContent = t('noReadingFor', { at: `${new Date(now.t).toDateString() === new Date(NOW).toDateString() ? '' : dmy(now.t) + ' '}${hm(now.t)}` }); }
 
 // Tab title and icon carry the charge, so the taskbar shows it without opening the page.
 document.title = t('tabTitle', { soc: now.soc, state: now.mains ? t('tabGridOn') : t('tabOnBattery') });
@@ -1235,56 +1217,40 @@ if (iconSoc !== now.soc) try { iconSoc = now.soc; const cv = document.createElem
   g.fillStyle = '#dfe1e5'; g.font = '600 24px "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(Math.round(now.soc)), 32, 34);
   $('icon').href = cv.toDataURL('image/png'); } catch (e) { /* no canvas: default icon */ }
 
-// Ring
-// The ring takes the colour of the charge's zone (the configured levels); the empty part keeps the red and amber zones faint, a notch at each level.
-const C = 2 * Math.PI * 100, stopP = D.thresholds.stopAt, emP = D.thresholds.emergencyAt;
-const zone = (el, a, b) => { const len = Math.max(0, b - a); el.style.strokeDasharray = `${C * len / 100} ${C}`; el.style.strokeDashoffset = `${-C * a / 100}`; };
-zone($('zoneR'), 0, stopP); zone($('zoneA'), stopP, emP); zone($('arc'), 0, now.soc); $('arc').setAttribute('stroke', socColor(now.soc));
-$('ticks').innerHTML = [emP, stopP].map((p) => { const a = (p / 100) * 2 * Math.PI - Math.PI / 2, pt = (r) => `x1="${(120 + 91 * Math.cos(a)).toFixed(1)}" y1="${(120 + 91 * Math.sin(a)).toFixed(1)}" x2="${(120 + 109 * Math.cos(a)).toFixed(1)}" y2="${(120 + 109 * Math.sin(a)).toFixed(1)}"`;
-  return `<line ${pt()} stroke="#1a1b1e" stroke-width="2.5"><title>${p}%</title></line>`; }).join('');
-$('ring').classList.toggle('charging', !!now.mains && now.inp > 0);
-// Hovering the ring names the zone under the pointer and what the service does there (the configured levels).
-const ringSvg = $('ring');
-ringSvg.onmousemove = (e) => { const b = ringSvg.getBoundingClientRect(), px = (e.clientX - b.left) * 240 / b.width - 120, py = (e.clientY - b.top) * 240 / b.height - 120, tip = $('tip');
-  if (Math.hypot(px, py) < 84 || Math.hypot(px, py) > 116) { tip.style.display = 'none'; return; }
-  const p = ((Math.atan2(py, px) + Math.PI / 2 + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI) * 100, th = D.effectiveThresholds ?? D.thresholds, wn = th.warnAt ?? th.hibernateAt;
-  tip.textContent = p > th.emergencyAt ? t('ringOk', { a: th.emergencyAt }) : p > th.stopAt ? t('ringEmergency', { a: th.stopAt, b: th.emergencyAt })
-    : p > wn ? t('ringStop', { a: wn, b: th.stopAt }) : p > th.hibernateAt ? t('ringWarn', { a: th.hibernateAt, b: wn }) : t('ringHibernate', { b: th.hibernateAt });
-  tip.style.display = 'block'; placeTip(tip, e.clientX + 12, e.clientY + 14); };
-ringSvg.onmouseleave = () => { $('tip').style.display = 'none'; };
-$('pct').textContent = `${now.soc}%`; $('pct').className = 'pct ' + cls(now.soc);
-$('wh').textContent = t('whAbout', { now: Math.round(D.capacityWh * now.soc / 100), cap: uWh(D.capacityWh) });
-$('trend').textContent = now.mains ? t('charging') : measured ? t('perHour', { r: fmt(measured) }) : t('discharging');
-
-// Tiles
+// Tiles: label, value, one chart or meter, at most one line under it.
+// a duration as a value: the number large, the unit small, on one baseline
+const durV = (ms) => { const m = Math.max(0, Math.round(ms / 60000)); return m < 60 ? `${m}<small>${t('uMin')}</small>` : `${Math.floor(m / 60)}<small>${t('uH')}</small>${pad(m % 60)}<small>${t('uMin')}</small>`; };
+// the charge: neutral while fine, amber or red only in the configured warning zones
+{ const z = cls(now.soc); $('pct').innerHTML = `${now.soc}<small>%</small>`; $('pct').className = 'v' + (z === 'ok' ? '' : ' ' + z);
+  $('meterFill').style.width = `${now.soc}%`; $('meterFill').style.background = socColor(now.soc);
+  $('meterTick').style.left = `${D.thresholds.stopAt}%`;
+  $('wh').textContent = now.mains ? (now.inp > 0 ? t('input', { w: uW(now.inp) }) : t('charging')) : measured ? t('perHour', { r: fmt(measured) }) : ''; }
 $('load').innerHTML = `${now.load}<small>${t('uW')}</small>`;
 const sp = rows.filter((r) => NOW - r.t <= 60 * 60000);
 if (sp.length > 1) { const mx = Math.max(...sp.map((r) => r.load), 1), mn = Math.min(...sp.map((r) => r.load)); const t0 = sp[0].t, t1 = sp[sp.length - 1].t;
-  $('spark').innerHTML = `<polyline fill="none" stroke="#548af7" stroke-width="1.5" points="${sp.map((r) => `${(200 * (r.t - t0) / Math.max(1, t1 - t0)).toFixed(1)},${(31 - 28 * (r.load - mn) / Math.max(1, mx - mn)).toFixed(1)}`).join(' ')}"/>`;
-  $('loadSub').textContent = t('lastHourLoad', { mn, mx: uW(mx), avg: uW(Math.round(sp.reduce((s, r) => s + r.load, 0) / sp.length)) }); }
-if (leftH === null) { $('left').textContent = now.mains ? t('charging') : '–'; $('leftSub').textContent = now.mains ? t('input', { w: uW(now.inp) }) : ''; $('left').title = ''; }
-else { $('left').innerHTML = `${Math.floor(leftH)}<small>${t('uH')}</small> ${pad(Math.round((leftH % 1) * 60))}<small>${t('uMin')}</small>`;
-  const lo = D.hoursLeftLow, hi = D.hoursLeftHigh, ranged = lo != null && hi != null && hi > lo, endAt = NOW + (ranged ? hi : leftH) * 3600000;
-  $('leftSub').textContent = (ranged ? t('emptyBetween', { a: hm(NOW + lo * 3600000), b: hm(NOW + hi * 3600000) }) : t('emptyAbout', { at: hm(NOW + leftH * 3600000) })) + (new Date(endAt).getDate() !== new Date(NOW).getDate() ? ' ' + t('tomorrow') : '');
-  $('left').title = D.runtimeSource === 'model' ? t('fromModel') : measured ? t('fromMeasured') : t('byCapacity'); }
-if (live) { $('cutK').textContent = t('thisCut'); $('cut').textContent = dur(NOW - live.start); $('cutSub').textContent = t('recordedSince', { at: hm(live.start), from: live.socFrom, to: live.socTo }); $('cutSub2').textContent = t('usedSockets', { e: uWh(Math.round(live.wh)) }); }
+  $('spark').innerHTML = `<polyline fill="none" stroke="#548af7" stroke-width="1.5" points="${sp.map((r) => `${(200 * (r.t - t0) / Math.max(1, t1 - t0)).toFixed(1)},${(31 - 28 * (r.load - mn) / Math.max(1, mx - mn)).toFixed(1)}`).join(' ')}"/>`; }
+$('loadSub').textContent = sp.length > 1 ? t('lastHourLoad') : '';
+// Time to empty, said once: the service's estimate at the load of the last 10 minutes, so one spike does not move it by an hour.
+const last10 = rows.filter((x) => NOW - x.t <= 10 * 60000 && !x.mains);
+const avg10 = last10.length ? last10.reduce((s, x) => s + x.load, 0) / last10.length : 0;
+const leftS = leftH === null ? null : avg10 > 0 && now.load > 0 ? leftH * now.load / avg10 : leftH;
+if (leftS === null) { $('left').textContent = now.mains ? t('charging') : '–'; $('left').className = 'v' + (now.mains ? ' dimv' : ''); $('leftSub').textContent = ''; }
+else { const endAt = NOW + leftS * 3600000; $('left').className = 'v';
+  $('left').textContent = `≈ ${hm(endAt)}`;
+  const nextDay = new Date(endAt).toDateString() !== new Date(NOW).toDateString();
+  $('leftSub').textContent = t(nextDay ? 'leftForTomorrow' : 'leftFor', { d: dur(leftS * 3600000) }); }
+if (live) { $('cutK').textContent = t('thisCut'); $('cut').innerHTML = durV(NOW - live.start); $('cutSub').textContent = t('recordedSince', { at: hm(live.start) }); }
 else { $('cutK').textContent = t('lastCut'); const c = cuts[cuts.length - 1];
-  if (c) { $('cut').textContent = dur((c.end || c.last) - c.start); $('cutSub').textContent = `${dmy(c.start)} ${hm(c.start)}–${hm(c.end || c.last)}`; $('cutSub2').textContent = `${c.socFrom}% → ${c.socTo}% · ${uWh(Math.round(c.wh))}`; }
-  else { $('cut').textContent = '–'; $('cutSub').textContent = t('noneRecorded'); $('cutSub2').textContent = ''; } }
-// the rate at the current load: the service's time already scales the measured drop to it
+  if (c) { $('cut').innerHTML = durV((c.end || c.last) - c.start); $('cutSub').textContent = `${dmy(c.start)} ${hm(c.start)}–${hm(c.end || c.last)}`; }
+  else { $('cut').textContent = '–'; $('cutSub').textContent = t('noneRecorded'); } }
+// the rate at the current load: the service's time already scales the measured drop to it (the chart's forecast)
 const perH = leftH ? now.soc / leftH : measured;
-// the levels the service applies now: the configured ones, raised for a high measured drain
-const EFF = D.effectiveThresholds ?? D.thresholds;
-$('reach').innerHTML = now.mains ? `<div class="rowbar" style="grid-template-columns:1fr"><span class="n ok" style="text-align:left">${t('charging')}</span></div>` : [EFF.emergencyAt, EFF.stopAt, EFF.hibernateAt].map((p) => { const txt = now.mains || !perH ? '–' : now.soc <= p ? t('passed') : t('aboutAt', { at: hm(NOW + (now.soc - p) / perH * 3600000) });
-  return `<div class="rowbar" style="grid-template-columns:54px 1fr"><span class="${cls(p)}">${p}%</span><span class="n" style="text-align:left">${txt}</span></div>`; }).join('')
-  + (!now.mains && EFF.drainPerHour != null && EFF.warnAt > D.thresholds.warnAt ? `<div class="dim">${t('levelsRaised', { r: fmt(EFF.drainPerHour), w: fmt(EFF.warnAt) })}</div>` : '');
-const omKey = 'om_' + (D.modeCode || '');
-$('volt').innerHTML = now.volt == null ? `<span class="na">${t('noData')}</span>` : `${fmt(now.volt, 1)}<small>${t('uV')}</small>`; $('voltSub').textContent = [now.hz == null ? '' : `${fmt(now.hz, 2)} ${t('uHz')}`, has(omKey) ? t(omKey) : D.mode].filter(Boolean).join(' · ');
+$('volt').innerHTML = now.volt == null ? `<span class="na">${t('noData')}</span>` : `${Math.round(now.volt)}<small>${t('uV')}</small>`;
+$('voltSub').textContent = now.hz == null ? '' : `${Math.round(now.hz)} ${t('uHz')}`;
 const day0 = new Date(NOW); day0.setHours(0, 0, 0, 0);
 const today = rows.filter((r) => r.t >= day0.getTime()), tc = cutsOf(today);
 const offMs = tc.reduce((s, c) => s + ((c.end || (live && c.start === live.start ? NOW : c.last)) - c.start), 0);
-$('today').textContent = offMs ? dur(offMs) : `0 ${t('uMin')}`; $('todaySub').textContent = t('todayOnBattery', { n: tc.length });
-$('todaySub2').textContent = t('todayEnergy', { e: uWh(Math.round(wh(today))) });
+$('today').innerHTML = durV(offMs); $('todaySub').textContent = plural('cutsN', tc.length);
 
 // Chart
 const allRows = rows, GAP0 = GAP; // draw() shadows both with the averaged history over days
@@ -1387,8 +1353,6 @@ $('rows').innerHTML = rows.slice(-30).reverse().map((r) => `<tr><td>${dmy(r.t)} 
       + kpi(t('kDeepest'), deepest ? `${deepest.socTo}%` : '–', deepest ? `${deepest.socFrom}% → ${deepest.socTo}% · ${dmy(deepest.start)}` : '')
       + kpi(t('kAvgLoad'), tot ? `${Math.round(e / (tot / 3600000))}<small>${t('uW')}</small>` : '–', ''); } }
 // Service state: the manual mode, Max's battery hours at the current load, rejected readings and a silent station.
-const mx = $('maxChip'); mx.hidden = !(D.manual === 'max' && !now.mains && D.hoursLeft) || (D.notes ? D.notes.some((n) => n.code === 'max-held') : (D.note || '').includes('Max held back'));
-if (!mx.hidden) mx.lastChild.textContent = t('maxChip', { h: `${fmt(D.hoursLeft)} ${t('uH')}` });
 // a mode refusal shows under the mode buttons (paintMode), never repeated here
 const note = notesText(D.notes, D.note);
 const nc = $('noteChip'); nc.hidden = !note; nc.lastChild.textContent = note;
@@ -1704,24 +1668,9 @@ function paintMode(D) {
   // an After-eco failure beside a mode refusal: both are said, and the line reads as a failure
   const pick = planError && t(PLAN_KEY[planError.p] || 'afterEco');
   const planFail = !planError ? '' : planError.code === 'down' ? t('planDown', { p: pick, e: planError.e }) : t('planNotSaved', { p: pick });
-  const own = [mine, planFail].filter(Boolean).join(' · ');
+  const own = [mine, planFail].filter(Boolean).join(' ');
   const l = modeLine(D, modePress, own, planFail ? '' : modeErrorCode), el = $('modeLine');
-  // what is in force is state, not a control: the plan goes to a chip, the line stays for a press applying, held back or failed
   el.textContent = l.text; el.className = `hint ${l.kind}`.trim(); el.hidden = !l.kind;
-  const p = D.powerPlan || {}, plan = ACTIVE_PLAN_KEY[p.id] ? t(ACTIVE_PLAN_KEY[p.id]) : p.name, pc = $('planChip');
-  pc.className = 'chip' + (p.id === 'saver' ? ' acc' : '');
-  // a hold is information beside the plan; applying, held back or failed takes the chip's place
-  const shout = l.kind && l.kind !== 'info';
-  pc.lastChild.textContent = plan ? t('planChip', { p: plan }) : l.kind === 'info' ? modeLine({ ...D, modeHold: null }, null).text : l.text;
-  pc.hidden = Boolean(shout) || !(plan || D.powerMode === 'unreadable');
-}
-// The Windows power plan in force, as a chip (v2: the line under the buttons belongs to the modes view).
-function paintPlanChip(D) {
-  const p = D.powerPlan || {}, plan = ACTIVE_PLAN_KEY[p.id] ? t(ACTIVE_PLAN_KEY[p.id]) : p.name, pc = $('planChip');
-  setAttr(pc, 'class', 'chip' + (p.id === 'saver' ? ' acc' : ''));
-  const text = plan ? t('planChip', { p: plan }) : '';
-  if (pc.lastChild.textContent !== text) pc.lastChild.textContent = text;
-  if (pc.hidden !== !plan) pc.hidden = !plan;
 }
 var ecoTimer = null; // the eco countdown's one-second tick, stopped while the page is hidden
 var dtekDay = 'today'; // the DTEK tab picked: today or tomorrow
@@ -1754,6 +1703,7 @@ var mpGen = 0;          // counts writes: a read that saw it change was sent bef
 var mpEngine = '';      // '' not known yet, 'v2', or 'legacy' (GET /api/modes answered 409)
 var mpChase = 0;        // reads in a row that found a change still running
 var selError = '';      // the last select's failure, said under the header's buttons
+var selFailed = null;   // the choice that failed, offered again by the line's Retry
 var mpSeq = 0;          // ids pairing labels with their controls
 var mpTimer = null;     // the minute refresh while the panel is open
 const MP_PROPS = new Set(['className', 'textContent', 'value', 'checked', 'disabled', 'hidden', 'title', 'id', 'htmlFor', 'type', 'min', 'max', 'step', 'rows', 'maxLength', 'inputMode', 'onclick', 'onchange', 'oninput']);
@@ -1997,11 +1947,16 @@ function mpPaintTop() {
   msg.textContent = mpMsg ? mpMsg.text : ''; msg.className = `msg ${mpMsg ? mpMsg.kind : ''}`.trim(); msg.hidden = !mpMsg;
   paintModesV2();
 }
-// The header's power group under v2 reads the same view and presses through the same mpSelect as the panel: Auto and every
-// mode, the first few as buttons and the rest in a menu. Built again only when the list or the language changes; a repaint
-// touches only an attribute whose value changed, so a poll never flickers the group.
+// The header's power group under v2 reads the same view and presses through the same mpSelect as the panel. Auto and the
+// built-in modes always show as buttons (Auto, Eco, Normal, Max); custom ones join them up to five, past that they sit behind
+// More. When the buttons do not fit the header's width, the whole group becomes one pop-up menu: a label is never cut.
+// Built again only when the list or the language changes; a repaint touches only what changed, so a poll never flickers.
 const MODE_BUILT_IN = { normal: ['Normal', 'modeNormal'], eco: ['Eco', 'modeEco'], max: ['Max', 'modeMax'] };
-const MODE_SEG_MAX = 4;
+const MODE_ORDER = ['eco', 'normal', 'max'];
+const MODE_SEG_MAX = 5;
+// the pending bar shows after 300 ms and, once shown, stays at least 600 ms
+const PEND_SHOW = 300, PEND_KEEP = 600;
+let pendAt = 0, pendTimer = null, menuWired = false;
 function modeChoice(v, press) {
   const sel = ((v && v.settings) || {}).selection || {};
   const chosen = press || (sel.kind === 'manual' ? sel.manualModeId : 'auto');
@@ -2015,37 +1970,94 @@ function modeName(m) {
 function setAttr(el, k, v) {
   if (v === null) { if (el.getAttribute(k) !== null) el.removeAttribute(k); } else if (el.getAttribute(k) !== v) el.setAttribute(k, v);
 }
+// Auto first, then the built-in modes in their fixed order, then the user's modes as the service lists them.
+function modeItems() {
+  const all = mpModes(), rank = (m) => { const i = MODE_ORDER.indexOf(m.id); return i < 0 ? MODE_ORDER.length : i; };
+  return [{ id: 'auto', name: t('modeAuto'), fixed: true }].concat(all.map((m, i) => ({ m, i })).sort((a, b) => rank(a.m) - rank(b.m) || a.i - b.i)
+    .map(({ m }) => ({ id: m.id, name: modeName(m), fixed: !!MODE_BUILT_IN[m.id] })));
+}
+// The pop-up list of modes (the More button's or, when narrow, the whole group's): one radio item per mode.
+function openModeMenu(trigger, list, chosen) {
+  const menu = $('modeMenu');
+  menu.replaceChildren(...list.map((m) => { const b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'menuitemradio');
+    b.setAttribute('aria-checked', String(m.id === chosen)); b.textContent = m.name; b.onclick = () => { closeModeMenu(); mpSelect(m.id); }; return b; }));
+  if (!menuWired) {
+    menuWired = true;
+    menu.addEventListener('keydown', (e) => {
+      const items = [...menu.children], i = items.indexOf(document.activeElement);
+      if (e.key === 'Escape') { e.preventDefault(); closeModeMenu(true); }
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); }
+      else if (e.key === 'Tab') closeModeMenu();
+    });
+    document.addEventListener('click', (e) => { if (!e.target.closest('#modeMenu, #modePick, #modeMore')) closeModeMenu(); });
+  }
+  menu.hidden = false; trigger.setAttribute('aria-expanded', 'true'); menu.dataset.for = trigger.id;
+  const r = trigger.getBoundingClientRect(), box = menu.offsetParent ? menu.offsetParent.getBoundingClientRect() : { left: 0, top: 0 };
+  menu.style.left = `${r.left - box.left}px`; menu.style.top = `${r.bottom - box.top + 4}px`;
+  (menu.querySelector('[aria-checked=true]') || menu.firstChild).focus();
+}
+function closeModeMenu(back) {
+  const menu = $('modeMenu');
+  if (menu.hidden) return;
+  const trigger = $(menu.dataset.for || '');
+  menu.hidden = true;
+  if (trigger) { trigger.setAttribute('aria-expanded', 'false'); if (back) trigger.focus(); }
+}
 function paintModesV2() {
   const v = mpView, seg = $('modeSeg');
   if (!v || !seg) return;
   if (!$('planSeg').hidden) { $('planSeg').hidden = true; $('planLabel').hidden = true; }   // After eco belongs to the legacy engine
-  const items = [{ id: 'auto', name: t('modeAuto') }].concat(mpModes().map((m) => ({ id: m.id, name: modeName(m) })));
-  // a phone keeps three options as buttons: the group never wraps or squeezes, the rest go to the menu
-  const cap = typeof matchMedia === 'function' && matchMedia('(max-width: 600px)').matches ? 3 : MODE_SEG_MAX;
-  const shown = items.slice(0, cap), more = items.slice(cap), c = modeChoice(v, mpPress);
-  const key = `${cap}|${lang}|${items.map((m) => `${m.id}=${m.name}`).join('|')}`;
+  const items = modeItems(), c = modeChoice(v, mpPress);
+  const shown = items.length <= MODE_SEG_MAX ? items : items.filter((m) => m.fixed), more = items.filter((m) => !shown.includes(m));
+  const key = `${lang}|${items.map((m) => `${m.id}=${m.name}`).join('|')}`;
   if (seg.dataset.key !== key) {
     seg.dataset.key = key;
-    const kids = shown.map((m) => { const b = document.createElement('button'); b.dataset.m = m.id; b.textContent = m.name; b.title = m.name; b.onclick = () => mpSelect(m.id); return b; });
+    const kids = shown.map((m) => { const b = document.createElement('button'); b.type = 'button'; b.dataset.m = m.id; b.textContent = m.name;
+      if (m.id === 'auto') b.title = t('modeAutoTip');
+      b.onclick = () => mpSelect(m.id); return b; });
     if (more.length) {
-      const s = document.createElement('select');
-      s.id = 'modeMore'; s.setAttribute('aria-label', t('modeMore'));
-      [{ id: '', name: t('modeMore') }].concat(more).forEach((m) => { const o = document.createElement('option'); o.value = m.id; o.textContent = m.name; s.append(o); });
-      s.onchange = () => { if (s.value) mpSelect(s.value); };
+      const s = document.createElement('button');
+      s.type = 'button'; s.id = 'modeMore'; s.setAttribute('aria-haspopup', 'menu'); s.setAttribute('aria-expanded', 'false'); s.textContent = t('modeMore');
+      s.onclick = () => ($('modeMenu').hidden ? openModeMenu(s, more, modeChoice(mpView, mpPress).chosen) : closeModeMenu(true));
       kids.push(s);
     }
     seg.replaceChildren(...kids);
+    seg.dataset.fit = '';
   }
-  [...seg.children].filter((b) => b.tagName === 'BUTTON').forEach((b) => {
+  // narrow: the buttons' own width (measured once per list and language) against the room the header gives the group
+  const pick = $('modePick'), box = seg.parentNode;
+  if (!seg.dataset.fit && !seg.hidden && seg.scrollWidth > 0) seg.dataset.fit = String(seg.scrollWidth);
+  const narrow = !!box && box.clientWidth > 0 && Number(seg.dataset.fit) > box.clientWidth;
+  if (seg.hidden !== narrow) seg.hidden = narrow;
+  if (pick.hidden !== !narrow) pick.hidden = !narrow;
+  const chosenName = (items.find((m) => m.id === c.chosen) || { name: c.chosen }).name, pickText = pick.children && pick.children[0];
+  if (pickText && pickText.textContent !== chosenName) pickText.textContent = chosenName;
+  pick.onclick = () => ($('modeMenu').hidden ? openModeMenu(pick, items, modeChoice(mpView, mpPress).chosen) : closeModeMenu(true));
+  // the choice moves at once; the bar shows after 300 ms and, once seen, stays 600 ms so it never blinks
+  const now = Date.now();
+  if (c.applying && !pendAt) pendAt = now;
+  let shownPend = c.applying;
+  if (!c.applying && pendAt) {
+    const left = now - pendAt > PEND_SHOW ? pendAt + PEND_SHOW + PEND_KEEP - now : 0;
+    if (left > 0) { shownPend = seg.querySelector('[data-pending]') ? seg.querySelector('[data-pending]').dataset.m : null; clearTimeout(pendTimer); pendTimer = setTimeout(paintModesV2, left); }
+    else pendAt = 0;
+  }
+  [...seg.children].filter((b) => b.dataset.m).forEach((b) => {
     setAttr(b, 'aria-pressed', String(b.dataset.m === c.chosen));
-    setAttr(b, 'data-pending', b.dataset.m === c.applying ? '' : null);
+    setAttr(b, 'data-pending', b.dataset.m === shownPend ? '' : null);
   });
-  const s = [...seg.children].find((b) => b.tagName === 'SELECT');
-  if (s) { const v2 = more.some((m) => m.id === c.chosen) ? c.chosen : ''; if (s.value !== v2) s.value = v2; setAttr(s, 'aria-pressed', String(v2 !== '')); }
+  const mb = [...seg.children].find((b) => b.id === 'modeMore');
+  if (mb) { setAttr(mb, 'aria-pressed', String(more.some((m) => m.id === c.chosen))); setAttr(mb, 'data-pending', more.some((m) => m.id === shownPend) ? '' : null); }
+  setAttr(pick, 'data-pending', shownPend ? '' : null);
   const name = (id) => (items.find((m) => m.id === id) || { name: id }).name, line = $('modeLine');
   const l = selError ? ['bad', selError] : c.applying ? ['pend', t('modeApplying', { m: name(c.applying) })]
     : c.chosen === 'auto' && c.autoTo ? ['', t('modeAutoIs', { m: name(c.autoTo) })] : ['', ''];
-  if (line.textContent !== l[1]) line.textContent = l[1];
+  if (line.dataset.text !== l[1]) {
+    line.dataset.text = l[1];
+    line.textContent = l[1];
+    // a refused switch says why and offers the same choice again
+    if (selError && selFailed) { const r = document.createElement('button'); r.type = 'button'; r.className = 'txt'; r.textContent = t('modeRetry'); r.onclick = () => mpSelect(selFailed); line.append(r); }
+  }
   setAttr(line, 'class', `hint ${l[0]}`.trim());
   if (line.hidden) line.hidden = false;   // the line keeps its height: the header does not jump when it fills
 }
@@ -2199,6 +2211,7 @@ async function mpSelect(choice) {
   mpPress = null;
   mpMsg = r.ok ? null : { kind: 'bad', text: t('modesNotSaved', { e: r.text }) };
   selError = r.ok ? '' : mpMsg.text;   // the header says it under its buttons too
+  selFailed = r.ok ? null : choice;
   mpPaintTop(); mpPaintList();
   if (r.ok) await load(true);   // the plan chip follows at once
 }
@@ -2318,7 +2331,7 @@ async function mpRefresh(own) {
     if (mpView) { mpMsg = { kind: 'bad', text: t('serviceDown', { e: e.message }), down: true }; mpPaintTop(); }
     return;
   }
-  if (r.status === 409) { mpEngine = 'legacy'; mpView = null; $('modesCard').hidden = true; return; }
+  if (r.status === 409) { mpEngine = 'legacy'; mpView = null; $('modesCard').hidden = true; $('planSeg').hidden = false; $('planLabel').hidden = false; return; }
   if (!r.ok) return;
   const view = await r.json();
   if (!own && (gen !== mpGen || mpBusy)) return;

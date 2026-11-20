@@ -51,7 +51,7 @@ public sealed partial class PageI18nTests
             .Concat(ChosenKey().Matches(page).SelectMany(m => new[] { m.Groups[1].Value, m.Groups[2].Value }))
             .Concat(MarkupKey().Matches(page).Select(m => m.Groups[1].Value))
             .ToHashSet(StringComparer.Ordinal);
-        Assert.Contains("fromMeasured", used);   // the reader sees the script's calls
+        Assert.Contains("leftFor", used);   // the reader sees the script's calls
         Assert.Contains("modeAutoTip", used);    // and the markup's attributes
         Assert.Empty(used.Where(k => !en.Contains(k)).Order());
         Assert.Empty(used.Where(k => !uk.Contains(k)).Order());

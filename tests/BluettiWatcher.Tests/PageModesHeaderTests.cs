@@ -42,51 +42,73 @@ public sealed partial class PageI18nTests
         El.prototype.append = function (...c) { this.children.push(...c); };
         El.prototype.querySelectorAll = function (s) { return this.children.filter((c) => c.tagName === s.toUpperCase()); };
         const document = { createElement: (t) => new El(t) };
-        const box = new El('div'), els = { modeSeg: new El('div'), modeLine: new El('div'), planLabel: new El('span'), planSeg: new El('div') };
-        els.modeSeg.parentNode = box;
+        const box = new El('div'), els = { modeSeg: new El('div'), modeLine: new El('div'), planLabel: new El('span'), planSeg: new El('div'), modePick: new El('button'), modeMenu: new El('div') };
+        els.modeSeg.parentNode = box; els.modePick.firstChild = new El('span'); els.modeMenu.hidden = true;
+        El.prototype.querySelector = function () { return null; };
         function $(id) { return els[id] || null; }
         function t(k, p) { return p ? k + JSON.stringify(p) : k; }
         """;
 
+    private static string HeaderScript(string page, string modes, string body) => $$"""
+        {{HeaderDom}}
+        var lang = 'en', mpPress = null, selError = '', selFailed = null, pendAt = 0, pendTimer = null, menuWired = false;
+        var mpView = { activeModeId: 'eco', switching: '', pending: false, settings: { selection: { kind: 'auto', autoModeId: 'eco' }, modes: {{modes}} } };
+        function mpModes() { return mpView.settings.modes; }
+        const picked = []; function mpSelect(id) { picked.push(id); }
+        {{Const(page, "MODE_BUILT_IN")}}
+        {{Const(page, "MODE_ORDER")}}
+        {{Const(page, "MODE_SEG_MAX")}}
+        {{Const(page, "PEND_SHOW")}}
+        eval({{Js(FunctionText(page, "modeChoice"))}});
+        eval({{Js(FunctionText(page, "modeName"))}});
+        eval({{Js(FunctionText(page, "setAttr"))}});
+        eval({{Js(FunctionText(page, "modeItems"))}});
+        eval({{Js(FunctionText(page, "paintModesV2"))}});
+        const seg = els.modeSeg, btn = () => seg.children.filter((c) => c.tagName === 'BUTTON' && c.dataset.m);
+        {{body}}
+        """;
+
+    private const string FourModes = """[{ id: 'normal', name: 'Normal', builtIn: true }, { id: 'eco', name: 'Eco', builtIn: true }, { id: 'max', name: 'Max', builtIn: true }, { id: 'night', name: 'Night', builtIn: false }]""";
+
     [Fact]
     public void PaintModesV2_shows_every_mode_and_a_repaint_with_nothing_changed_writes_nothing()
     {
-        string page = Page();
-        string script = $$"""
-            {{HeaderDom}}
-            var lang = 'en', mpPress = null, selError = '';
-            var mpView = { activeModeId: 'eco', switching: '', pending: false, settings: { selection: { kind: 'auto', autoModeId: 'eco' },
-              modes: [{ id: 'normal', name: 'Normal', builtIn: true }, { id: 'eco', name: 'Eco', builtIn: true }, { id: 'max', name: 'Max', builtIn: true }, { id: 'night', name: 'Night', builtIn: false }] } };
-            function mpModes() { return mpView.settings.modes; }
-            const picked = []; function mpSelect(id) { picked.push(id); }
-            {{Const(page, "MODE_BUILT_IN")}}
-            {{Const(page, "MODE_SEG_MAX")}}
-            eval({{Js(FunctionText(page, "modeChoice"))}});
-            eval({{Js(FunctionText(page, "modeName"))}});
-            eval({{Js(FunctionText(page, "setAttr"))}});
-            eval({{Js(FunctionText(page, "paintModesV2"))}});
+        string script = HeaderScript(Page(), FourModes, """
             paintModesV2();
-            const seg = els.modeSeg, btn = () => seg.children.filter((c) => c.tagName === 'BUTTON');
-            const menu = seg.children.find((c) => c.tagName === 'SELECT');
-            const first = { ids: btn().map((b) => b.dataset.m), menu: menu ? menu.children.map((o) => o.value) : null, pressed: btn().filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset.m),
-              line: els.modeLine.textContent, planHidden: els.planSeg.hidden && els.planLabel.hidden };
+            const first = { ids: btn().map((b) => b.dataset.m), more: !!seg.children.find((c) => c.id === 'modeMore'), pressed: btn().filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset.m),
+              line: els.modeLine.dataset.text, planHidden: els.planSeg.hidden && els.planLabel.hidden };
             writes = 0; paintModesV2(); const again = writes;
-            btn()[2].onclick();
+            btn()[1].onclick();
             mpView.settings.selection = { kind: 'manual', manualModeId: 'eco', autoModeId: 'eco' };
             writes = 0; paintModesV2();
             console.log(JSON.stringify({ first, again, picked, changed: writes, pressed: btn().filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset.m) }));
-            """;
+            """);
         using var doc = JsonDocument.Parse(RunScript(script));
         var r = doc.RootElement;
-        Assert.Equal("""["auto","normal","eco","max"]""", r.GetProperty("first").GetProperty("ids").GetRawText());
-        Assert.Equal("""["","night"]""", r.GetProperty("first").GetProperty("menu").GetRawText());   // the rest go to the menu, never a second row
+        Assert.Equal("""["auto","eco","normal","max","night"]""", r.GetProperty("first").GetProperty("ids").GetRawText());   // the fixed order, then the user's
+        Assert.False(r.GetProperty("first").GetProperty("more").GetBoolean());   // five fit as buttons: no More
         Assert.Equal("""["auto"]""", r.GetProperty("first").GetProperty("pressed").GetRawText());
-        Assert.Equal("""modeAutoIs{"m":"modeEco"}""", r.GetProperty("first").GetProperty("line").GetString());   // "Auto · Eco"
+        Assert.Equal("""modeAutoIs{"m":"modeEco"}""", r.GetProperty("first").GetProperty("line").GetString());
         Assert.True(r.GetProperty("first").GetProperty("planHidden").GetBoolean());   // After eco is the legacy engine's
         Assert.Equal(0, r.GetProperty("again").GetInt32());   // a poll with the same view repaints nothing
         Assert.Equal("""["eco"]""", r.GetProperty("picked").GetRawText());   // the header goes through the panel's select
         Assert.Equal(2, r.GetProperty("changed").GetInt32());   // only the two buttons whose state changed
         Assert.Equal("""["eco"]""", r.GetProperty("pressed").GetRawText());
+    }
+
+    [Fact]
+    public void PaintModesV2_past_five_keeps_every_built_in_as_a_button_and_the_rest_behind_More()
+    {
+        string modes = FourModes.Replace("}]", "}, { id: 'cool', name: 'Cool', builtIn: false }]", StringComparison.Ordinal);
+        string script = HeaderScript(Page(), modes, """
+            mpView.settings.selection = { kind: 'manual', manualModeId: 'cool', autoModeId: 'eco' };
+            paintModesV2();
+            const more = seg.children.find((c) => c.id === 'modeMore');
+            console.log(JSON.stringify({ ids: btn().map((b) => b.dataset.m), more: more ? more.getAttribute('aria-pressed') : null }));
+            """);
+        using var doc = JsonDocument.Parse(RunScript(script));
+        Assert.Equal("""["auto","eco","normal","max"]""", doc.RootElement.GetProperty("ids").GetRawText());
+        Assert.Equal("true", doc.RootElement.GetProperty("more").GetString());   // the chosen custom mode marks More as chosen
     }
 
     [Fact]

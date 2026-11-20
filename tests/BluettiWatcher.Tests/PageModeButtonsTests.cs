@@ -262,10 +262,10 @@ public sealed partial class PageI18nTests
         var r = doc.RootElement;
         Assert.Equal("en:n_max-held", r[0][0].GetString());
         Assert.Equal("hint warn", r[0][1].GetString());
-        Assert.Equal("en:n_max-held · en:planNotSaved{\"p\":\"en:planHigh\"}", r[1][0].GetString());   // one phrase, no server text
+        Assert.Equal("en:n_max-held en:planNotSaved{\"p\":\"en:planHigh\"}", r[1][0].GetString());   // one phrase each, no server text, no separator
         Assert.Equal("hint bad", r[1][1].GetString());
-        Assert.Equal("uk:n_max-held · uk:planNotSaved{\"p\":\"uk:planHigh\"}", r[2].GetString());   // a language switch rewords both
-        Assert.Equal("uk:n_max-held · uk:planDown{\"p\":\"uk:planPrevious\",\"e\":\"Failed to fetch\"}", r[3].GetString());
+        Assert.Equal("uk:n_max-held uk:planNotSaved{\"p\":\"uk:planHigh\"}", r[2].GetString());   // a language switch rewords both
+        Assert.Equal("uk:n_max-held uk:planDown{\"p\":\"uk:planPrevious\",\"e\":\"Failed to fetch\"}", r[3].GetString());
     }
 
     [Fact]
