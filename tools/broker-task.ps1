@@ -12,7 +12,7 @@ that one). Both roots: owned by Administrators, inheritance cut, Administrators 
 requests\ the user may also add files (never folders); every child reset to inherit only that. Before anything changes,
 no existing ancestor of either root may let the user rename, re-own, re-permission or add into it (else refused); after,
 the ACLs are read back. An ACL that cannot be read refuses. The policy's user is the service task's principal, never the
-elevated caller. A 1.8.0 pre-release broker inside the flag folder is carried out (its policy and profiles only when
+elevated caller. A pre-release broker inside the flag folder is carried out (its policy and profiles only when
 Administrators own them) and removed. The task's own security: Administrators and SYSTEM full control, the user read and
 run (the same SDDL the GPU cap tasks use).
 #>
@@ -21,7 +21,7 @@ $script:WatcherBrokerTask = 'BluettiWatcherBroker'
 
 function Get-WatcherBrokerRoot { Join-Path $env:ProgramFiles 'BluettiWatcher\broker' }
 function Get-WatcherBrokerExchange { Join-Path $env:ProgramData 'BluettiWatcherBroker' }
-# Where a 1.8.0 pre-release put the broker: inside the flag folder.
+# Where a pre-release put the broker: inside the flag folder.
 function Get-WatcherOldBrokerRoot { Join-Path $env:ProgramData 'BluettiWatcher\broker' }
 
 # The SID of the user the service task runs as (its principal), $null when the task is missing or runs as no user: the
@@ -235,7 +235,7 @@ function Test-WatcherBrokerReadBack([string] $Root, [string] $Exchange, [string]
     ''
 }
 
-# The broker of a 1.8.0 pre-release lived inside the flag folder, which the user may change: its policy and profiles come
+# The pre-release broker lived inside the flag folder, which the user may change: its policy and profiles come
 # along only when Administrators or SYSTEM own them (never a file the user could have written), then the old folder goes
 # (a junction inside it is unlinked, never followed). Lines of what was done.
 function Move-WatcherOldBroker([string] $OldRoot, [string] $Root, [hashtable] $Ops) {

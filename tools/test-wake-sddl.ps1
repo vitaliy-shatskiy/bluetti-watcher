@@ -1,6 +1,7 @@
 <#
 test-wake-sddl.ps1 - the access-list read-back of the wake task (Test-WatcherWakeTaskSddl, tools/wake-task.ps1)
-against fixed SDDL strings, the wake task's name rules, and its register / remove against a fake Task Scheduler (a task that\nis not ours is never deleted). Registers nothing, touches nothing.
+against fixed SDDL strings, the wake task's name rules, and its register / remove against a fake Task Scheduler (a task that
+is not ours is never deleted). Registers nothing, touches nothing.
 
   pwsh -NoProfile -File tools/test-wake-sddl.ps1
 
