@@ -5,29 +5,67 @@ using Windows.Devices.Bluetooth.GenericAttributeProfile;
 namespace BluettiWatcher.Io.Ble;
 
 /// <summary>
-/// The GATT lookup of one open, apart from WinRT so its order is tested. Windows' cache first: a normal poll then makes no
-/// over-the-air service discovery, the step stalled opens hung in. Over the air (with its tries) only when the cache
-/// fails or holds no ff01/ff02, within the same open and its cap. Every stage names the cache mode it uses.
+/// The GATT lookup and notification subscription of one open, apart from WinRT so its order is tested. Windows' cache
+/// first: a normal poll then makes no over-the-air service discovery, the step stalled opens hung in. Over the air (with
+/// its tries) only when the cached pass fails, within the same open and its cap. Every stage names its cache mode.
 /// </summary>
 internal static class GattDiscovery
 {
     internal static async Task<GattFound<TChar>> RunAsync<TService, TChar>(
         Func<BluetoothCacheMode, CancellationToken, Task<(GattCommunicationStatus Status, byte? ProtocolError, IReadOnlyList<TService> Services)>> services,
         Func<TService, Guid, BluetoothCacheMode, CancellationToken, Task<TChar?>> characteristic,
+        Func<TChar, CancellationToken, Task<string?>> subscribe,
         int attempts, TimeSpan pause, Action<string> stage, CancellationToken ct) where TChar : class
     {
-        var cached = await PassAsync(BluetoothCacheMode.Cached, 1, services, characteristic, pause, stage, ct);
+        var cached = await CachedAsync(services, characteristic, subscribe, pause, stage, ct);
         if (cached.Failure is null) return cached;
         var uncached = await PassAsync(BluetoothCacheMode.Uncached, attempts, services, characteristic, pause, stage, ct);
+        if (uncached.Failure is null) uncached = await SubscribeAsync(uncached, subscribe, stage, ct);
         return uncached.Failure is null ? uncached : uncached with { Failure = $"{uncached.Failure}; from the cache: {cached.Failure}" };
     }
+
+    /// <summary>
+    /// A stale Windows GATT cache can hand back handles the station no longer serves: any failure of the cached pass,
+    /// subscription included and a WinRT exception too, falls through to the over-the-air pass.
+    /// </summary>
+    private static async Task<GattFound<TChar>> CachedAsync<TService, TChar>(
+        Func<BluetoothCacheMode, CancellationToken, Task<(GattCommunicationStatus Status, byte? ProtocolError, IReadOnlyList<TService> Services)>> services,
+        Func<TService, Guid, BluetoothCacheMode, CancellationToken, Task<TChar?>> characteristic,
+        Func<TChar, CancellationToken, Task<string?>> subscribe,
+        TimeSpan pause, Action<string> stage, CancellationToken ct) where TChar : class
+    {
+        string step = "GATT services (cached)";
+        void Track(string s) { step = s; stage(s); }
+        try
+        {
+            var found = await PassAsync(BluetoothCacheMode.Cached, 1, services, characteristic, pause, Track, ct);
+            return found.Failure is null ? await SubscribeAsync(found, subscribe, Track, ct) : found;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return new GattFound<TChar>(null, null, BluetoothCacheMode.Cached, $"{step}: {e.GetType().Name}: {e.Message}");
+        }
+    }
+
+    private static async Task<GattFound<TChar>> SubscribeAsync<TChar>(GattFound<TChar> found,
+        Func<TChar, CancellationToken, Task<string?>> subscribe, Action<string> stage, CancellationToken ct) where TChar : class
+    {
+        string name = Name(found.Mode);
+        stage($"the notification subscription ({name})");
+        // A pass without a failure always carries both characteristics.
+        return await subscribe(found.Notify!, ct) is { } failed
+            ? new GattFound<TChar>(null, null, found.Mode, $"the notification subscription ({name}): {failed}")
+            : found;
+    }
+
+    private static string Name(BluetoothCacheMode mode) => mode == BluetoothCacheMode.Cached ? "cached" : "uncached";
 
     private static async Task<GattFound<TChar>> PassAsync<TService, TChar>(BluetoothCacheMode mode, int attempts,
         Func<BluetoothCacheMode, CancellationToken, Task<(GattCommunicationStatus Status, byte? ProtocolError, IReadOnlyList<TService> Services)>> services,
         Func<TService, Guid, BluetoothCacheMode, CancellationToken, Task<TChar?>> characteristic,
         TimeSpan pause, Action<string> stage, CancellationToken ct) where TChar : class
     {
-        string name = mode == BluetoothCacheMode.Cached ? "cached" : "uncached";
+        string name = Name(mode);
         (GattCommunicationStatus Status, byte? ProtocolError, IReadOnlyList<TService> Services)? answer = null;
         for (int i = 1; i <= attempts; i++)
         {
