@@ -60,14 +60,44 @@ public class NativeBleRetryTests
         Assert.Contains("connection opened at the second try (first: the connection did not open within 0.4 s)", Assert.Single(log), StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Both opens hang: each is cut at its cap. The clock fires the caps at once and never the poll's budget, so the outcome
+    /// does not depend on how late a loaded machine runs a timer (two caps of 0.4 s left only 0.2 s to the 1 s budget).
+    /// </summary>
     [Fact]
     public async Task ReadAsync_EveryOpenHangs_IsNoReadingNamingTheOpenCap()
     {
         var conn = new SequenceConnector(_ => new TaskCompletionSource<BleOpen>().Task);
         var log = new List<string>();
-        Assert.Null(await Reader(conn, log, timeoutSec: 1).ReadAsync(CancellationToken.None));
+        var clock = new CapsOnlyClock(TimeSpan.FromSeconds(1));
+        var reader = new NativeBleReader(new StationConfig { Mac = "AA:BB:CC:DD:EE:FF", Type = "AC200PL", ReaderTimeoutSec = 1 }, conn, log.Add,
+            TimeSpan.FromSeconds(0.3), time: clock);
+        Assert.Null(await reader.ReadAsync(CancellationToken.None));
         Assert.Equal(2, conn.Opens);
         Assert.Contains("no reading: the connection did not open within 0.4 s", Assert.Single(log), StringComparison.Ordinal);
+        Assert.Contains(TimeSpan.FromSeconds(1), clock.Held);   // the poll's budget runs on the reader's clock
+    }
+
+    /// <summary>A clock whose timers shorter than <c>hold</c> fire at once and whose longer ones never fire.</summary>
+    private sealed class CapsOnlyClock(TimeSpan hold) : TimeProvider
+    {
+        private readonly System.Collections.Concurrent.ConcurrentBag<TimeSpan> _held = [];
+
+        public IReadOnlyCollection<TimeSpan> Held => _held;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            if (dueTime >= hold) _held.Add(dueTime);
+            else if (dueTime != Timeout.InfiniteTimeSpan) ThreadPool.QueueUserWorkItem(_ => callback(state));
+            return new NoTimer();
+        }
+
+        private sealed class NoTimer : ITimer
+        {
+            public bool Change(TimeSpan dueTime, TimeSpan period) => true;
+            public void Dispose() { }
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
     }
 
     /// <summary>An open whose cap ends while it is still going: a link it hands over late is released, never left open.</summary>

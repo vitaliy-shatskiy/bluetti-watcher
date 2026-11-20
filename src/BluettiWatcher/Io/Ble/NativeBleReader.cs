@@ -142,7 +142,7 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         var read = SingleFlightAsync(generation, ct);
         try
         {
-            return await read.WaitAsync(limit, ct);
+            return await read.WaitAsync(limit, _time, ct);
         }
         catch (TimeoutException)
         {
@@ -178,8 +178,8 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         if (!BleAddress.TryParse(config.Mac, out ulong address)) return Miss($"mac \"{config.Mac}\" is not a Bluetooth address");
         if (!model.HasAcInput) return Miss($"this model ({model.Type}) reports battery % only over Bluetooth; mains detection needs the cloud fallback");
         if (_encrypted) return Miss(EncryptedMiss);
-        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        budget.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, config.ReaderTimeoutSec)));
+        using var budgetTimer = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Max(1, config.ReaderTimeoutSec)), _time);
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct, budgetTimer.Token);
         KeyExchangeGuardLink? link = null;
         int opens = 0;
         bool stopped = false;
@@ -342,7 +342,7 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         var open = OpenWithinAsync(connector, address, cap, budget);
         try
         {
-            return await open.WaitAsync(cap, budget);
+            return await open.WaitAsync(cap, _time, budget);
         }
         catch (Exception e) when (e is TimeoutException || (e is OperationCanceledException && !budget.IsCancellationRequested))
         {
@@ -357,10 +357,10 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
     }
 
     /// <summary>The open itself, asked to stop at <paramref name="cap"/>; its token source lives until the open ends, as a hung open still holds the token.</summary>
-    private static async Task<BleOpen> OpenWithinAsync(IBleConnector connector, ulong address, TimeSpan cap, CancellationToken budget)
+    private async Task<BleOpen> OpenWithinAsync(IBleConnector connector, ulong address, TimeSpan cap, CancellationToken budget)
     {
-        using var capped = CancellationTokenSource.CreateLinkedTokenSource(budget);
-        capped.CancelAfter(cap);
+        using var capTimer = new CancellationTokenSource(cap, _time);
+        using var capped = CancellationTokenSource.CreateLinkedTokenSource(budget, capTimer.Token);
         return await connector.OpenAsync(address, capped.Token);
     }
 
