@@ -21,7 +21,7 @@
 </div>
 
 ```powershell
-pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048 -Apply   # у розпакованій теці релізу
+pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048 -Apply
 ```
 
 <p align="center">
@@ -42,7 +42,7 @@ flowchart LR
   S["Станція BLUETTI"] -- "Bluetooth LE, лише читання" --> W["Bluetti Watcher"]
   C["Хмара BLUETTI (необов'язково)"] -.-> W
   K["Графік ДТЕК (необов'язково)"] -.-> W
-  W --> P["Режими живлення: схема, процесор, відеокарта, екран, служби, програми, RGB"]
+  W --> P["Режими живлення"]
   W --> H["Глибокий сон до розряду"]
   W --> F["Файл-прапорець для інших програм"]
   W --> D["Панель, трей, сповіщення"]

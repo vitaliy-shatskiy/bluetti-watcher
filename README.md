@@ -21,7 +21,7 @@
 </div>
 
 ```powershell
-pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048 -Apply   # in the extracted release folder
+pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048 -Apply
 ```
 
 <p align="center">
@@ -42,7 +42,7 @@ flowchart LR
   S["BLUETTI station"] -- "Bluetooth LE, read only" --> W["Bluetti Watcher"]
   C["BLUETTI cloud (optional)"] -.-> W
   K["DTEK schedule (optional)"] -.-> W
-  W --> P["Power modes: plan, CPU, GPU, display, services, apps, RGB"]
+  W --> P["Power modes"]
   W --> H["Hibernate before empty"]
   W --> F["Flag file for other programs"]
   W --> D["Dashboard, tray, notifications"]
