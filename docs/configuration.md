@@ -177,6 +177,7 @@ config.json still loads, and `service.log` names them once at start.
 | `dryRun` | bool | false | Log every power-mode command, action and hibernation instead of running it (also `--dry-run`). |
 | `modes.engine` | string | `v2` | `v2`: user-defined power modes with Auto rules, set on the page or through the API ([design.md](design.md) §12, [api.md](api.md) Power modes); their settings live in `modes.json` in the data directory, not here. `legacy`: the fixed eco above and the page's Auto / Eco / Max. Any other value = `legacy`, named in the log. |
 | `modes.commands` | object | `{}` | Named commands a mode's "Run a command on enter and on leave" action (`command.pair`) may run: `{ "<name>": { "exe": "<path>", "args": ["..."], "timeoutSec": 30 } }`. Only this file defines them; a mode, the page and the API pick a name, never an executable or an argument. Each run is windowless, with no shell, killed at `timeoutSec` (1-600); a non-zero exit is a failed action. See below. |
+| `modes.openRgbPath` | string | `""` | OpenRGB.exe for the "RGB lighting off (OpenRGB)" action (`rgb.lighting`); empty = `Program Files\OpenRGB` or `%LOCALAPPDATA%\Programs\OpenRGB`. Only this file names it, never a mode or the API. The action starts it as a headless SDK server (`--server --noautoconnect`, no window, no tray icon) when none runs and leaves it running. |
 
 An action is an executable followed by its arguments, started directly with no shell: a pipe, a redirect or a shell
 built-in needs `cmd /c ...`. It runs windowless, with the environment values `POWER_MODE_FILE`, `POWER_MODE_MUTEX`,
@@ -206,7 +207,8 @@ when the mode is left: the modes journal, not the process's memory, says it was 
 
 The built-in Eco lists its optional actions off and empty: a command pair (a backup pause), services to stop (Windows
 Search, Xbox gaming services, Windows Health, ... - the admin broker runs the stop and the start), Phone Link closed,
-and the GPU idle watcher, which logs what holds the GPU at full clock. Turn them on and fill them in on the page.
+the GPU idle watcher, which logs what holds the GPU at full clock, and the RGB lighting off through OpenRGB (leaving
+Eco loads the OpenRGB profile you pick; none picked = the lighting stays off). Turn them on and fill them in on the page.
 
 Hibernation off: create an empty file `no-hibernate` in the data directory. It is read on every poll. With
 `modes.engine` = `v2`, `PUT /api/settings/hibernate` turns it off too; the file is still honoured.

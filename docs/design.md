@@ -747,6 +747,18 @@ in [api.md](api.md), Power modes.
      cannot read what its commands changed, so its read is its memory of what it ran; after a restart the reconciler
      hands it the journaled target of every pair it still owns (`IRecallsWrites`), so leaving still runs the leave
      command.
+   - `rgb.lighting` (compensatable): the RGB lighting off through OpenRGB's SDK server (127.0.0.1:6742). Entering turns
+     the listed devices (none = all) off and reads their colours back; leaving loads the OpenRGB profile the settings
+     name, or leaves the lighting off when they name none. Not a snapshot restore: OpenRGB cannot read what some
+     controllers show, and its own device detection resets some (a Gigabyte RGB Fusion 2 board), so the "on" state is
+     the profile the person saved. When no server answers, a write starts one headless, windowless instance
+     (`OpenRGB.exe --server --noautoconnect`, no tray icon) under the watcher's user and leaves it running, so the
+     detection runs once; the catalogue, the page and a disabled action never start it (the device list is shown only
+     while a server runs; the profile list is read from OpenRGB's profiles folder). The command line is not used: it
+     prints only to an inherited console, so its writes cannot be read back. OpenRGB.exe comes from config.json
+     (`modes.openRgbPath`) or the install folders, never from a mode; missing = unavailable. Its read is its memory of
+     what it did, recalled from the journal after a restart (`IRecallsWrites`), as `command.pair`. No admin rights: the
+     USB and GPU controllers answer to the user; RAM lighting (SMBus) would need OpenRGB elevated and is not covered.
 3. **Selection.** A manual pick holds until Auto. Auto takes the first rule (in order) whose condition holds:
    `mainsOffFor` / `mainsOnFor` N s (mains as the decision confirmed it), `socBelow` X %, `cutWithin` N min (the DTEK
    module's next planned outage, §11; 0 while a cut is on; with the module off or failing it never matches), `timeWindow` from-to local time (may wrap midnight). A rule in force keeps matching within its

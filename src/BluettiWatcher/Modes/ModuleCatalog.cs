@@ -32,6 +32,7 @@ internal static class ModuleCatalog
             .. PowerModules.All(new PowerSchemes(), new NvidiaSmi(runner), broker),
             .. ServicesAppsModules.All(broker, runner, Commands(config), time, log),
             .. DisplayGpuModules.All(broker, runner, InspectorPath(paths), paths.Profiles, time, addEvent, log),
+            new RgbLightingModule(new OpenRgbSdk(config.Modes.OpenRgbPath, time), log),
         ];
     }
 

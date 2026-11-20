@@ -12,7 +12,7 @@ public sealed class ModuleCatalogTests
         Assert.Equal(
         [
             "command.pair", "display.brightness", "display.offTimeout", "display.refreshRate", "gpu.idleWatcher", "gpu.powerLimit",
-            "nvidia.profile", "process.close", "scheduledTask.state", "service.state", "windows.cpuPolicy", "windows.phoneLink", "windows.powerPlan",
+            "nvidia.profile", "process.close", "rgb.lighting", "scheduledTask.state", "service.state", "windows.cpuPolicy", "windows.phoneLink", "windows.powerPlan",
         ], ids);
     }
 

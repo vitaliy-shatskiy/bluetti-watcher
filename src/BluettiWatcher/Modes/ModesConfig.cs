@@ -15,5 +15,11 @@ internal sealed class ModesConfig
     /// <summary>The named commands a mode's <c>command.pair</c> action may run; only this file defines them.</summary>
     public Dictionary<string, ModeCommandConfig> Commands { get; set => field = value ?? []; } = [];
 
+    /// <summary>
+    /// OpenRGB.exe for the <c>rgb.lighting</c> action; empty = the install folders. Only this file sets it: a mode, the
+    /// page and the API never name an executable.
+    /// </summary>
+    public string OpenRgbPath { get; set => field = value ?? ""; } = "";
+
     public bool V2On => string.Equals(Engine, V2, StringComparison.OrdinalIgnoreCase);
 }

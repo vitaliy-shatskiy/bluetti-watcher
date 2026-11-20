@@ -72,7 +72,8 @@ internal static class BuiltInModes
             {
                 Id = Eco, Name = "Eco", FlagWord = FlagWord.Eco, BuiltIn = true,
                 // The optional actions are listed off and empty: a backup pause (a command pair), services to stop (Windows
-                // Search, Xbox gaming services, ...), Phone Link closed, the GPU idle watcher logging what holds the GPU at P0.
+                // Search, Xbox gaming services, ...), Phone Link closed, the GPU idle watcher logging what holds the GPU at P0,
+                // the RGB lighting off through OpenRGB.
                 Actions =
                 [
                     Plan(PowerModeSwitch.SaverPlan),
@@ -85,6 +86,7 @@ internal static class BuiltInModes
                     new ModeAction { TypeId = ServiceStateModule.Id, Enabled = false, Settings = new JsonObject { ["services"] = new JsonArray() } },
                     new ModeAction { TypeId = PhoneLinkModule.Id, Enabled = false, Settings = [] },
                     new ModeAction { TypeId = GpuIdleWatcherModule.TypeId, Enabled = false, Settings = new JsonObject { ["minutes"] = 5, ["minClockMhz"] = 1000, ["maxUtilization"] = 2 } },
+                    new ModeAction { TypeId = RgbLightingModule.Id, Enabled = false, Settings = new JsonObject { ["devices"] = new JsonArray(), ["profile"] = "" } },
                 ],
             },
             new Mode { Id = Max, Name = "Max", FlagWord = FlagWord.Normal, BuiltIn = true, Actions = [Plan(PowerModeSwitch.HighPlan)] },

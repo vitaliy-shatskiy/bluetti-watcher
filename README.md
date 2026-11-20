@@ -150,8 +150,8 @@ Auto picks the mode by rules in order: mains off or on for a while, battery unde
 minutes (with the DTEK module), a time window; a mode you choose holds until Auto. The actions: the power plan, the
 processor's maximum state and boost, the display-off timeout, the NVIDIA GPU power limit and a driver profile, the
 display refresh rate and brightness, services and scheduled tasks, apps and Phone Link closed, a command pair from
-your config (pause a backup on entering Eco, resume it on leaving), and a watcher that logs what keeps the GPU at full
-clock. Every change is journaled and undone when the mode is left, unless you changed that setting by hand meanwhile:
+your config (pause a backup on entering Eco, resume it on leaving), the RGB lighting off through OpenRGB (an OpenRGB
+profile you pick back on leaving), and a watcher that logs what keeps the GPU at full clock. Every change is journaled and undone when the mode is left, unless you changed that setting by hand meanwhile:
 then it is left as you set it. The built-in Eco lists the optional ones off; an existing install's `actions.eco` and
 `actions.normal` become Eco's command pair. Actions that need administrator rights go through the admin broker, a
 SYSTEM task with a default-deny allow list that `install.ps1` sets up in an elevated shell; run that step again after
