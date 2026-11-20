@@ -1,31 +1,32 @@
 # Claude Code hook: power mode
 
-`BluettiWatcher.exe hook` tells every running Claude Code session about the power mode Bluetti Watcher (or you, with
-[`power-mode.ps1`](../../power-mode/README.md)) switched, on the session's next prompt. A rule in `CLAUDE.md` is read
-once at session start; this hook reads the flag file on every event, so a power cut reaches sessions that are already
-running. It is part of the watcher's exe: no Node.js, no extra files.
+`BluettiWatcher.exe hook` tells every running Claude Code session the power mode on its next prompt. It reads the
+power-mode flag ([power-mode README](../../power-mode/README.md)) on every event, so a power cut reaches sessions that
+are already running; a rule in `CLAUDE.md` is read only at session start. The hook is part of the exe: nothing else
+to install.
 
-What a session hears:
-
-| Flag | The session gets |
+| Flag | The session hears |
 |---|---|
-| normal | nothing; a session that heard a mode gets one line that its rules are lifted |
-| eco | `power mode: ECO since … until …` and `power-mode.eco.rules.md`: no local models, no GPU work, no benchmarks; everything else as usual; commit often |
-| emergency | `power mode: EMERGENCY since …` and `power-mode.rules.md`: finish the current step, start nothing heavy |
-| battery `low` (mains off) | the emergency rules |
-| battery `critical` (mains off) | `power mode: STOP` and `power-mode.stop.rules.md`: commit, push what may be pushed, write the state, end the turn |
-| battery `hibernating` (mains off) | `the PC hibernates at N %: save now` and `power-mode.hibernate.rules.md` |
-| a flag that cannot be read | one line at session start naming the file (treated as normal) |
+| normal | Nothing. A session that heard a mode gets one line: its rules are lifted. |
+| eco | `power mode: ECO since ... until ...` (a station eco: `while mains is off`) and `power-mode.eco.rules.md`. |
+| emergency | `power mode: EMERGENCY since ...` and `power-mode.rules.md`. |
+| battery `low` | The emergency text and rules. |
+| battery `critical` | `power mode: STOP - battery N %` and `power-mode.stop.rules.md`. |
+| battery `hibernating` | `power mode: battery N % ... the PC hibernates at N %: save now` and `power-mode.hibernate.rules.md`. |
+| a flag that cannot be read | At session start only: one line naming the file; treated as normal. |
 
-Each session hears each change once (state per session under `%TEMP%\claude-power-mode\`). A battery reading older
-than 15 minutes is ignored. Times print in the PC's time zone. The four `*.rules.md` files in this folder are built
-into the exe: to change what your sessions are told, edit them and publish the exe again (`tools/publish.ps1`).
+- A battery level counts only while mains is not on and the reading is under 15 minutes old; it outranks the mode.
+- Each session hears each change once. What it last heard is kept in `%TEMP%\claude-power-mode\<session>.json`;
+  `SessionStart` removes those files after 14 days.
+- `SubagentStart` gives a subagent the current text and rules, and keeps no state.
+- Times print in the PC's time zone.
+- The four `*.rules.md` files here are built into the exe: to change what sessions are told, edit them and publish
+  the exe again ([CONTRIBUTING.md](../../CONTRIBUTING.md)).
 
 ## Install
 
-Install the watcher (`install.ps1`), then add the hook to `~/.claude/settings.json` (or a project's
-`.claude/settings.json`). The exe is at `%LOCALAPPDATA%\bluetti-watcher\bin\BluettiWatcher.exe`; replace the path
-with yours:
+Install the watcher, then add the hook to `~/.claude/settings.json` (or a project's `.claude/settings.json`). The exe
+is `%LOCALAPPDATA%\bluetti-watcher\bin\BluettiWatcher.exe`; put your own path in:
 
 ```json
 {
@@ -43,30 +44,23 @@ with yours:
 }
 ```
 
-Coming from 1.0 (`node …/power-mode.js`): replace each of those three commands with the line above; the flag, the
-state files and the texts are the same.
-
-The hook reads the flag at `%ProgramData%\BluettiWatcher\power-mode.json`. If you moved the flag (the watcher's
-`powerMode.flagPath`, the scripts' `POWER_MODE_FILE`), set the same path for Claude Code, for example in the `env`
-block of `settings.json`:
+The hook reads `POWER_MODE_FILE`, else `%ProgramData%\BluettiWatcher\power-mode.json`. If the flag lives elsewhere
+(`powerMode.flagPath`), give Claude Code the same path, for example in `settings.json`:
 
 ```json
 { "env": { "POWER_MODE_FILE": "D:\\power\\power-mode.json" } }
 ```
 
 The hook never writes the flag. A junction or link in place of the flag's folder or file, or a folder it cannot list,
-reads as unreadable. It fails open: any error = no output, exit 0, so a broken hook never blocks a prompt.
+reads as unreadable. It fails open: any error = no output and exit 0, so a broken hook never blocks a prompt.
 
 ## Test
 
-From the repository root (the tests that set folder permissions or run the switch also need `pwsh`):
-
 ```powershell
-dotnet test tests/BluettiWatcher.Tests --filter "FullyQualifiedName~BluettiWatcher.Tests.Hook"
+dotnet test --solution bluetti-watcher.slnx -c Release --filter "FullyQualifiedName~BluettiWatcher.Tests.Hook"
 ```
 
-Every test runs the hook's entry with a hook event's JSON against a flag and a `%TEMP%` of its own. To try the exe by
-hand:
+By hand, against a throwaway flag:
 
 ```powershell
 $env:POWER_MODE_FILE = "$env:TEMP\pm-try\power-mode.json"; New-Item -ItemType Directory -Force (Split-Path $env:POWER_MODE_FILE) | Out-Null
