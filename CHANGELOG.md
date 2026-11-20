@@ -14,6 +14,15 @@ The release notes on GitHub are this file's section for the tag.
   runs again) they stay tray balloons, which Windows keeps nowhere; the log says which (`tray: notices are ...`).
   The exe grows by 29 KB.
 
+### Fixed
+
+- A modes write (`PUT /api/modes/{id}` and every other modes change) answers within its 5 s wait again (202, pending)
+  when an action or a module's check blocks its thread: a refresh-rate change blocks while the screens resync, and the
+  change ran on the request's own thread, so the 5 s wait never started and the connection was dropped at the server's
+  10 s limit. The change now starts on the thread pool, never on its caller's thread.
+- The refresh-rate action's form says that a refresh-rate change can crash a browser's GPU process, which then renders
+  in software until the browser restarts.
+
 ## [1.10.0] - 2026-11-20
 
 ### Added
@@ -33,12 +42,6 @@ The release notes on GitHub are this file's section for the tag.
 - The mode-change notification comes once the mode's actions ran, not before them: a refresh-rate change blanks the
   screens for seconds while they resync, and the notification, a banner of a few seconds that Windows keeps nowhere
   else, was gone by the time they came back. The `mode-changed` event is stored at the same moment.
-- A modes write (`PUT /api/modes/{id}` and every other modes change) answers within its 5 s wait again (202, pending)
-  when an action or a module's check blocks its thread: a refresh-rate change blocks while the screens resync, and the
-  change ran on the request's own thread, so the 5 s wait never started and the connection was dropped at the server's
-  10 s limit. The change now starts on the thread pool, never on its caller's thread.
-- The refresh-rate action's form says that a refresh-rate change can crash a browser's GPU process, which then renders
-  in software until the browser restarts.
 
 ## [1.9.0] - 2026-11-20
 
