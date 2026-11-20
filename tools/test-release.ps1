@@ -44,7 +44,7 @@ function Check([string] $name, [bool] $ok, [string] $detail = '') {
     if ($ok) { $script:passed++ } else { $script:failed++; Write-Output "FAIL  $name $detail" }
 }
 # The folder is $args[0], not a named parameter: a git flag like -d would bind to it by prefix.
-function Invoke-TestGit { $at, $rest = $args; $null = & git -C $at -c user.name=test -c user.email=test@example.invalid @rest 2>&1; if ($LASTEXITCODE) { throw "git $rest failed in $at" } }
+function Invoke-TestGit { $at, $rest = $args; $said = & git -C $at -c user.name=test -c user.email=test@example.invalid @rest 2>&1; if ($LASTEXITCODE) { throw "git $rest failed in ${at}: $($said -join ' ')" } }
 
 # A bare origin and a clone on main with version 9.8.7, its CHANGELOG section (unless -NoSection), pushed.
 function New-World([switch] $NoSection, [string] $Version = '9.8.7') {
@@ -77,7 +77,8 @@ function New-Assets($w, [int] $InstallExit = 0, [switch] $BadHash) {
     $assets
 }
 function Invoke-Release($w, [string[]] $Extra = @(), [hashtable] $Env = @{}) {
-    $vars = @{ BW_FAKE_GH_AUTH = 'yes'; BW_FAKE_GH_SHA = $w.Head; BW_FAKE_GH_WATCH = '0'; BW_FAKE_GH_ASSETS = '' }
+    # The tagger: a CI runner has no git identity of its own.
+    $vars = @{ BW_FAKE_GH_AUTH = 'yes'; BW_FAKE_GH_SHA = $w.Head; BW_FAKE_GH_WATCH = '0'; BW_FAKE_GH_ASSETS = ''; GIT_COMMITTER_NAME = 'test'; GIT_COMMITTER_EMAIL = 'test@example.invalid' }
     foreach ($k in $Env.Keys) { $vars[$k] = $Env[$k] }
     $saved = @{}
     $savedPath = $env:PATH
@@ -89,7 +90,8 @@ function Invoke-Release($w, [string[]] $Extra = @(), [hashtable] $Env = @{}) {
     }
     finally {
         $env:PATH = $savedPath
-        foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) }
+        # $null passed to a .NET string turns into '': a variable that was not set is removed, never set empty.
+        foreach ($k in $saved.Keys) { if ($null -eq $saved[$k]) { Remove-Item -LiteralPath "env:$k" -ErrorAction SilentlyContinue } else { [Environment]::SetEnvironmentVariable($k, $saved[$k]) } }
     }
     @{ Code = $code; Text = ($out -join "`n") }
 }
