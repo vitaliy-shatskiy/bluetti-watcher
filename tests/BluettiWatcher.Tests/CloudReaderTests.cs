@@ -140,6 +140,36 @@ public sealed class CloudReaderTests : IDisposable
         Assert.Contains(_log, l => l.Contains("written", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// A live device-list answer for a station running on Bluetooth at a real charge, identifiers replaced: online "1", every
+    /// value "0", sensor values as strings with their metadata beside them.
+    /// </summary>
+    private const string AllZeroAnswer = """
+        {"appId":null,"msgId":"MSG-1","msgCode":0,"message":"OK","data":[{"sn":"SERIAL-1","online":"1","isBindByCurUser":"1","name":"Station","model":"AC200PL-AC200PL","supportNetwork":"1","stateList":[
+        {"fnCode":"SetACECO","fnName":"AC ECO","fnValue":"0","fnType":"SWITCH","supportModeValues":[]},
+        {"fnCode":"SetCtrlWorkMode","fnName":"Working mode","fnValue":"0","fnType":"SELECT","supportModeValues":[{"code":"workmode_0","name":"Mode 0"},{"code":"workmode_1","name":"Mode 1"}]},
+        {"fnCode":"SetDCECO","fnName":"DC ECO","fnValue":"0","fnType":"SWITCH","supportModeValues":[]},
+        {"fnCode":"SOC","fnName":"Battery Level","fnValue":"0","fnType":"SENSOR","supportModeValues":[],"sensorInfo":{"sensorType":"SensorDeviceClass.BATTERY","unit":"%"}},
+        {"fnCode":"SetCtrlAc","fnName":"AC","fnValue":"0","fnType":"SWITCH","supportModeValues":[]},
+        {"fnCode":"PVAllTotalPower","fnName":"Photovoltaics Input Power","fnValue":"0","fnType":"SENSOR","supportModeValues":[],"sensorInfo":{"sensorType":"SensorDeviceClass.POWER","unit":null}},
+        {"fnCode":"GridAllTotalPower","fnName":"Grid Input Power","fnValue":"0","fnType":"SENSOR","supportModeValues":[],"sensorInfo":{"sensorType":"SensorDeviceClass.POWER","unit":null}},
+        {"fnCode":"SetCtrlDc","fnName":"DC","fnValue":"0","fnType":"SWITCH","supportModeValues":[]},
+        {"fnCode":"DCLoadAllTotalPower","fnName":"Direct Current Out Power","fnValue":"0","fnType":"SENSOR","supportModeValues":[],"sensorInfo":{"sensorType":"SensorDeviceClass.POWER","unit":null}},
+        {"fnCode":"ACLoadAllTotalPower","fnName":"Alternating Current Out Power","fnValue":"0","fnType":"SENSOR","supportModeValues":[],"sensorInfo":{"sensorType":"SensorDeviceClass.POWER","unit":null}}]}],
+        "error":null,"code":0}
+        """;
+
+    // design.md §4 AC2a: the all-zero device state derives no mode, so a false 0 % never reaches the stop and hibernate levels
+    [Fact]
+    public async Task The_live_all_zero_answer_reads_as_zeros_and_is_rejected_as_incomplete()
+    {
+        Token(Now);
+        _http.Json(AllZeroAnswer);
+        var r = await Cloud.ReadAsync(CancellationToken.None);
+        Assert.Equal(new Reading(0, 0, 0, null, Source: "cloud"), r);
+        Assert.Contains("output mode", StationDecision.Check(r!, new StationState(), T0, Config()), StringComparison.Ordinal);
+    }
+
     // design.md §4 AC9: a frozen cloud cache is a miss
     [Fact]
     public async Task An_unchanged_soc_under_load_off_mains_for_30_minutes_is_stale()
