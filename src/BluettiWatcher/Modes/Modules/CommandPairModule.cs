@@ -16,10 +16,10 @@ namespace BluettiWatcher.Modes.Modules;
 /// Pattern: Adapter. Compensatable: the module cannot read what the commands changed, so the value it reads is what it
 /// last ran (left until the enter command succeeded). A write of <c>true</c> carries the pair's command names
 /// (<c>{ "entered": true, "enter": "name", "leave": "name" }</c>) and the leave name is kept for the restore, which writes
-/// the bare baseline <c>false</c>. That memory is runtime state: after a restart the pair reads left again, so the leave
-/// command is not run for an enter made before the restart.
+/// the bare baseline <c>false</c>. That memory is runtime state: after a restart the reconciler recalls each pair the
+/// journal says is entered (<see cref="IRecallsWrites"/>), so leaving the mode still runs the leave command.
 /// </remarks>
-internal sealed class CommandPairModule : IActionModule
+internal sealed class CommandPairModule : IActionModule, IRecallsWrites
 {
     public const string Id = "command.pair";
     public const int OutputChars = 300;
@@ -124,6 +124,13 @@ internal sealed class CommandPairModule : IActionModule
         if (leaveError is not null) return ApplyResult.Failed(leaveError);
         lock (_lock) _entered.Remove(intent.Key);
         return ApplyResult.Written(JsonValue.Create(false));
+    }
+
+    /// <summary>A pair the journal says was entered (the enter target with its command names) reads entered again after a restart.</summary>
+    public void Recall(string resourceKey, JsonNode? target)
+    {
+        if (JsonFields.KeyName(resourceKey, Prefix, Suffix) is null || target is not JsonObject pair || EnteredOf(pair) != true) return;
+        lock (_lock) _entered[resourceKey] = (JsonObject)pair.DeepClone();
     }
 
     private static bool? EnteredOf(JsonNode? value) => value is JsonObject o ? JsonFields.Bool(o["entered"]) : JsonFields.Bool(value);

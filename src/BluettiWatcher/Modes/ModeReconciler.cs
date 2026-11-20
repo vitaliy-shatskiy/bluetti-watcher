@@ -66,6 +66,10 @@ internal sealed class ModeReconciler(ModuleRegistry registry, ModeJournal journa
             if (registry.TryGet(own.TypeId, out var m) && m.Descriptor.Restoration == RestorationClass.Token)
                 Close(own, JournalKind.Relinquished, "runtime state did not survive the reboot");
         }
+        foreach (var own in _owned.Values.Where(o => o.Applied))
+        {
+            if (registry.TryGet(own.TypeId, out var m) && m is IRecallsWrites recalls) recalls.Recall(own.Key, Clone(own.Target));
+        }
     }
 
     /// <summary>One pass towards <paramref name="target"/>: settle open writes, restore what the last mode left, apply this one.</summary>
