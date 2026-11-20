@@ -88,7 +88,8 @@ internal static partial class StationDecision
     /// The levels a poll applies. With a sound drain (finite, above 0; capped at <see cref="MaxDrainPerHour"/>) each level
     /// above hibernateAt sits at least the drain of its lead above the one under it: the warning hibernateAfterWarnSec plus
     /// <see cref="LeadPolls"/> polls above hibernateAt (so the hibernate comes at its first agreed poll at or under it), the
-    /// stop and the emergency <see cref="LeadPolls"/> polls above the next. A level never goes under its configured value;
+    /// stop and the emergency <see cref="LeadPolls"/> polls above the next. A level never goes under its configured value
+    /// nor more than <see cref="MaxRaise"/> points over it (a long poll interval asks for more: the raise stops there);
     /// hibernateAt never moves (the fresh-reading guard and the wake read it). No drain, a stale one (the caller passes
     /// null) or an unsound one = the configured levels.
     /// </summary>
@@ -103,9 +104,12 @@ internal static partial class StationDecision
         return new(emergency, stop, warn, c.HibernateAt, d);
     }
 
-    /// <summary>The configured level, or the needed one rounded up to a tenth (at most 100) when that is higher.</summary>
+    /// <summary>The most a drain lifts a level over its configured value, whatever pollSec and hibernateAfterWarnSec are.</summary>
+    public const double MaxRaise = 10;
+
+    /// <summary>The configured level, or the needed one rounded up to a tenth (at most configured + <see cref="MaxRaise"/>, at most 100) when that is higher.</summary>
     private static double Raise(double configured, double needed) =>
-        needed > configured ? Math.Max(configured, Math.Min(100, Math.Ceiling(needed * 10) / 10)) : configured;
+        needed > configured ? Math.Max(configured, Math.Min(Math.Min(100, configured + MaxRaise), Math.Ceiling(needed * 10) / 10)) : configured;
 
     [GeneratedRegex("^[A-Z][A-Z_]*$")]
     private static partial Regex ModePattern();

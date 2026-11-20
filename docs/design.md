@@ -321,9 +321,9 @@ least every `batteryRefreshSec` (600 s); this write is best effort.
   2 polls)`, `stopAt` at least the warning plus `d x 2 polls`, `emergencyAt` at least the stop plus `d x 2 polls` (one
   poll for the ladder's own step, one as the margin; rounded up to a tenth, at most 100). The hibernate then comes at
   the first poll its own agreement allows at or under `hibernateAt`. `hibernateAt` never moves (the fresh-reading guard
-  and the wake read it), a level never goes under its configured value, and a low drain leaves them as configured. `d`
-  is capped at 120 %/h (above what a station of this class drains at its rated output), so one wild sample raises the
-  warning by at most 10 points. No measured drain (on mains, too little data, the newest stored reading older than
+  and the wake read it), a level never goes under its configured value nor more than 10 points over it (a long
+  `pollSec` or `hibernateAfterWarnSec` would ask for more: the raise stops there), and a low drain leaves them as
+  configured. `d` is capped at 120 %/h (above what a station of this class drains at its rated output). No measured drain (on mains, too little data, the newest stored reading older than
   `maxGapSec`, a failed history read, a value not finite or not above 0) = the configured levels. A raised level only
   brings its step earlier: a reading at or under the configured level always counts toward it, so the configured
   hibernate is never delayed. `/api/now` gives the levels in force as `effectiveThresholds`.

@@ -69,6 +69,21 @@ public class DecisionLevelTests
         Assert.True(IndexOf(plain, "hibernate") > hib, "without the drain the hibernate comes later (the defect)");
     }
 
+    // a long poll at the highest drain counted (300 s, 120 %/h) would ask for warn 31 / stop 51 / emergency 71 %: each
+    // raise stops at its configured level + 10 points, the order kept, hibernateAt never moved.
+    [Fact]
+    public void Effective_long_poll_at_the_highest_drain_raises_each_level_at_most_ten_points()
+    {
+        var c = new StationConfig { PollSec = 300 };
+        var th = StationDecision.Effective(c, 120);
+        Assert.True(th.WarnAt <= c.WarnAt + 10, $"warn {th.WarnAt}");
+        Assert.True(th.StopAt <= c.StopAt + 10, $"stop {th.StopAt}");
+        Assert.True(th.EmergencyAt <= c.EmergencyAt + 10, $"emergency {th.EmergencyAt}");
+        Assert.True(th.WarnAt > c.WarnAt, "the drain still raises the warning");
+        Assert.True(th.HibernateAt < th.WarnAt && th.WarnAt <= th.StopAt && th.StopAt <= th.EmergencyAt, $"{th}");
+        Assert.Equal(c.HibernateAt, th.HibernateAt);
+    }
+
     // a low drain leaves every level where the config puts it.
     [Fact]
     public void Low_drain_keeps_the_configured_levels()
