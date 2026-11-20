@@ -170,17 +170,17 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
             SaveQuietly();
         }
         var mode = _settings.Modes.First(m => m.Id == d.ModeId);
-        if (!string.Equals(_reconciler.ActiveModeId, mode.Id, StringComparison.Ordinal))
-        {
-            log($"modes: {mode.Id} ({d.Reason})");
-            onEvent?.Invoke("mode-changed", $"{mode.Id} ({d.Reason})");
-        }
+        bool changed = !string.Equals(_reconciler.ActiveModeId, mode.Id, StringComparison.Ordinal);
+        if (changed) log($"modes: {mode.Id} ({d.Reason})");
         _reason = d.Reason;
         CheckPolicy(mode);
         bool entering = !string.Equals(_reconciler.Snapshot.ModeId, mode.Id, StringComparison.Ordinal);
         if (entering) _switching = mode.Id;
         try { await _reconciler.ReconcileAsync(mode, ct); }
         finally { if (entering) _switching = null; }
+        // Raised once the actions ran: its tray notice is a banner of a few seconds, which a refresh-rate change (screens
+        // dark while they resync) or a plan's display-off timeout would otherwise swallow.
+        if (changed) onEvent?.Invoke("mode-changed", $"{mode.Id} ({d.Reason})");
         if (journal.Count > ModeJournal.CompactAbove) CompactJournal();
         if (_emergency || _flagWritten == mode.FlagWord) return;
         string why = await flag.WriteAsync(mode.FlagWord, ct);

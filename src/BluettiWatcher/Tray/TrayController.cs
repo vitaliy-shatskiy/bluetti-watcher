@@ -51,6 +51,9 @@ internal sealed class TrayController(ITrayView view, NotificationSettingsStore s
         foreach (var a in fresh) Notify(TrayNotices.FromAlarm(a));
     }
 
+    /// <summary>The page's test button: one notice whatever the switches say, so a missing one is Windows', not a switch.</summary>
+    public void SendTest() => view.Notify(TrayNotices.Test);
+
     private void Notify(TrayNotice? notice)
     {
         if (notice is not null && settings.Current.IsOn(notice.Kind)) view.Notify(notice);

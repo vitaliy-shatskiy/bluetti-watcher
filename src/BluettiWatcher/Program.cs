@@ -117,6 +117,7 @@ using var trayHost = config.Tray && Environment.UserInteractive
     : null;
 var tray = trayHost is null ? null : new TrayController(trayHost, notificationSettings);
 if (tray is not null) store.EventAdded = tray.OnEvent;
+api.SendTestNotice = tray is null ? null : tray.SendTest;
 void ShowTray()
 {
     if (tray is null) return;

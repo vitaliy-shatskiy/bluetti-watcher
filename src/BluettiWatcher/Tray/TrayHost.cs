@@ -302,7 +302,8 @@ internal sealed class TrayHost : ITrayView, IDisposable
             NoticeLevel.Warning => NIIF_WARNING,
             _ => NIIF_INFO,
         };
-        if (!Shell_NotifyIcon(NIM_MODIFY, &d)) _log($"tray: notice not shown: {n.Title}");
+        if (Shell_NotifyIcon(NIM_MODIFY, &d)) _log($"notice: {n.Kind} {n.Title}");
+        else _log($"tray: notice not shown: {n.Title}");
     }
 
     private void ShowMenu(int x, int y)

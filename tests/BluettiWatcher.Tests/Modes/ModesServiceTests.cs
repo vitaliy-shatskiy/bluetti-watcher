@@ -173,6 +173,27 @@ public sealed class ModesServiceTests : IDisposable
         Assert.DoesNotContain("mode-changed", events);
     }
 
+    // The notice is a banner of a few seconds: raised before the actions, it showed while a refresh-rate change had the
+    // screens dark.
+    [Fact]
+    public async Task Select_ModeChange_TheEventComesAfterTheModesActionsRan()
+    {
+        string sub = Directory.CreateDirectory(Path.Combine(_dir, "after")).FullName;
+        var cfg = new StationConfig { DataDir = sub };
+        var planAtEvent = new List<string?>();
+        using var engine = new ModesEngine(cfg, new ModuleRegistry([new FakeModule(BuiltInModes.PowerPlanType, _m)]), new ModesStore(sub),
+            new ModeJournal(Path.Combine(sub, ModeJournal.FileName)), new FakeFlagWriter(), _clock, _ => { },
+            (k, _) => { if (k == "mode-changed") planAtEvent.Add(_m.Text("plan")); });
+        engine.Start(T0.AddDays(-1));
+        await engine.StepAsync(new SelectorInput(true, TimeSpan.FromHours(1), 80, null, _clock.GetLocalNow()), emergency: false, TestContext.Current.CancellationToken);
+        planAtEvent.Clear();
+
+        await engine.SelectAsync(BuiltInModes.Eco, TestContext.Current.CancellationToken);
+        await engine.Pending;
+
+        Assert.Equal("\"a1841308-3541-4fab-bc81-f71556f20b4a\"", Assert.Single(planAtEvent));
+    }
+
     private static List<Rule> CutRule() => [new() { Condition = new RuleCondition { Kind = ConditionKind.CutWithin, Minutes = 30 }, ModeId = BuiltInModes.Eco }];
 
     [Fact]

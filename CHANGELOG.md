@@ -6,6 +6,17 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+### Added
+
+- "Send a test notification" in the modes panel (`POST /api/settings/notifications/test`): one notification whatever
+  the switches say, so a missing one points at Windows. Each notification shown is logged (`notice: <group> <title>`).
+
+### Fixed
+
+- The mode-change notification comes once the mode's actions ran, not before them: a refresh-rate change blanks the
+  screens for seconds while they resync, and the notification, a banner of a few seconds that Windows keeps nowhere
+  else, was gone by the time they came back. The `mode-changed` event is stored at the same moment.
+
 ## [1.9.0] - 2026-11-20
 
 ### Changed

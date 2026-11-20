@@ -59,6 +59,9 @@ internal static class TrayNotices
         };
     }
 
+    /// <summary>The page's test notification.</summary>
+    public static readonly TrayNotice Test = Make(NotificationKind.ModeChanges, "Test notification", "Bluetti Watcher notifications reach this PC.", NoticeLevel.Info);
+
     private static string Sentence(string detail) => detail.Length == 0 ? "" : char.ToUpperInvariant(detail[0]) + detail[1..] + ".";
 
     private static TrayNotice Make(NotificationKind kind, string title, string text, NoticeLevel level) =>

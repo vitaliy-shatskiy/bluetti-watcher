@@ -15,7 +15,7 @@ namespace BluettiWatcher.Http;
 /// The routes. GET /, /api/now, /api/history?from&amp;to&amp;step, /api/events?from&amp;to, /api/health;
 /// POST /api/mode { "mode": "auto" | "eco" | "max" } behind <see cref="RequestGuard"/>; GET /api/return-plan and, behind the
 /// same guard, POST /api/return-plan { "returnPlan": "high" | "balanced" | "previous" }; GET and, behind the guard, PUT
-/// /api/settings/notifications (<see cref="Tray.NotificationSettingsApi"/>).
+/// /api/settings/notifications and POST /api/settings/notifications/test (<see cref="Tray.NotificationSettingsApi"/>).
 /// from / to: ISO 8601 or Unix milliseconds; step: seconds (default 60).
 /// </summary>
 internal sealed partial class StationApi(StationConfig config, StationService service, StationStore store, TimeProvider time, DateTimeOffset startedAt, IDtekWatcher? dtek = null, Action<string>? log = null,
@@ -23,6 +23,9 @@ internal sealed partial class StationApi(StationConfig config, StationService se
     Func<IReadOnlyList<KeyValuePair<string, string>>>? stationBlocks = null, ModesApi? modes = null, Tray.NotificationSettingsStore? notificationSettings = null,
     Func<Modes.Broker.BrokerStatus>? broker = null)
 {
+    /// <summary>Shows one test notification (POST /api/settings/notifications/test); null = no tray icon. Set once at start.</summary>
+    public Action? SendTestNotice { get; set; }
+
     /// <summary>The modes routes; under v2 also the old POST /api/mode. Null = not a modes request.</summary>
     private async Task<HttpResponse?> ModesRouteAsync(HttpRequest r, CancellationToken ct)
     {
@@ -66,6 +69,7 @@ internal sealed partial class StationApi(StationConfig config, StationService se
         }
         if (await CloudRouteAsync(r, ct) is { } cloudAnswer) return cloudAnswer;
         if (r.Path == Tray.NotificationSettingsApi.Route && notificationSettings is not null) return Tray.NotificationSettingsApi.Handle(r, notificationSettings, config.Port);
+        if (r.Path == Tray.NotificationSettingsApi.TestRoute) return Tray.NotificationSettingsApi.HandleTest(r, SendTestNotice, config.Port);
         if (r.Method != "GET") return HttpResponse.Text(405, "GET only");
         // /api/now?settle=1: answers once the saved page choice is applied, refused or failed (bounded under the server's 10 s).
         // Both waits count against the time left in the request, so a request that started late still answers in time.

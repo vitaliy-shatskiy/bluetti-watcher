@@ -8,7 +8,7 @@ or Unix milliseconds.
 
 - Every request: the `Host` header must be exactly `127.0.0.1:<port>` or `localhost:<port>`; anything else is `403
   forbidden: foreign Host`. This blocks DNS rebinding.
-- `POST /api/mode`, `POST /api/return-plan`, `POST /api/reading-source`, `POST /api/cloud/sign-in`, `POST /api/cloud/sign-out` and `PUT /api/settings/notifications` also need the header `X-Station: 1` and an `Origin` that is absent or the service's own
+- `POST /api/mode`, `POST /api/return-plan`, `POST /api/reading-source`, `POST /api/cloud/sign-in`, `POST /api/cloud/sign-out`, `PUT /api/settings/notifications` and `POST /api/settings/notifications/test` also need the header `X-Station: 1` and an `Origin` that is absent or the service's own
   (`http://127.0.0.1:<port>` or `http://localhost:<port>`); else 403 with the reason. A web page on another origin
   cannot send the custom header without a CORS preflight, and the service never sends a CORS header.
 - Wrong method: 405 (`POST only` for `/api/mode`, `GET or PUT only` for `/api/settings/notifications`, `GET only` elsewhere; `/api/return-plan` takes both). Unknown path: 404.
@@ -217,3 +217,11 @@ file moved over the old one); the next notification follows it, no restart.
 ```powershell
 Invoke-RestMethod -Method Put -Uri http://127.0.0.1:18940/api/settings/notifications -Headers @{ 'X-Station' = '1' } -ContentType 'application/json' -Body '{"modeChanges":false}'
 ```
+
+## POST /api/settings/notifications/test
+
+Shows one Windows notification ("Test notification") whatever the switches say, headers per the guard above; the page's
+"Send a test notification" button in the modes panel. 200 `{ "sent": true }` once it is handed to the tray icon (the
+service log then says `notice: ModeChanges Test notification`); 503 when the service shows no tray icon (`tray` off, or
+not in the signed-in session). A notice is a shell balloon: Windows shows it for a few seconds and keeps no copy in the
+notification centre, and Do not disturb hides it.

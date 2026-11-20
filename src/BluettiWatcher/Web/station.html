@@ -333,6 +333,9 @@ en: {
   modesHibernate: "Hibernate the PC when the battery reaches the hibernate level",
   modesHibOn: "Hibernation on",
   modesHibOff: "Hibernation off",
+  modesTestNotice: "Send a test notification",
+  modesTestSent: "Test notification sent: it shows for a few seconds at the bottom right of the main screen",
+  modesTestNotSent: "Not sent: {e}",
   modesList: "Modes",
   modesBuiltIn: "built in",
   modesActiveTag: "in force",
@@ -729,6 +732,9 @@ uk: {
   modesHibernate: "Переводити ПК у гібернацію, коли батарея сягає рівня гібернації",
   modesHibOn: "Гібернацію увімкнено",
   modesHibOff: "Гібернацію вимкнено",
+  modesTestNotice: "Надіслати тестове сповіщення",
+  modesTestSent: "Тестове сповіщення надіслано: воно видно кілька секунд унизу праворуч на головному екрані",
+  modesTestNotSent: "Не надіслано: {e}",
   modesList: "Режими",
   modesBuiltIn: "вбудований",
   modesActiveTag: "діє",
@@ -1879,7 +1885,8 @@ function mpPaintTop() {
     chips.length ? null : mpEl('span', { className: 'dim' }, t('modesNoActions')), (v.problems || []).map((p) => mpEl('div', { className: 'bad' }, p)));
   const hib = mpEl('input', { type: 'checkbox', checked: s.autoHibernate !== false, disabled: mpBusy, 'data-f': 'hibernate' });
   hib.onchange = () => mpHibernate(hib.checked);
-  mpSet($('modesHib'), mpEl('label', { className: 'ck' }, hib, t('modesHibernate')));
+  mpSet($('modesHib'), mpEl('label', { className: 'ck' }, hib, t('modesHibernate')),
+    mpButton('test-notice', '', t('modesTestNotice'), mpTestNotice));
   const msg = $('modesMsg');
   msg.textContent = mpMsg ? mpMsg.text : ''; msg.className = `msg ${mpMsg ? mpMsg.kind : ''}`.trim(); msg.hidden = !mpMsg;
 }
@@ -2047,6 +2054,16 @@ async function mpHibernate(on) {
   const r = await mpWrite('PUT', '/api/settings/hibernate', { autoHibernate: on });
   mpMsg = r.ok ? { kind: 'ok', text: t(on ? 'modesHibOn' : 'modesHibOff') } : { kind: 'bad', text: t('modesNotSaved', { e: r.text }) };
   mpPaintTop();   // the box shows the saved setting: a refused change springs back
+}
+// One notification whatever the switches say: a missing one is then Windows' (Do not disturb, the app's own switch).
+async function mpTestNotice() {
+  let text;
+  try {
+    const r = await fetch('/api/settings/notifications/test', { method: 'POST', headers: { 'X-Station': '1' } });
+    text = r.ok ? null : String(await r.text()).trim() || `HTTP ${r.status}`;
+  } catch (e) { text = t('serviceDown', { e: e.message }); }
+  mpMsg = text === null ? { kind: 'ok', text: t('modesTestSent') } : { kind: 'bad', text: t('modesTestNotSent', { e: text }) };
+  mpPaintTop();
 }
 function mpRulesTouched() { mpRulesDirty = true; mpRuleBtns.forEach((b) => { b.disabled = false; }); }
 function mpRuleRow(r, i, count, modes, errs, used) {

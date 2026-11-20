@@ -260,6 +260,56 @@ public sealed class TrayNotificationTests : IDisposable
         Assert.False(Store().Current.Faults);
     }
 
+    [Fact]
+    public void The_test_notice_shows_even_with_every_group_switched_off()
+    {
+        var store = Store();
+        using (var doc = JsonDocument.Parse("""{ "mains": false, "modeChanges": false, "lowBattery": false, "failures": false, "faults": false, "overTemperature": false }"""))
+            Assert.Null(store.Update(doc.RootElement));
+        new TrayController(_view, store).SendTest();
+        Assert.Equal("Test notification", Assert.Single(_view.Notices).Title);
+    }
+
+    private static HttpRequest TestReq(string method, params (string, string)[] headers)
+    {
+        var h = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Host"] = $"127.0.0.1:{Port}" };
+        foreach (var (k, v) in headers) h[k] = v;
+        return new HttpRequest(method, NotificationSettingsApi.TestRoute, new Dictionary<string, string>(), h, []);
+    }
+
+    [Fact]
+    public void The_test_route_sends_once_behind_the_write_guard()
+    {
+        int sent = 0;
+        void Send() => sent++;
+        Assert.Equal(403, NotificationSettingsApi.HandleTest(TestReq("POST"), Send, Port).Status);
+        Assert.Equal(403, NotificationSettingsApi.HandleTest(TestReq("POST", ("X-Station", "1"), ("Origin", "http://evil.example")), Send, Port).Status);
+        Assert.Equal(405, NotificationSettingsApi.HandleTest(TestReq("GET", ("X-Station", "1")), Send, Port).Status);
+        Assert.Equal(0, sent);
+        Assert.Equal(200, NotificationSettingsApi.HandleTest(TestReq("POST", ("X-Station", "1")), Send, Port).Status);
+        Assert.Equal(1, sent);
+    }
+
+    [Fact]
+    public void The_test_route_without_a_tray_icon_says_so() =>
+        Assert.Equal(503, NotificationSettingsApi.HandleTest(TestReq("POST", ("X-Station", "1")), null, Port).Status);
+
+    [Fact]
+    public async Task The_station_api_routes_the_test_to_its_sender()
+    {
+        var cfg = new StationConfig { DataDir = _dir, Port = Port };
+        var clock = new ManualClock(T0);
+        int sent = 0;
+        using (var db = new BluettiWatcher.Storage.StationStore(Path.Combine(_dir, "station.db")))
+        using (var service = new StationService(cfg, new QueueReader(), new FakeActions(), new FakeHibernator(true), new FixedFlag(Flag()), db, clock, _ => { }))
+        {
+            var api = new StationApi(cfg, service, db, clock, T0, notificationSettings: Store()) { SendTestNotice = () => sent++ };
+            Assert.Equal(200, (await api.HandleAsync(TestReq("POST", ("X-Station", "1")), CancellationToken.None)).Status);
+        }
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        Assert.Equal(1, sent);
+    }
+
     [Theory]
     [InlineData("PUT", "{ nope", 400)]
     [InlineData("PUT", """{ "mains": 1 }""", 400)]
