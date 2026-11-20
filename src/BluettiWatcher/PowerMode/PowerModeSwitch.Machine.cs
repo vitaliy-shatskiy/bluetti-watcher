@@ -117,7 +117,6 @@ internal sealed partial class PowerModeSwitch
         if (_standInHost is null && ScriptSeams) _standInHost = new ScriptStandInHost(_env);
     }
 
-    /// <summary>The stand-in host, when one was started, goes.</summary>
     public void Dispose() => StopStandInHost();
 
     private void StopStandInHost()

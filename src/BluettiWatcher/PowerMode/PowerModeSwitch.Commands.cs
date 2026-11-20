@@ -25,11 +25,11 @@ internal sealed class PmArgs
     public string? TaskPrefix { get; set; }
     public string? ExtraReaders { get; set; }
 
-    // power-mode.ps1 1.0.0's parameters: any prefix of one that no other shares binds to it, exactly as in 1.0.0.
+    // power-mode.ps1's original parameters: any prefix of one that no other shares binds to it, as the script did.
     private static readonly string[] Names =
         ["Path", "Until", "For", "TaskUntil", "Source", "Soc", "Level", "Mains", "HibernateAt", "Adopt", "ReturnPlan", "Value", "RestoreWatts", "Action"];
 
-    // The names power-mode-end.ps1 1.0.0 added (the end task's command line). A prefix that a name above starts with is that
+    // The end task's command-line names (power-mode-end.ps1). A prefix that a name above starts with is that
     // name's, so -F, -M and -T stay -For, -Mains and -TaskUntil; these bind exactly, or by a prefix no name above starts with.
     private static readonly string[] EndNames = ["FlagFile", "Mutex", "TaskPrefix", "ExtraReaders"];
 
@@ -91,7 +91,7 @@ internal sealed class PmArgs
     {
         var exact = Names.Concat(EndNames).FirstOrDefault(n => n.Equals(name, StringComparison.OrdinalIgnoreCase));
         if (exact is not null) return exact;
-        // 1.0.0's names first, then the added ones: a new name never takes an abbreviation an old one had.
+        // The original names first: a later name never takes an abbreviation an original one had.
         foreach (var set in new[] { Names, EndNames })
         {
             var prefixed = set.Where(n => n.StartsWith(name, StringComparison.OrdinalIgnoreCase)).ToList();

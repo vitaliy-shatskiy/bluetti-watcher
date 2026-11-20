@@ -63,9 +63,9 @@ internal sealed class StationConfig
     public int ReaderTimeoutSec { get; set; } = 30;
     /// <summary>A station temperature (V2 registers 1151-1153) above this, °C, writes a station-hot event; it re-arms 5 °C under it.</summary>
     public int StationTempHighC { get; set; } = 60;
-    /// <summary>Ignored since 1.1.0 (the Python reader is gone): read only so that an old config.json loads and the start log names it.</summary>
+    /// <summary>Ignored: read only so that an old config.json (from the Python reader) loads and the start log names it.</summary>
     public string? BleBackend { get; set; }
-    /// <summary>Ignored since 1.1.0 (the Python reader is gone; also the old <c>--reader</c> flag): as <see cref="BleBackend"/>.</summary>
+    /// <summary>Ignored, as is the old <c>--reader</c> flag: as <see cref="BleBackend"/>.</summary>
     public string? ReaderPath { get; set; }
     /// <summary>The power-mode switch: its script and the live names it shares with the watcher.</summary>
     public PowerModeConfig PowerMode { get; set => field = value ?? new PowerModeConfig(); } = new();

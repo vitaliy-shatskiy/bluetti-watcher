@@ -42,7 +42,6 @@ internal sealed class DtekWatcherService(StationConfig config, Func<IDtekSource>
 
     private DtekConfig Cfg => config.DtekWatcher;
 
-    /// <summary>The module is on and its config can run.</summary>
     public bool Enabled => Cfg.Enabled && Cfg.Problem() is null;
 
     public void Dispose() => _source?.Dispose();
