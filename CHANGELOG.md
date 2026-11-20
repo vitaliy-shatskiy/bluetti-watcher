@@ -6,6 +6,8 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-11-20
+
 ### Changed
 
 - Notifications stay in the Windows notification centre after their banner is gone: they are Windows toasts under the
@@ -564,7 +566,8 @@ with `-Apply`. Requirements and details: [README](https://github.com/vitaliy-sha
 
 Source at this tag: [v1.0.0](https://github.com/vitaliy-shatskiy/bluetti-watcher/tree/v1.0.0)
 
-[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.10.1...HEAD
+[1.10.1]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.8.0...v1.8.1
