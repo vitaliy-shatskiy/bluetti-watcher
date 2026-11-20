@@ -6,6 +6,40 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.10.5] - 2026-11-21
+
+### Changed
+
+- Page: redesigned after a full design review. One control set (32 px buttons, one segmented look, small tags that do
+  not look like buttons), a readable type scale with sentence-case headings, and no middle dots or text arrows between
+  facts (a page test fails on any). Sections run header, live tiles, power modes, outage schedule, charts, last 30 days,
+  tables, data source; a footer names the version and the last update.
+- Page header: the name and the station model on separate lines, one mains tag ("On battery" / "On mains"), and one mode
+  switch in the order Auto, Eco, Normal, Max with localized names. Up to five modes show as buttons, more go behind
+  "More"; when the buttons do not fit, the whole switch becomes one menu, so a label is never cut. A press moves the
+  selection at once, a thin bar marks a change still running, the last press wins, and a refused change says why with
+  "Try again".
+- Page tiles: battery with a meter, load with the last hour, "Battery lasts until" shown once (smoothed over the last 10
+  minutes of load), the current or last outage, output and time off mains today, on shared baselines.
+- Page charts: battery and load are two stacked plots on one time axis with outage bands, labelled 20 % and
+  hibernation levels, a "Now" line, a dashed forecast and five ranges.
+- Page outage schedule: one timeline strip per day with the outage intervals as text, the current one tagged, and a
+  "Battery will last" / "Battery will not last" tag.
+- Page power modes: always open; a summary of the mode and why, the actions as a list with status words, modes as rows
+  edited in place with Save and Cancel, delete with Undo (switching to Auto first when the deleted mode is chosen), Auto
+  rules as sentences with minute steppers, and hibernation and test notifications as separate settings rows.
+- Page tables and statistics: one fact per column with units in every cell, energy in kWh, plain names for the
+  recurring and selected-range load.
+- Page data source: collapsed to one line while nothing needs attention, opens by itself on a problem, can be hidden
+  (stored by the service in `page-settings.json`, `GET/PUT /api/settings/page`); a cloud sign-in can be cancelled and
+  times out after 5 minutes.
+- Tray and Windows notifications speak the page's language (the page sends it to the service).
+
+### Fixed
+
+- Page: the mode editor showed "[object Object]" for a setting that is a list of objects (for example Windows services);
+  such a list is now edited as rows, and saving with nothing changed writes the same settings back.
+
 ## [1.10.4] - 2026-11-20
 
 ### Fixed
