@@ -62,17 +62,18 @@ public sealed class LogVolumeTests : IDisposable
     }
 
     [Fact]
-    public async Task Power_mode_warn_and_note_lines_reach_the_log_after_the_exit_line()
+    public async Task Power_mode_warn_note_and_plan_lines_reach_the_log_after_the_exit_line()
     {
         var cfg = new StationConfig { DataDir = _dir };
         string[] lines = ["power mode: ECO since 22.10.2026 14:49 while mains is off", "warn: powercfg did not list the power plans: the power plan is unchanged",
             "plan: Power saver on; returns to x", "note: gpu cap not set (nvidia-smi timed out after 5000 ms (stopped))"];
         var adapter = new PowerModeAdapter(cfg, new FakeRunner(), _log.Add, new FakeSwitchRunner { Result = new ProcessResult(0, lines, false) });
         Assert.True((await adapter.StationEcoAsync(CancellationToken.None)).Ok);
-        Assert.Equal(3, _log.Count);
+        Assert.Equal(4, _log.Count);
         Assert.Matches(@"^power-mode eco -> exit 0 in \d+ ms$", _log[0]);
         Assert.Equal("power-mode eco: warn: powercfg did not list the power plans: the power plan is unchanged", _log[1]);
-        Assert.Equal("power-mode eco: note: gpu cap not set (nvidia-smi timed out after 5000 ms (stopped))", _log[2]);
+        Assert.Equal("power-mode eco: plan: Power saver on; returns to x", _log[2]);   // the plan recorded and the one to return to
+        Assert.Equal("power-mode eco: note: gpu cap not set (nvidia-smi timed out after 5000 ms (stopped))", _log[3]);
     }
 
     [Fact]

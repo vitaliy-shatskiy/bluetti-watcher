@@ -28,7 +28,8 @@ The current state, for the page. `?settle=1` answers once a saved page choice (`
 | `eco`, `ecoNote` | The power mode in words ("" when normal) and as a coded note. |
 | `manual` | The page's choice: `auto`, `eco`, `max`. `modePending`: a choice not applied yet, or null. |
 | `modeError`, `modeErrorNote` | The last refusal or failure of a page choice ("" when none), and as a coded note. |
-| `powerMode` | The flag's mode in force as the service last read it: `normal`, `eco`, `emergency`, or `unreadable` (not read yet or untrusted). |
+| `powerMode` | The flag's mode in force as the service last read it (on a poll and right after an applied page choice): `normal`, `eco`, `emergency`, or `unreadable` (not read yet or untrusted). |
+| `modeHold` | What holds the mode, as a coded note, or null under Auto: `max-pinned-cut`, `max-pinned-mains`, `eco-pinned-cut`, `eco-pinned-mains` (pinned until mains returns or goes, or Auto), `auto-next` (Auto pressed: the battery rules decide at the next reading, which is taken at once). |
 | `powerPlan` | The active Windows power plan as the switch reads it (`powercfg /list`): `{ "id": "high" \| "balanced" \| "saver" \| "other" \| "", "name" }`; `""` = unknown. |
 | `returnPlan` | The plan the end of eco sets (see `/api/return-plan`). |
 | `level` | Battery level: `ok`, `low`, `critical`, `hibernating`. |
@@ -128,5 +129,6 @@ The page's Eco fires the `eco` action and Max (or Auto lifting the page's Eco) f
 them: an executable with arguments, no shell, logged only in a dry run ([configuration.md](configuration.md), "Power
 mode and actions"; the power-mode commands have their own limit, `powerModeTimeoutSec`).
 
-Answer: `{ "ok", "accepted", "manual", "message", "code" }`. 202 = saved; the service loop applies it. 409 = Max or Eco refused
+Answer: `{ "ok", "accepted", "manual", "modePending", "message", "code" }`. 202 = saved; the service loop applies it;
+`modePending` is the choice left for it to run (null when the press runs no command, as Auto after Max). 409 = Max or Eco refused
 during a battery emergency (`code` names it: `max-held`, `eco-held`). 400 = a body that is not JSON or a mode that is not one of the three.

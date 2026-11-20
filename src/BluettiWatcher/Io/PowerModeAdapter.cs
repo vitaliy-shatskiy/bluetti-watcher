@@ -81,9 +81,11 @@ internal sealed class PowerModeAdapter(StationConfig config, IProcessRunner runn
         if (r.TimedOut && InProcess) log($"power-mode {switchArgs[0]} -> no answer in {ms} ms, still running (it may yet write the flag)");
         else log($"power-mode {switchArgs[0]} -> exit {r.ExitCode} in {ms} ms{(ok ? "" : ": " + last)}");
         // A step that failed or was not confirmed (warn: / note:) is never silent: exit 0 means the flag is written, not that
-        // the plan or the GPU cap took. The battery call is left out: it runs on every reading change and repeats them.
+        // the plan or the GPU cap took; the plan recorded and the one returned to (plan:) say what the switch did to Windows.
+        // The battery call is left out: it runs on every reading change and repeats them.
         if (switchArgs[0] != "battery")
-            foreach (var l in r.Lines.Where(l => l.StartsWith("warn: ", StringComparison.Ordinal) || l.StartsWith("note: ", StringComparison.Ordinal)))
+            foreach (var l in r.Lines.Where(l => l.StartsWith("warn: ", StringComparison.Ordinal) || l.StartsWith("note: ", StringComparison.Ordinal)
+                || l.StartsWith("plan: ", StringComparison.Ordinal)))
                 log($"power-mode {switchArgs[0]}: {l}");
         return new ActionResult(ok, r.ExitCode, line, last);
     }

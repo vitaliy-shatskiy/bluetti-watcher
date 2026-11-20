@@ -24,6 +24,12 @@ internal static class PageCodes
     public const string ModeDropped = "mode-dropped";
     public const string ModeFailed = "mode-failed";
     public const string ModeOther = "mode-other";
+    // modeHold: what holds the mode under the buttons, and until when
+    public const string MaxPinnedCut = "max-pinned-cut";
+    public const string MaxPinnedMains = "max-pinned-mains";
+    public const string EcoPinnedCut = "eco-pinned-cut";
+    public const string EcoPinnedMains = "eco-pinned-mains";
+    public const string AutoNext = "auto-next";
     // the eco chip
     public const string EcoEmergency = "eco-emergency";
     public const string EcoEmergencyOver = "eco-emergency-over";
@@ -48,7 +54,7 @@ internal static class PageCodes
     public static IReadOnlyList<string> Notes { get; } =
     [
         StationSilent, HibernateHeld, MaxHeld, ReadingRejected, WakeDisarmFailed, EcoHeld, AutoHeld, FlagUnreadable, ModeDroppedBack, ModeDroppedLost, ModeDropped,
-        ModeFailed, ModeOther, EcoEmergency, EcoEmergencyOver, EcoMains, EcoUntil, DtekQueuesUnknown, DtekNoSchedule, DtekStale, DtekQueueNotFixed,
+        ModeFailed, ModeOther, MaxPinnedCut, MaxPinnedMains, EcoPinnedCut, EcoPinnedMains, AutoNext, EcoEmergency, EcoEmergencyOver, EcoMains, EcoUntil, DtekQueuesUnknown, DtekNoSchedule, DtekStale, DtekQueueNotFixed,
         DtekGroupRefuted, DtekGroupNotHouse, DtekUpdateUnreadable, DtekDatasetFailed, DtekSiteBlocked, DtekSiteFailed, DtekConfig, DtekNotStarted,
         DtekModuleError,
     ];

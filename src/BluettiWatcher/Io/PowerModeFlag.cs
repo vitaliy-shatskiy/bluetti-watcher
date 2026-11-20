@@ -20,6 +20,16 @@ internal interface IFlagReader
     PowerModeFlag? Read(DateTimeOffset now);
 }
 
+internal static class FlagReaderExtensions
+{
+    /// <summary>
+    /// <see cref="IFlagReader.Read"/> on a thread of its own: the read waits on the writers' named mutex (up to 5 s), which
+    /// is thread-affine and synchronous, so it must not hold a thread-pool thread the service's requests and loops share.
+    /// </summary>
+    public static Task<PowerModeFlag?> ReadOffPoolAsync(this IFlagReader reader, DateTimeOffset now) =>
+        Task.Factory.StartNew(() => reader.Read(now), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+}
+
 /// <summary>
 /// Reads the power-mode flag file under the writers' named mutex, never writing it. The mutex is the one
 /// power-mode-flag.ps1 takes (POWER_MODE_MUTEX, config <c>powerMode.mutex</c>); a test passes its own name and a short wait.

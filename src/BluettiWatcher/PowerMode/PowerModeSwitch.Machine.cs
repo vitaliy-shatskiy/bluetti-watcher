@@ -46,7 +46,7 @@ internal sealed partial class PowerModeSwitch
     private static partial Regex ShortNumberPattern();
 
     /// <summary>A child process with no window, killed (whole tree) after <paramref name="timeoutMs"/>: code -2 = timed out.</summary>
-    internal static PmToolResult RunTimed(string file, IEnumerable<string> list, int timeoutMs)
+    internal static PmToolResult RunTimed(string file, IEnumerable<string> list, int timeoutMs, int drainMs = DrainMs)
     {
         string name = Path.GetFileName(file);
         var psi = new ProcessStartInfo(file)
@@ -59,9 +59,12 @@ internal sealed partial class PowerModeSwitch
         };
         var stdout = new List<string>();
         var stderr = new List<string>();
+        // Each stream's end (a null line): signalled from the reader threads, never disposed, so a late end cannot throw.
+        var outEnd = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var errEnd = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var p = new Process { StartInfo = psi };
-        p.OutputDataReceived += (_, e) => { if (e.Data is not null) lock (stdout) stdout.Add(e.Data); };
-        p.ErrorDataReceived += (_, e) => { if (e.Data is not null) lock (stderr) stderr.Add(e.Data); };
+        p.OutputDataReceived += (_, e) => { if (e.Data is null) outEnd.TrySetResult(); else lock (stdout) stdout.Add(e.Data); };
+        p.ErrorDataReceived += (_, e) => { if (e.Data is null) errEnd.TrySetResult(); else lock (stderr) stderr.Add(e.Data); };
         try { p.Start(); }
         catch (Exception e) when (e is Win32Exception or InvalidOperationException or IOException) { return new(-1, [$"{name} could not start: {e.Message}"]); }
         p.BeginOutputReadLine();
@@ -73,9 +76,18 @@ internal sealed partial class PowerModeSwitch
             catch (Exception e) when (e is Win32Exception or InvalidOperationException or AggregateException) { Skip(e); }
             return new(-2, [$"{name} timed out after {Num(timeoutMs)} ms (stopped)"]);
         }
-        p.WaitForExit();   // the output events are drained
+        // The output is drained, bounded: a child the tool left running holds the pipes open and an untimed wait never returns.
+        // This method is synchronous by design (the switch runs on its own thread), so the bounded block is the wait itself.
+        if (!Task.WaitAll([outEnd.Task, errEnd.Task], drainMs))
+        {
+            try { p.Kill(entireProcessTree: true); }
+            catch (Exception e) when (e is Win32Exception or InvalidOperationException or AggregateException) { Skip(e); }
+        }
         lock (stdout) lock (stderr) return new(p.ExitCode, [.. stdout.Concat(stderr).Where(l => l.Trim().Length > 0)]);
     }
+
+    /// <summary>How long a tool that has exited may keep its output open before the rest of its tree is stopped.</summary>
+    internal const int DrainMs = 2000;
 
     /// <summary>A real System32 tool: under POWER_MODE_TEST=1 the command stops (exit 2) and the tool is never started.</summary>
     private PmToolResult RealTool(string exeName, IEnumerable<string> list)

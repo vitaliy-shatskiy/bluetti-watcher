@@ -10,10 +10,10 @@ internal sealed class PollSchedule(TimeProvider time)
     private long _started = time.GetTimestamp();
     private TimeSpan _delay = TimeSpan.Zero;
 
-    /// <summary>true = poll now; the poll counts as begun at this moment.</summary>
-    public bool Due()
+    /// <summary>true = poll now (its time came, or <paramref name="asked"/>: an early poll); the poll counts as begun at this moment.</summary>
+    public bool Due(bool asked = false)
     {
-        if (time.GetElapsedTime(_started) < _delay) return false;
+        if (!asked && time.GetElapsedTime(_started) < _delay) return false;
         _started = time.GetTimestamp();
         return true;
     }
