@@ -1,6 +1,6 @@
 namespace BluettiWatcher;
 
-internal enum CliAction { Run, CloudLogin, Hook, Help, Version, Error, PowerMode }
+internal enum CliAction { Run, CloudLogin, Hook, Help, Version, Error, PowerMode, Broker, BrokerAllow }
 
 /// <summary>What the command line asks for; <see cref="Message"/> is the argument error for <see cref="CliAction.Error"/>.</summary>
 internal sealed record CliRequest(CliAction Action, string Message = "");
@@ -18,6 +18,8 @@ internal static class Cli
           BluettiWatcher.exe --cloud-login      sign in to the BLUETTI cloud and save the token file
           BluettiWatcher.exe power-mode <args>  the power-mode switch: on|off|status|eco|end|battery|prev-plan|gpu-task (power-mode\README.md)
           BluettiWatcher.exe hook               the Claude Code hook: a hook event on stdin, the power mode on stdout
+          BluettiWatcher.exe --broker           the admin broker's run (the SYSTEM task BluettiWatcherBroker starts it)
+          BluettiWatcher.exe --broker-allow service|profile|inspector <name>   allow a target in the broker policy (elevated)
           BluettiWatcher.exe --help | --version
 
         Options:
@@ -48,6 +50,9 @@ internal static class Cli
     {
         // The switch takes its own arguments, PowerShell style (power-mode.ps1 forwards them unchanged).
         if (args.Length > 0 && args[0] == "power-mode") return new CliRequest(CliAction.PowerMode);
+        // The broker verbs take nothing else: a run of the SYSTEM task, or one policy edit.
+        if (args.Length == 1 && args[0] == "--broker") return new CliRequest(CliAction.Broker);
+        if (args.Length > 0 && args[0] == "--broker-allow") return new CliRequest(CliAction.BrokerAllow);
         if (args.Any(HelpTokens.Contains)) return new CliRequest(CliAction.Help);
         // The hook runs on every Claude Code event: whatever follows the word, it runs and exits 0 (an exit 2 blocks a prompt).
         if (args.Length > 0 && args[0] == "hook") return new CliRequest(CliAction.Hook);
@@ -88,6 +93,10 @@ internal static class Cli
                     await output.FlushAsync();
                     return new CliOutcome(code, null);
                 }
+            case CliAction.Broker:
+                return new CliOutcome(OperatingSystem.IsWindows() ? await Modes.Broker.BrokerCommands.RunBrokerAsync(error) : 2, null);
+            case CliAction.BrokerAllow:
+                return new CliOutcome(OperatingSystem.IsWindows() ? await Modes.Broker.BrokerCommands.AllowAsync(args, output, error) : 2, null);
             case CliAction.Error:
                 await error.WriteLineAsync($"{ErrorPrefix}{request.Message}{Environment.NewLine}Try BluettiWatcher.exe --help");
                 return new CliOutcome(2, null);
