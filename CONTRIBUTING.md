@@ -47,6 +47,22 @@ work; `dotnet test --project tests/BluettiWatcher.Tests --help` lists them. A fi
 - Behaviour changes update [docs/design.md](docs/design.md) (and [docs/configuration.md](docs/configuration.md) or
   [docs/api.md](docs/api.md) when a key or a field changes).
 
+## Releasing
+
+A release is the tag `vX.Y.Z` on main; `.github/workflows/release.yml` builds, packages and publishes it. Cut it with:
+
+```powershell
+pwsh -NoProfile -File tools/release.ps1          # dry run: the checks, then what -Push would do; changes nothing
+pwsh -NoProfile -File tools/release.ps1 -Push    # tag, push the tag, wait for release.yml, verify the release
+```
+
+Checks: on main, a clean tree (untracked files count), HEAD equal to origin/main after a fetch, the `<Version>` of
+`src/BluettiWatcher/BluettiWatcher.csproj` has its `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md` (the release
+notes), and no tag `vX.Y.Z` here or on origin. `-Push` then makes the annotated tag, pushes it, watches the release.yml
+run (`gh run watch`), downloads the zip and its `.sha256` (`gh release download`), compares the hash, unpacks the zip
+and runs its `install.ps1` as a dry run. It needs `gh`, signed in. Exit: 0 passed · 1 a check failed · 2 could not run.
+Its offline test (throwaway repositories, a fake `gh`): `pwsh -NoProfile -File tools/test-release.ps1`.
+
 ## Pull requests
 
 One change per pull request, with tests for the behaviour it adds or fixes, all tests green, and a description of what
