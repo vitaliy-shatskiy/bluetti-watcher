@@ -176,7 +176,7 @@ public class EncryptedStationMemoryTests
     {
         byte[] body = [1, 4, 0x11, 0x22, 0x33, 0x44];
         int sum = body.Sum(b => b);
-        return [(byte)'*', (byte)'*', .. body, (byte)(sum >> 8), (byte)sum];
+        return [(byte)'*', (byte)'*', .. body, unchecked((byte)(sum >> 8)), unchecked((byte)sum)];
     }
 
     private static StationConfig Cfg() => new() { Mac = "AA:BB:CC:DD:EE:FF", Type = "AC180", ReaderTimeoutSec = 10 };

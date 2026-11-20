@@ -18,7 +18,7 @@ public class ModbusFrameTests
     public void Crc16_modbus_known_frames_low_byte_first(string hex, string crcLowFirst)
     {
         ushort crc = ModbusCrc.Compute(Convert.FromHexString(hex));
-        Assert.Equal(crcLowFirst, Convert.ToHexString([(byte)crc, (byte)(crc >> 8)]));
+        Assert.Equal(crcLowFirst, Convert.ToHexString([unchecked((byte)crc), unchecked((byte)(crc >> 8))]));
     }
 
     [Fact]
@@ -27,7 +27,7 @@ public class ModbusFrameTests
         var r = ModbusRead.Request(43, 1);
         byte[] head = [0x01, 0x03, 0x00, 0x2B, 0x00, 0x01];
         ushort crc = ModbusCrc.Compute(head);
-        Assert.Equal([.. head, (byte)crc, (byte)(crc >> 8)], r.Frame.ToArray());
+        Assert.Equal([.. head, unchecked((byte)crc), unchecked((byte)(crc >> 8))], r.Frame.ToArray());
         Assert.Equal(7, r.ExpectedLength);
         Assert.Equal("010300000001840A", Convert.ToHexString(ModbusRead.Request(0, 1).Frame.Span));
     }
@@ -143,9 +143,9 @@ public class ModbusFrameTests
     internal static byte[] Answer(params ushort[] words)
     {
         var f = new List<byte> { 0x01, 0x03, (byte)(2 * words.Length) };
-        foreach (var w in words) { f.Add((byte)(w >> 8)); f.Add((byte)w); }
+        foreach (var w in words) { f.Add(unchecked((byte)(w >> 8))); f.Add(unchecked((byte)w)); }
         ushort crc = ModbusCrc.Compute([.. f]);
-        f.Add((byte)crc); f.Add((byte)(crc >> 8));
+        f.Add(unchecked((byte)crc)); f.Add(unchecked((byte)(crc >> 8)));
         return [.. f];
     }
 
@@ -153,7 +153,7 @@ public class ModbusFrameTests
     {
         byte[] head = [0x01, 0x83, code];
         ushort crc = ModbusCrc.Compute(head);
-        return [.. head, (byte)crc, (byte)(crc >> 8)];
+        return [.. head, unchecked((byte)crc), unchecked((byte)(crc >> 8))];
     }
 
     [Fact]
@@ -285,7 +285,7 @@ public class V1ModelTests
         Set(36, 120); Set(37, 0); Set(38, 345); Set(39, 12); Set(43, 85);
         Set(70, 1); Set(71, 2301); Set(74, 500); Set(77, 2246); Set(80, 500);
         Set(86, 523); Set(87, 118); Set(88, 225);
-        return [.. regs.SelectMany(r => new[] { (byte)(r >> 8), (byte)r })];
+        return [.. regs.SelectMany(r => new[] { unchecked((byte)(r >> 8)), unchecked((byte)r) })];
     }
 
     [Fact]
@@ -323,7 +323,7 @@ public class V1ModelTests
     [InlineData(0, 0.0)]
     public void A_battery_percent_over_100_is_dropped(int raw, double? expected)
     {
-        var v = V1Models.Decode(V1Models.All["AC200PL"], 43, [(byte)(raw >> 8), (byte)raw]);
+        var v = V1Models.Decode(V1Models.All["AC200PL"], 43, [unchecked((byte)(raw >> 8)), unchecked((byte)raw)]);
         Assert.Equal(expected, v.TryGetValue("BATTERY_SOC", out var x) ? x.Number : null);
     }
 

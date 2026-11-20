@@ -32,13 +32,17 @@ internal static class ModbusCrc
 {
     public static ushort Compute(ReadOnlySpan<byte> data)
     {
-        ushort crc = 0xFFFF;
-        foreach (byte b in data)
+        // A checksum: bit arithmetic, unchecked like every hash.
+        unchecked
         {
-            crc ^= b;
-            for (int i = 0; i < 8; i++) crc = (crc & 1) != 0 ? (ushort)((crc >> 1) ^ 0xA001) : (ushort)(crc >> 1);
+            ushort crc = 0xFFFF;
+            foreach (byte b in data)
+            {
+                crc ^= b;
+                for (int i = 0; i < 8; i++) crc = (crc & 1) != 0 ? (ushort)((crc >> 1) ^ 0xA001) : (ushort)(crc >> 1);
+            }
+            return crc;
         }
-        return crc;
     }
 }
 
@@ -94,13 +98,14 @@ internal static class ModbusRead
         var frame = new byte[8];
         frame[0] = UnitId;
         frame[1] = function;
-        frame[2] = (byte)(start >> 8);
-        frame[3] = (byte)start;
-        frame[4] = (byte)(quantity >> 8);
-        frame[5] = (byte)quantity;
+        // Big-endian and CRC bytes: each cast keeps the low 8 bits on purpose.
+        frame[2] = unchecked((byte)(start >> 8));
+        frame[3] = unchecked((byte)start);
+        frame[4] = unchecked((byte)(quantity >> 8));
+        frame[5] = unchecked((byte)quantity);
         ushort crc = ModbusCrc.Compute(frame.AsSpan(0, 6));
-        frame[6] = (byte)crc;
-        frame[7] = (byte)(crc >> 8);
+        frame[6] = unchecked((byte)crc);
+        frame[7] = unchecked((byte)(crc >> 8));
         return frame;
     }
 }
@@ -167,7 +172,7 @@ internal sealed class ResponseAssembler(ReadRequest request)
     {
         var frame = _buffer.ToArray();
         ushort crc = ModbusCrc.Compute(frame.AsSpan(0, frame.Length - 2));
-        return frame[^2] == (byte)crc && frame[^1] == (byte)(crc >> 8);
+        return frame[^2] == unchecked((byte)crc) && frame[^1] == unchecked((byte)(crc >> 8));
     }
 
     private AssemblyState Invalid(string why)

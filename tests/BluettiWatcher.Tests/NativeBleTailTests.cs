@@ -155,7 +155,7 @@ public sealed class EncryptedStationHealthTests : IDisposable
     {
         byte[] body = [1, 4, 0x11, 0x22, 0x33, 0x44];
         int sum = body.Sum(b => b);
-        byte[] challenge = [(byte)'*', (byte)'*', .. body, (byte)(sum >> 8), (byte)sum];
+        byte[] challenge = [(byte)'*', (byte)'*', .. body, unchecked((byte)(sum >> 8)), unchecked((byte)sum)];
         var reader = new NativeBleReader(_cfg, new ScriptedConnector(() => new BleOpen(new ScriptedLink(_ => [challenge]), null)), _ => { }, TimeSpan.FromMilliseconds(300));
 
         Assert.False((await Health(reader)).GetProperty("bluetoothEncrypted").GetBoolean());   // present before anything is known

@@ -531,7 +531,7 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
             if (length < 0 || late.Count - p < length) return;
             var frame = late.GetRange(p, length).ToArray();
             ushort crc = ModbusCrc.Compute(frame.AsSpan(0, length - 2));
-            if (frame[^2] != (byte)crc || frame[^1] != (byte)(crc >> 8)) return;
+            if (frame[^2] != unchecked((byte)crc) || frame[^1] != unchecked((byte)(crc >> 8))) return;
             int from = Sender(unanswered, function == ModbusRead.ReadHoldingRegisters ? frame[2] / 2 : null);
             if (from < 0) return;
             unanswered.RemoveRange(0, from + 1);

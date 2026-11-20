@@ -424,6 +424,16 @@ public sealed class CloudReaderTests : IDisposable
         Assert.DoesNotContain(Refresh, s, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(long.MaxValue, 253_402_300_799L)]   // a lifetime past year 9999 ends at the last second there is
+    [InlineData(long.MinValue, 0L)]                 // a lifetime before 1970 has ended
+    [InlineData(3600L, 1_700_003_600L)]
+    public void ExpiresAt_LifetimeOfAnySize_SaturatesInsteadOfOverflowing(long expiresIn, long expectedUnix)
+    {
+        var token = new CloudToken(Access, Refresh, "bearer", expiresIn, 1_700_000_000);
+        Assert.Equal(expectedUnix, token.ExpiresAt.ToUnixTimeSeconds());
+    }
+
     // design.md §4 AC2
     [Fact]
     public async Task A_station_on_battery_is_a_reading_from_the_cloud()

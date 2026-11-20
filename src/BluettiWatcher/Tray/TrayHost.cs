@@ -154,7 +154,7 @@ internal sealed class TrayHost : ITrayView, IDisposable
             {
                 case CallbackMsg:
                     uint what = (uint)(lParam & 0xFFFF);
-                    if (what is NIN_SELECT or NIN_KEYSELECT or WM_CONTEXTMENU) ShowMenu((short)(wParam & 0xFFFF), (short)((wParam >> 16) & 0xFFFF));
+                    if (what is NIN_SELECT or NIN_KEYSELECT or WM_CONTEXTMENU) ShowMenu(unchecked((short)(wParam & 0xFFFF)), unchecked((short)((wParam >> 16) & 0xFFFF)));   // signed: a monitor left of or above the main one has negative coordinates
                     return 0;
                 case ShowMsg:
                     TraySnapshot? next;

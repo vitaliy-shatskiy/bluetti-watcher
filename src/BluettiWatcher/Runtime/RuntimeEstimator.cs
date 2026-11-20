@@ -85,7 +85,8 @@ internal static class RuntimeEstimator
         if (current is not { Soc: { } soc } || !double.IsFinite(soc) || current.InAc > 0) return null;
         double load = (current.OutAc ?? 0) + (current.OutDc ?? 0);
         if (!(load > 0)) return null;
-        long newest = rows.Where(r => r.At <= nowSec).Select(r => r.At).DefaultIfEmpty(long.MinValue).Max();
+        if (!rows.Any(r => r.At <= nowSec)) return null;
+        long newest = rows.Where(r => r.At <= nowSec).Max(r => r.At);
         if (nowSec - newest > c.MaxGapSec || Rate(rows, nowSec, c) is not { } w) return null;
         double drain = w.MeanLoad > 0 ? w.Rate * load / w.MeanLoad : w.Rate;
         return double.IsFinite(drain) && drain > 0 ? drain : null;

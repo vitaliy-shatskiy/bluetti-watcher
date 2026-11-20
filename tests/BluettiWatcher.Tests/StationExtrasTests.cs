@@ -12,7 +12,7 @@ namespace BluettiWatcher.Tests;
 /// <summary>V2 registers 100-105, 122-138 and 1151-1153 (docs/bluetti-protocol.md, sections 2.3, 2.4, 3), synthetic answers.</summary>
 public class V2ExtrasDecodeTests
 {
-    private static byte[] Body(params ushort[] words) => [.. words.SelectMany(w => new[] { (byte)(w >> 8), (byte)w })];
+    private static byte[] Body(params ushort[] words) => [.. words.SelectMany(w => new[] { unchecked((byte)(w >> 8)), unchecked((byte)w) })];
 
     /// <summary>A 122+17 body: 122 = invPowerType (low byte), 126-129 warnings, 133-138 faults.</summary>
     internal static byte[] AlarmBody(byte powerType = 0, ushort warn1 = 0, ushort warn2 = 0, ushort fault1 = 0, ushort fault3 = 0)

@@ -19,8 +19,8 @@ public class V2ModelTests
         for (int i = 0; i < quantity; i++)
         {
             ushort v = values.GetValueOrDefault(start + i);
-            body[2 * i] = (byte)(v >> 8);
-            body[2 * i + 1] = (byte)v;
+            body[2 * i] = unchecked((byte)(v >> 8));
+            body[2 * i + 1] = unchecked((byte)v);
         }
         return body;
     }
@@ -134,7 +134,7 @@ public class KeyExchangeTests
     {
         byte[] body = [type, 4, .. data ?? [0x11, 0x22, 0x33, 0x44]];
         int sum = body.Sum(b => b);
-        return [(byte)'*', (byte)'*', .. body, (byte)(sum >> 8), (byte)sum];
+        return [(byte)'*', (byte)'*', .. body, unchecked((byte)(sum >> 8)), unchecked((byte)sum)];
     }
 
     [Fact]

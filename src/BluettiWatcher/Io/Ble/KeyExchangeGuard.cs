@@ -59,7 +59,8 @@ internal static class KeyExchange
         if (!PlainTypes.Contains(body[0])) return false;
         int sum = 0;
         foreach (byte b in body) sum += b;
-        return note[^2] == (byte)(sum >> 8) && note[^1] == (byte)sum;
+        // The 16-bit sum: its low two bytes, wrapped on purpose.
+        return note[^2] == unchecked((byte)(sum >> 8)) && note[^1] == unchecked((byte)sum);
     }
 
     /// <summary>The first bytes of a link, which may still turn out to be a pre-key message: <c>**</c>, then a plain type (a prefix of one is enough).</summary>

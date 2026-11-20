@@ -65,7 +65,8 @@ internal sealed class FallbackReader(IStationReader bluetooth, IStationReader? c
 /// <summary>The cloud token file: <c>{access_token, refresh_token, token_type, expires_in, created_at}</c>, created_at in unix seconds.</summary>
 internal sealed record CloudToken(string Access, string Refresh, string TokenType, long ExpiresIn, long CreatedAt)
 {
-    public DateTimeOffset ExpiresAt => DateTimeOffset.FromUnixTimeSeconds(Math.Clamp(CreatedAt + ExpiresIn, 0, 253_402_300_799));
+    // Int128: the file's two longs can be anything; their sum saturates at the clamp instead of overflowing.
+    public DateTimeOffset ExpiresAt => DateTimeOffset.FromUnixTimeSeconds((long)Int128.Clamp((Int128)CreatedAt + ExpiresIn, 0, 253_402_300_799));
 
     /// <summary>Never the tokens: a record would print them.</summary>
     public override string ToString() => $"CloudToken {{ expires {ExpiresAt:yyyy-MM-dd'T'HH:mm:ss'Z'} }}";
