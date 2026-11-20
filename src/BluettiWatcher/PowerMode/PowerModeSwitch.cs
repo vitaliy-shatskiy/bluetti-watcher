@@ -41,13 +41,26 @@ internal sealed partial class PowerModeSwitch : IDisposable
 
     /// <param name="env">The environment the command sees (names compared without case, as Windows does).</param>
     /// <param name="output">Where the command's lines go.</param>
-    /// <param name="exePath">The exe the end task runs (this process's own when not given).</param>
+    /// <param name="exePath">The exe the end task runs (when not given: <see cref="EndTaskExe"/> of this process's own).</param>
     public PowerModeSwitch(IEnumerable<KeyValuePair<string, string>> env, TextWriter output, string? exePath = null)
     {
         _env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (k, v) in env) _env[k] = v;
         _write = output.WriteLine;
-        ExePath = exePath ?? Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "BluettiWatcher.exe");
+        ExePath = exePath ?? EndTaskExe(Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "BluettiWatcher.exe"));
+    }
+
+    /// <summary>The service twin's file name: the same exe with the GUI subsystem, written by install.ps1 beside BluettiWatcher.exe.</summary>
+    internal const string ServiceExeName = "BluettiWatcherService.exe";
+
+    /// <summary>
+    /// The exe a scheduled task may start: the windowless service twin beside <paramref name="processPath"/> when it is there,
+    /// since BluettiWatcher.exe is a console program and a task that starts it opens a console window; else the path itself.
+    /// </summary>
+    internal static string EndTaskExe(string processPath)
+    {
+        string twin = Path.Combine(Path.GetDirectoryName(processPath) ?? "", ServiceExeName);
+        return File.Exists(twin) ? twin : processPath;
     }
 
     /// <summary>The process environment as a list, for the constructor.</summary>

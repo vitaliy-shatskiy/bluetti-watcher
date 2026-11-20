@@ -26,7 +26,10 @@ read-only features to come, are mapped in [bluetti-protocol.md](bluetti-protocol
 1. A per-user background process, no window and no tray, started at logon by a scheduled task as the user (Medium
    integrity, "run only when the user is logged on"), restarted on failure; nothing before logon. It must never run in
    session 0: the power-mode mutex is a `Local\` name shared with the user's own scripts. A start in session 0 exits 2.
-2. Host: one C# NativeAOT exe (`BluettiWatcher.exe`). Bluetooth LE goes in-process through WinRT GATT, the 29 IoT V1 and
+2. Host: one C# NativeAOT exe (`BluettiWatcher.exe`), a console program: a terminal waits for `--help`, `--version` or
+   `power-mode status` and gets its exit code. The scheduled tasks (the logon task, the eco end task) start its twin
+   `BluettiWatcherService.exe`, the same file with the PE subsystem set to Windows GUI, which install.ps1 writes beside
+   it: a task that starts a console program opens a console window, a GUI-subsystem exe opens none. Bluetooth LE goes in-process through WinRT GATT, the 29 IoT V1 and
    V2 models (AC200L, AC200M, AC200PL, AC300, AC500, EB3A, EP500, EP500P; AC2A, AC2P, AC50B, AC60, AC60P, AC70, AC70P,
    AC180, AC180T, AC180P, AP300, EL10, EL30V2, EL100V2, EP600, EP760, EP800, EP2000, Handsfree 1, PR30V2, PR100V2):
    connect, read, disconnect per poll, so the phone

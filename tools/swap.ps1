@@ -17,6 +17,9 @@ Rules:
 #>
 
 $script:WatcherExe = 'BluettiWatcher.exe'
+# What the logon task starts: BluettiWatcher.exe is a console program (a terminal waits for it), and a task that starts a
+# console program opens a console window; the twin is the same exe with the Windows (GUI) subsystem and opens none.
+$script:WatcherServiceExe = 'BluettiWatcherService.exe'
 $script:WatcherUnverified = '.unverified'
 
 function Write-WatcherLog {
@@ -220,6 +223,27 @@ function New-WatcherTaskDefinition {
         Settings  = New-ScheduledTaskSettingsSet -Hidden -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
             -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew
     }
+}
+
+# The service twin of $Dir\BluettiWatcher.exe: a copy whose PE Subsystem field is 2 (Windows GUI), written beside it.
+# Made only when missing: the twin in a live bin is running and cannot be replaced, and a staging directory starts
+# empty. True when it was written. Throws, writing nothing, on a file that is not a PE image.
+function New-WatcherServiceExe {
+    param([Parameter(Mandatory)][string] $Dir)
+    $twin = Join-Path $Dir $script:WatcherServiceExe
+    if (Test-Path -LiteralPath $twin) { return $false }
+    $source = Join-Path $Dir $script:WatcherExe
+    $bytes = [IO.File]::ReadAllBytes($source)
+    $pe = if ($bytes.Length -ge 0x40 -and $bytes[0] -eq 0x4D -and $bytes[1] -eq 0x5A) { [BitConverter]::ToInt32($bytes, 0x3C) } else { -1 }
+    # Subsystem: offset 68 of the optional header, which follows the 4-byte signature and the 20-byte file header.
+    $at = $pe + 24 + 68
+    if ($pe -lt 0x40 -or $at + 2 -gt $bytes.Length -or [BitConverter]::ToUInt32($bytes, $pe) -ne 0x4550) { throw "$source is not a Windows exe (no PE header); no $script:WatcherServiceExe was written" }
+    $bytes[$at] = 2
+    $bytes[$at + 1] = 0
+    $tmp = "$twin.tmp"
+    [IO.File]::WriteAllBytes($tmp, $bytes)
+    [IO.File]::Move($tmp, $twin, $true)
+    $true
 }
 
 # What an earlier failed run left in the staging directory never reaches bin.

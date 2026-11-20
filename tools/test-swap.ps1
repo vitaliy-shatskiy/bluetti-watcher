@@ -413,6 +413,26 @@ try {
     Check 'installer: both modes print what is pending and the state of the task before the preconditions' ((& $at 'Get-WatcherPending -Bin') -gt 0 -and (& $at 'Get-WatcherPending -Bin') -lt (& $at "Write-Output `"task '`$task': `$(Get-WatcherTaskState") -and (& $at "Write-Output `"task '`$task': `$(Get-WatcherTaskState") -lt (& $at '# ---- preconditions'))
     Check 'installer: a failed publish reports the state it read' ($text -match 'the publish failed \(exit \$code\); \$bin was not touched; the task ''\$task'' is \$\(Get-WatcherTaskState' -and $text -notmatch 'keeps running"')
     Check 'installer: staging and previous sit next to bin' ($text -match "\`$staging = Join-Path \`$root 'bin\.new'" -and $text -match "\`$previous = Join-Path \`$root 'bin\.old'")
+
+    # the service twin: a console exe (System32 whoami.exe stands in) copied with the GUI subsystem; the original untouched
+    $subsystem = { param($f) $b = [IO.File]::ReadAllBytes($f); [BitConverter]::ToUInt16($b, [BitConverter]::ToInt32($b, 0x3C) + 24 + 68) }
+    $twinDir = Join-Path $base 'twin'
+    $null = New-Item -ItemType Directory -Path $twinDir
+    Copy-Item -LiteralPath (Join-Path ([Environment]::GetFolderPath('System')) 'whoami.exe') -Destination (Join-Path $twinDir 'BluettiWatcher.exe')
+    $console = Join-Path $twinDir 'BluettiWatcher.exe'
+    $twin = Join-Path $twinDir 'BluettiWatcherService.exe'
+    $wrote = New-WatcherServiceExe -Dir $twinDir
+    Check 'twin: written with the GUI subsystem (2), the console exe stays 3' ($wrote -eq $true -and (& $subsystem $twin) -eq 2 -and (& $subsystem $console) -eq 3) "wrote $wrote, twin $(& $subsystem $twin)"
+    $sameRest = { $a = [IO.File]::ReadAllBytes($console); $b = [IO.File]::ReadAllBytes($twin); $d = @(for ($i = 0; $i -lt $a.Length; $i++) { if ($a[$i] -ne $b[$i]) { $i } }); $a.Length -eq $b.Length -and $d.Count -eq 1 }
+    Check 'twin: only the subsystem byte differs' (& $sameRest)
+    [IO.File]::WriteAllText($twin, 'running twin')
+    Check 'twin: one already there is left as it is (a live one is running)' ((New-WatcherServiceExe -Dir $twinDir) -eq $false -and [IO.File]::ReadAllText($twin) -eq 'running twin')
+    $notPe = Join-Path $base 'notpe'
+    $null = New-Item -ItemType Directory -Path $notPe
+    [IO.File]::WriteAllText((Join-Path $notPe 'BluettiWatcher.exe'), 'MZ but nothing else')
+    $err = Throws { New-WatcherServiceExe -Dir $notPe }
+    Check 'twin: a file that is not a PE image throws and writes nothing' ($err -match 'not a Windows exe' -and (Names $notPe) -eq 'BluettiWatcher.exe') $err
+    Check 'installer: the task starts the twin, written in staging and in the live bin before the swap' ($text -match 'New-WatcherTaskDefinition -Exe \$serviceExe' -and (& $at 'New-WatcherServiceExe -Dir $bin') -lt (& $at 'Install-WatcherBinaries -Bin') -and (& $at 'New-WatcherServiceExe -Dir $staging') -lt (& $at 'Install-WatcherBinaries -Bin'))
 }
 catch {
     Write-Output "FAIL  unexpected: $($_.Exception.Message) at $($_.InvocationInfo.ScriptLineNumber)"
