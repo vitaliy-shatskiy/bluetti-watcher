@@ -14,6 +14,8 @@ The release notes on GitHub are this file's section for the tag.
   engine's state from `/api/now`; it now reads `GET /api/modes`, the same view the Power modes panel reads, and presses
   through the same select. A read sent before a press never paints over it, a change still running when the page opens
   is followed to its end, and a repaint touches only what changed, so the buttons no longer flicker.
+- Page: the rows the charts draw are merged in one place, in time order and one per time, so a row that arrives out of
+  order can no longer draw a line back across the chart or the load sparkline.
 
 ### Changed
 

@@ -1532,12 +1532,9 @@ async function fetchAndShow(force, settle) {
     const text = await n.text(), hist = await h.json();
     if (!takeAnswer(seq, w)) return;
     const fresh = hist.rows.filter((r) => r.soc !== null), changed = full || fresh.length > 0 || text !== nowText;
-    histAt = hist.rows.length ? Date.parse(hist.rows[hist.rows.length - 1].at) : Math.max(histAt, from - 1000);
-    if (full) { lastRows = fresh; fullAt = to; }
-    else if (fresh.length) {
-      const keep = lastRows.findIndex((r) => Date.parse(r.at) >= to - SPAN);
-      lastRows = (keep < 0 ? [] : keep ? lastRows.slice(keep) : lastRows).concat(fresh);
-    }
+    histAt = hist.rows.reduce((m, r) => Math.max(m, Date.parse(r.at)), Math.max(histAt, from - 1000));
+    if (full) { lastRows = mergeRows([], fresh, to - SPAN); fullAt = to; }
+    else if (fresh.length) lastRows = mergeRows(lastRows, fresh, to - SPAN);
     if (text !== nowText) { lastNow = JSON.parse(text); nowText = text; }
     const lastT = lastRows.length ? Date.parse(lastRows[lastRows.length - 1].at) : 0;
     if (changed || force || to - lastT > STALE) show();
@@ -1546,6 +1543,13 @@ async function fetchAndShow(force, settle) {
   }
 }
 // the modes view rides the same minute (unless the engine is legacy): a switch from the tray shows within one poll
+// The rows the charts draw: in time order, one per time, none older than the span. An answer holding an older or a repeated
+// row never draws a line back across the chart.
+function mergeRows(kept, fresh, from) {
+  const byT = new Map();
+  for (const r of kept.concat(fresh)) { const t = Date.parse(r.at); if (t >= from) byT.set(t, r); }
+  return [...byT.keys()].sort((a, b) => a - b).map((t) => byT.get(t));
+}
 function schedule() { clearTimeout(pollTimer); pollTimer = document.hidden ? null : setTimeout(() => Promise.all([load(), mpEngine === 'legacy' ? null : mpRefresh()]).then(schedule), POLL); }
 // Hidden: no requests and no countdown. Seen again: fresh data at once, then the minute rhythm.
 document.addEventListener('visibilitychange', () => {
