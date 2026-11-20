@@ -1,7 +1,7 @@
 {
   "version": 2,
   "dependencies": {
-    "net10.0-windows10.0.19041": {
+    "net11.0-windows10.0.19041": {
       "Jint": {
         "type": "Direct",
         "requested": "[4.17.0, )",
@@ -72,8 +72,8 @@
       },
       "SQLitePCLRaw.core": {
         "type": "Transitive",
-        "resolved": "2.1.13",
-        "contentHash": "2joofoinuHBFs0nMX3nKuXgxpXryRkCOdM2Ua6HBqQLLy6IW+5f28ZI+HAvMyF8vG7XfNz/lwfBfE6V4juru8Q=="
+        "resolved": "3.0.5",
+        "contentHash": "k81AYXXRCw3Zj8rOhyBoCsx/U97KYDFI2CSKr/ijl5BwpsW/hX/4kBiDmerFaoust8nxBwa0IHQFw8MmSHRtnQ=="
       },
       "System.Security.AccessControl": {
         "type": "Transitive",
@@ -151,30 +151,30 @@
       "bluettiwatcher": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Data.Sqlite.Core": "[10.0.13, )",
-          "SQLitePCLRaw.provider.winsqlite3": "[2.1.11, )"
+          "Microsoft.Data.Sqlite.Core": "[11.0.0, )",
+          "SQLitePCLRaw.provider.winsqlite3": "[3.0.5, )"
         }
       },
       "Microsoft.Data.Sqlite.Core": {
         "type": "CentralTransitive",
-        "requested": "[10.0.13, )",
-        "resolved": "10.0.13",
-        "contentHash": "Gge8XsSCOwcbkbdmt2UDAe6kIv9Q0vA6yb3wsTStjjexaMFLTWfc/1gH4kbhJ+zWiXRTRA4lG2sOQNVfir204w==",
+        "requested": "[11.0.0, )",
+        "resolved": "11.0.0",
+        "contentHash": "aWaF2LDjuFZwE9UsAGRYGNyS48xqaXoKPAjwpJI85fsaM/43s5NTRnl4xtqbTGKq8of2M/W8mo7DJk7v4zzHGQ==",
         "dependencies": {
-          "SQLitePCLRaw.core": "2.1.13"
+          "SQLitePCLRaw.core": "3.0.5"
         }
       },
       "SQLitePCLRaw.provider.winsqlite3": {
         "type": "CentralTransitive",
-        "requested": "[2.1.11, )",
-        "resolved": "2.1.11",
-        "contentHash": "UpH9v68yuLAN3nvXB96s6GE3/tQhG1WnXenNJL/HulgfJAQ5S6ZT6BUy/sDFo5WpqaS0npBbW1z6szWlu6a4Xg==",
+        "requested": "[3.0.5, )",
+        "resolved": "3.0.5",
+        "contentHash": "V1Z/MmQMA8D0yCRnWEndX5x8TB5bh/W6m2aCgcamOAYEHkBISZApm5dUQh1A/7Z/fyrtr65kln+yh6vo+vKVkQ==",
         "dependencies": {
-          "SQLitePCLRaw.core": "2.1.11"
+          "SQLitePCLRaw.core": "3.0.5"
         }
       }
     },
-    "net10.0-windows10.0.19041/win-x64": {
+    "net11.0-windows10.0.19041/win-x64": {
       "Microsoft.Win32.Registry": {
         "type": "Transitive",
         "resolved": "5.0.0",
