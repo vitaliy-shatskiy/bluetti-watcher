@@ -426,8 +426,8 @@ internal sealed class StationService(StationConfig config, IStationReader reader
                 log($"mode: {text}");
             }
             // Auto after a pinned Max or Eco runs no command of its own: the battery rules decide, so the loop reads the
-            // station now instead of at its minute.
-            bool autoAfterPin = mode == ManualMode.Auto && before != ManualMode.Auto;
+            // station now instead of at its minute. With nothing to poll (PollProblem) no reading comes, so none is awaited.
+            bool autoAfterPin = mode == ManualMode.Auto && before != ManualMode.Auto && config.PollProblem is null;
             Volatile.Write(ref _autoAwaitsReading, autoAfterPin);
             if (autoAfterPin) Volatile.Write(ref _pollWanted, true);
             Signal();

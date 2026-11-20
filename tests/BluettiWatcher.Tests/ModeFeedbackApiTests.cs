@@ -291,6 +291,7 @@ public sealed class ModeFeedbackApiTests : IDisposable
     [Fact]
     public async Task SetMode_Auto_after_Max_says_the_rules_take_over_at_the_next_reading_and_asks_for_it_now()
     {
+        _cfg.Mac = "AA:BB:CC:DD:EE:FF";   // a station to poll: the reading the Auto asks for comes
         using var service = InCut();
         var api = Api(service: service);
         Assert.Equal(202, (await Press(api, "max")).Status);
@@ -304,6 +305,24 @@ public sealed class ModeFeedbackApiTests : IDisposable
         Assert.False(settle.IsCompleted);   // settles on the reading the Auto asked for
         await service.PollAsync(TestContext.Current.CancellationToken);
         var now = Json(await settle.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.Equal(JsonValueKind.Null, now.GetProperty("modeHold").ValueKind);
+    }
+
+    // No station to poll (no address, no cloud): the loop only idles, so the Auto waits for no reading and the settle
+    // answers at once instead of after its whole window.
+    [Fact]
+    public async Task SetMode_Auto_after_Max_with_nothing_to_poll_waits_for_no_reading()
+    {
+        using var service = InCut();
+        var api = Api(service: service);
+        Assert.NotNull(_cfg.PollProblem);
+        Assert.Equal(202, (await Press(api, "max")).Status);
+        await service.ApplyPendingAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(202, (await Press(api, "auto")).Status);
+        Assert.False(service.AutoAwaitsReading);
+        Assert.False(service.TakePollRequest());
+        var now = Json(await api.HandleAsync(Req("GET", "/api/now?settle=1"), TestContext.Current.CancellationToken)
+            .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
         Assert.Equal(JsonValueKind.Null, now.GetProperty("modeHold").ValueKind);
     }
 
