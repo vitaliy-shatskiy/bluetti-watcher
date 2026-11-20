@@ -72,6 +72,11 @@ internal static class BrokerCommands
         }
         string tmp = paths.Policy + ".tmp";
         File.WriteAllText(tmp, next.ToJson());
+        // A file an elevated admin writes may be owned by that user, whose implicit rights the broker refuses: Administrators own it.
+        var info = new FileInfo(tmp);
+        var security = info.GetAccessControl();
+        security.SetOwner(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
+        info.SetAccessControl(security);
         File.Move(tmp, paths.Policy, overwrite: true);
         done = $"allowed {kind} {name} in {paths.Policy}";
         return null;
