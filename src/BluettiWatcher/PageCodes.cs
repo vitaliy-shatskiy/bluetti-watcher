@@ -5,7 +5,8 @@ internal sealed record PageNote(string Code, string Text, params string[] Args);
 
 /// <summary>
 /// Every code the service sends the page in place of prose. The page's dictionary holds, in each language, <c>n_</c> + a note
-/// code, <c>v_</c> + a value code and <c>om_</c> + an output mode, hyphens as underscores (a test checks).
+/// code, <c>v_</c> + a value code, <c>om_</c> + an output mode, <c>st_</c> + an action state and <c>ck_</c> + a rule kind,
+/// hyphens as underscores (a test checks).
 /// </summary>
 internal static class PageCodes
 {
@@ -70,7 +71,14 @@ internal static class PageCodes
     /// <summary>The station's output modes (bluetti_bt_lib enums/output_mode.py), CLOUD_MAINS (a cloud reading with AC input, design.md §4 AC2a) and BLE_MAINS (the same from a Bluetooth model with no output-mode field).</summary>
     public static IReadOnlyList<string> OutputModes { get; } = ["STOP", "INVERTER_OUTPUT", "BYPASS_OUTPUT_C", "BYPASS_OUTPUT_D", "LOAD_MATCHING", "CLOUD_MAINS", "BLE_MAINS"];
 
+    /// <summary>The modes engine's action states as /api/modes sends them (<c>ActionStatus</c>; a test compares the enum).</summary>
+    public static IReadOnlyList<string> ActionStatuses { get; } = ["unknown", "satisfied", "applied", "failed", "unsupported", "relinquished", "restore-failed"];
+
+    /// <summary>The Auto rule kinds as /api/modes sends them (<c>ConditionKind</c>; a test compares the enum).</summary>
+    public static IReadOnlyList<string> ConditionKinds { get; } = ["mainsOffFor", "mainsOnFor", "socBelow", "cutWithin", "timeWindow"];
+
     /// <summary>The page's dictionary keys for every code.</summary>
     public static IEnumerable<string> Keys() =>
-        Notes.Select(c => "n_" + c).Concat(Values.Select(c => "v_" + c)).Concat(OutputModes.Select(c => "om_" + c)).Select(k => k.Replace('-', '_'));
+        Notes.Select(c => "n_" + c).Concat(Values.Select(c => "v_" + c)).Concat(OutputModes.Select(c => "om_" + c))
+            .Concat(ActionStatuses.Select(c => "st_" + c)).Concat(ConditionKinds.Select(c => "ck_" + c)).Select(k => k.Replace('-', '_'));
 }

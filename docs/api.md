@@ -192,4 +192,14 @@ so, nothing to undo), `applied`, `failed`, `unsupported`, `relinquished` (change
 `restores[]`: resources an earlier mode left that are not back yet: `{ key, typeId, status, detail }`
 (`restore-failed` with its try count, `relinquished`, `unknown`).
 
+A module's settings form is generated from its `settingsSchema` and `uiHints` alone (the page's Power modes panel names
+no module). `uiHints` maps a field's dotted path from the settings root (`limit`, `inner.depth`) to `{ label, help,
+units, order, widget, discovery, step, labels }`: `discovery` (or `list`) names one of the module's `discovery` lists
+(a select of its labels that stores their ids; for an array, a checkbox list); `widget: "slider"` makes a number with
+both `minimum` and `maximum` a slider; `order` sorts the fields (lower first, the rest in schema order); `labels` names
+`enum` values. Without hints: `enum` = a select, `boolean` = a checkbox, `number` / `integer` = a number field with
+the schema's bounds, any other array = one item per line, `object` = a group of its own fields, several types = a text
+field; `title` and `description` are the label and the help, `default` is filled in. A stored value a list no longer
+offers stays chosen and marked "not found here".
+
 Journal record: `{ seq, at, kind: "mode" | "prepared" | "applied" | "relinquished" | "restored" | "restore-failed" | "dropped", modeId, typeId, key, before, value, final, detail }`.

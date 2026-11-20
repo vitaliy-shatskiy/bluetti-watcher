@@ -735,6 +735,12 @@ Off by default (`legacy`: §5's fixed eco). Code in `src/BluettiWatcher/Modes/`;
 7. **Flag.** The active mode's flag word is written through the switch's own flag code (same lock, same format; the
    battery fields and any plan or GPU limit an older eco still owes are carried over), so its readers are unchanged.
    Under `v2` the station's eco and mains-back run no switch command; the station emergency still does (§6).
+8. **Page.** The station page has a Power modes panel, shown only under `v2` and asked nothing while it is closed (open:
+   the catalogue once, `/api/modes` each minute; `/#modes` opens it): Auto or a mode, why the mode is in force (the
+   rule in the page's language), a chip per action state with its reason, the hibernate setting, the modes (built-ins
+   not deletable) with an editor whose settings forms are generated from the catalogue (api.md, Power modes), and the
+   Auto rules with up/down ordering and an editor per condition kind (times as `HH:mm`, 24-hour). A refused save shows
+   each problem at its field and keeps the edit; an emptied rule value is refused before it is sent.
 
 ## 13. Admin broker (power modes)
 

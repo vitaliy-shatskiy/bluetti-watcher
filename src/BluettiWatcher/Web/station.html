@@ -132,6 +132,40 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 .intro .area,.intro .fc{animation:fade .9s ease .5s both}
 .intro rect.hbar{transform-box:fill-box;transform-origin:bottom;animation:grow .7s cubic-bezier(.2,.7,.2,1) both}
 .rowbar .fill{transition:width .8s cubic-bezier(.2,.7,.2,1)}
+/* the power modes panel: forms generated from the catalogue, one label column and one control column */
+.mp details>summary{margin-bottom:0}.mp details[open]>summary{margin-bottom:12px}
+.mp h3{font-size:11px;line-height:16px;margin:18px 0 8px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+.mp .row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.mp .sp{flex:1}
+.mp .chips{margin:10px 0 4px}
+#modesSel button[aria-pressed=true]{background:var(--accent);color:#fff}
+#modesSel button[data-pending]{outline:1px dashed var(--accent);outline-offset:-1px;color:var(--text)}
+.mp .item{display:flex;align-items:center;gap:10px;padding:7px 4px;border-top:1px solid var(--line)}
+.mp .item .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mp .tag{font-size:11px;color:var(--dim);background:var(--raised);border-radius:6px;padding:1px 6px;margin-left:8px}
+.mp .tag.on{color:var(--text);font-weight:600}
+.mp button.b{all:unset;cursor:pointer;padding:4px 10px;border-radius:6px;background:var(--raised);font-size:12px;line-height:18px;white-space:nowrap}
+.mp button.b:hover:not(:disabled){background:#30333a}
+.mp button.b:focus-visible{outline:1px solid var(--accent)}
+.mp button.b.pri{background:var(--accent);color:#fff}
+.mp button.b:disabled{opacity:.45;cursor:default}
+.mp fieldset{border:1px solid var(--edge);border-radius:10px;padding:8px 12px 10px;margin:8px 0;min-width:0}
+.mp legend{padding:0 4px;font-weight:600}
+.mp .f{display:grid;grid-template-columns:200px minmax(0,1fr);gap:4px 12px;align-items:center;margin:6px 0}
+.mp .f>.help,.mp .f>.ferr{grid-column:2}
+.mp .help{color:var(--dim);font-size:12px}
+.mp .ferr{color:var(--bad);font-size:12px}
+.mp .msg{font-size:12px;margin-top:6px}.mp .msg.ok{color:var(--ok)}.mp .msg.bad{color:var(--bad)}
+.mp input:not([type=checkbox]):not([type=range]),.mp select,.mp textarea{font:inherit;color:var(--text);background:var(--frame);border:1px solid var(--edge);border-radius:6px;padding:4px 8px;min-width:0;max-width:100%}
+.mp input[type=number]{width:110px}.mp .rules input[type=text]{width:64px;font-variant-numeric:tabular-nums}
+.mp input[type=checkbox],.mp input[type=range]{accent-color:var(--accent)}
+.mp [aria-invalid=true]{border-color:var(--bad)!important}
+.mp :is(input,select,textarea):focus-visible{outline:1px solid var(--accent)}
+.mp .multi{display:flex;flex-direction:column;gap:2px;max-height:180px;overflow:auto}
+.mp .multi label,.mp label.ck{display:inline-flex;align-items:center;gap:6px}
+.mp ol.rules{margin:0;padding-left:22px}.mp ol.rules li{padding:6px 0;border-top:1px solid var(--line)}
+.mp output{font-variant-numeric:tabular-nums;color:var(--dim);min-width:56px}
+@media(max-width:600px){.mp .f{grid-template-columns:1fr}.mp .f>.help,.mp .f>.ferr{grid-column:1}}
 
 
 
@@ -195,6 +229,12 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 <div class="card"><details><summary data-i18n="lastReadings"></summary><table><thead><tr><th data-i18n="colTime"></th><th data-i18n="colBattery"></th><th data-i18n="colLoad"></th><th data-i18n="colInput"></th><th data-i18n="colGrid"></th><th data-i18n="colVolt"></th><th data-i18n="colHz"></th></tr></thead><tbody id="rows"></tbody></table></details></div>
 <!-- the station's own values (V2 stations only): hidden while the station reports none -->
 <div class="card" id="stationCard" hidden><details open><summary data-i18n="stationOwn"></summary><div id="stationBody"></div></details></div>
+
+<div class="card mp" id="modesCard" hidden><details id="modesMore"><summary data-i18n="modesTitle"></summary>
+  <div class="row"><div class="seg" id="modesSel" role="group" data-i18n-aria="modesChoose"></div><span class="s" id="modesNow"></span></div>
+  <div class="chips" id="modesStatus" role="status" aria-live="polite"></div>
+  <div id="modesHib"></div><div class="msg" id="modesMsg" role="status" aria-live="polite" hidden></div>
+  <div id="modesList"></div><div id="modesEdit" hidden></div><div id="modesRules"></div></details></div>
 </main><div id="tip"></div>
 <script>
 // Every visible text of the page, per language. A key used anywhere below must exist in both (a test checks).
@@ -280,6 +320,82 @@ en: {
   stAlarms: "Warnings and faults",
   stNone: "none",
   stTemps: "Temperatures (ambient, inverter, solar)",
+  modesTitle: "Power modes",
+  modesChoose: "Power mode",
+  modesNowAuto: "In force: {m} · Auto, rule {n}: {c}",
+  modesNowKept: "In force: {m} · Auto: no rule matches, the mode stays",
+  modesNowManual: "In force: {m} · held until Auto",
+  modesEmergency: "battery emergency: the station's protection comes first",
+  modesChip: "{a}: {s}",
+  modesChipWhy: "{a}: {s} ({r})",
+  modesNoActions: "this mode changes nothing",
+  modesHibernate: "Hibernate the PC when the battery reaches the hibernate level",
+  modesHibOn: "Hibernation on",
+  modesHibOff: "Hibernation off",
+  modesList: "Modes",
+  modesBuiltIn: "built in",
+  modesActiveTag: "in force",
+  modesFlagIs: "flag: {f}",
+  fwNormal: "normal",
+  fwEco: "eco",
+  fwEmergency: "emergency",
+  modesEdit: "Edit",
+  modesDelete: "Delete",
+  modesDeleteAsk: "Delete the mode {n}?",
+  modesDeleted: "Mode {n} deleted",
+  modesNew: "New mode",
+  modesEditTitle: "Mode {n}",
+  modesId: "Id",
+  modesIdHelp: "1 to 32 of a-z, 0-9 and -",
+  modesName: "Name",
+  modesFlag: "Power-mode flag",
+  modesActions: "Actions",
+  modesEnabled: "on",
+  modesEnforce: "keep enforced",
+  modesEnforceTip: "While the mode is active, a change made by hand is written back instead of being left as is",
+  modesRemove: "Remove",
+  modesAddAction: "Add action",
+  modesActionType: "Action type",
+  modesNoModules: "no action types in this build yet",
+  modesUnavailable: "unavailable here: {r}",
+  modesUnknownType: "not known to this build: kept as is",
+  modesPick: "– choose –",
+  modesMissing: "{v} (not found here)",
+  modesSave: "Save",
+  modesCancel: "Cancel",
+  modesSaved: "Saved",
+  modesNotSaved: "Not saved: {e}",
+  modesFix: "Not saved: see the marked fields",
+  modesNeedValue: "a value is needed",
+  modesRules: "Auto rules: the first that matches wins",
+  modesNoRules: "no rules: Auto keeps the mode it has",
+  modesRuleKind: "Condition",
+  modesRuleTo: "Mode to choose",
+  modesHyst: "hysteresis",
+  modesFrom: "from",
+  modesTo: "to",
+  modesUp: "Move up",
+  modesDown: "Move down",
+  modesAddRule: "Add rule",
+  uSec: "s",
+  uPct: "%",
+  rdMainsOff: "mains off for {n} s",
+  rdMainsOn: "mains on for {n} s",
+  rdSoc: "battery under {n} %",
+  rdCut: "outage within {n} min",
+  rdTime: "{a}–{b}",
+  ck_mainsOffFor: "mains off for",
+  ck_mainsOnFor: "mains on for",
+  ck_socBelow: "battery under",
+  ck_cutWithin: "outage within",
+  ck_timeWindow: "time between",
+  st_unknown: "not checked yet",
+  st_satisfied: "already so",
+  st_applied: "applied",
+  st_failed: "failed",
+  st_unsupported: "not supported here",
+  st_relinquished: "changed by you, left as is",
+  st_restore_failed: "not restored",
   colTime: "Time",
   colLoad: "Load",
   colInput: "Input",
@@ -586,6 +702,82 @@ uk: {
   stAlarms: "Попередження та збої",
   stNone: "немає",
   stTemps: "Температури (довкілля, інвертор, сонячний)",
+  modesTitle: "Режими живлення",
+  modesChoose: "Режим живлення",
+  modesNowAuto: "Діє: {m} · Авто, правило {n}: {c}",
+  modesNowKept: "Діє: {m} · Авто: жодне правило не підходить, режим лишається",
+  modesNowManual: "Діє: {m} · утримується до Авто",
+  modesEmergency: "аварійний заряд: спершу захист станції",
+  modesChip: "{a}: {s}",
+  modesChipWhy: "{a}: {s} ({r})",
+  modesNoActions: "цей режим нічого не змінює",
+  modesHibernate: "Переводити ПК у гібернацію, коли батарея сягає рівня гібернації",
+  modesHibOn: "Гібернацію увімкнено",
+  modesHibOff: "Гібернацію вимкнено",
+  modesList: "Режими",
+  modesBuiltIn: "вбудований",
+  modesActiveTag: "діє",
+  modesFlagIs: "прапорець: {f}",
+  fwNormal: "звичайний",
+  fwEco: "еко",
+  fwEmergency: "аварійний",
+  modesEdit: "Змінити",
+  modesDelete: "Видалити",
+  modesDeleteAsk: "Видалити режим {n}?",
+  modesDeleted: "Режим {n} видалено",
+  modesNew: "Новий режим",
+  modesEditTitle: "Режим {n}",
+  modesId: "Ідентифікатор",
+  modesIdHelp: "від 1 до 32 символів a-z, 0-9 і -",
+  modesName: "Назва",
+  modesFlag: "Прапорець режиму живлення",
+  modesActions: "Дії",
+  modesEnabled: "увімкнено",
+  modesEnforce: "утримувати",
+  modesEnforceTip: "Поки режим активний, зміну, зроблену вручну, буде повернено, а не залишено як є",
+  modesRemove: "Прибрати",
+  modesAddAction: "Додати дію",
+  modesActionType: "Тип дії",
+  modesNoModules: "у цій версії ще немає типів дій",
+  modesUnavailable: "тут недоступно: {r}",
+  modesUnknownType: "невідомо цій версії: збережено як є",
+  modesPick: "– оберіть –",
+  modesMissing: "{v} (тут не знайдено)",
+  modesSave: "Зберегти",
+  modesCancel: "Скасувати",
+  modesSaved: "Збережено",
+  modesNotSaved: "Не збережено: {e}",
+  modesFix: "Не збережено: перегляньте позначені поля",
+  modesNeedValue: "потрібне значення",
+  modesRules: "Правила Авто: діє перше, що підходить",
+  modesNoRules: "правил немає: Авто лишає поточний режим",
+  modesRuleKind: "Умова",
+  modesRuleTo: "Режим, який обрати",
+  modesHyst: "гістерезис",
+  modesFrom: "з",
+  modesTo: "до",
+  modesUp: "Вище",
+  modesDown: "Нижче",
+  modesAddRule: "Додати правило",
+  uSec: "с",
+  uPct: "%",
+  rdMainsOff: "мережі немає {n} с",
+  rdMainsOn: "мережа є {n} с",
+  rdSoc: "заряд нижче {n} %",
+  rdCut: "відключення протягом {n} хв",
+  rdTime: "{a}–{b}",
+  ck_mainsOffFor: "мережі немає",
+  ck_mainsOnFor: "мережа є",
+  ck_socBelow: "заряд нижче",
+  ck_cutWithin: "відключення протягом",
+  ck_timeWindow: "час між",
+  st_unknown: "ще не перевірено",
+  st_satisfied: "вже так",
+  st_applied: "застосовано",
+  st_failed: "не вдалося",
+  st_unsupported: "тут не підтримується",
+  st_relinquished: "змінено вами, залишено як є",
+  st_restore_failed: "не відновлено",
   colTime: "Час",
   colLoad: "Навантаження",
   colInput: "Вхід",
@@ -1449,6 +1641,466 @@ if (window.matchMedia && matchMedia('(hover: none)').matches) document.addEventL
 // a new width redraws the charts at it (a quarter second after the last resize event)
 let resizeTimer = null;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(show, 250); });
+// --- power modes panel ---
+// The Power modes panel (modes.engine v2, /api/modes): the mode in force and why, each action's state, the modes and the Auto
+// rules. Every settings form is generated from the catalogue's JSON Schemas and UI hints: no module is named here.
+var mpView = null;      // the last GET /api/modes answer; null = not read yet, or the engine is legacy (409)
+var mpCat = null;       // the last GET /api/modes/catalogue answer
+var mpDraft = null;     // the mode being edited { create, mode, errs, msg, idTouched }; null = no editor
+var mpRules = [];       // the Auto rules shown: a copy the inputs edit
+var mpRulesDirty = false, mpRuleErrs = {}, mpRulesMsg = '', mpRuleBtns = [];
+var mpMsg = null;       // the last write's outcome on the panel's line { kind, text, down }
+var mpBusy = false;     // a write is out: another waits for it
+var mpPress = null;     // the selector choice a press is sending
+var mpSeq = 0;          // ids pairing labels with their controls
+var mpTimer = null;     // the minute refresh while the panel is open
+const MP_PROPS = new Set(['className', 'textContent', 'value', 'checked', 'disabled', 'hidden', 'title', 'id', 'htmlFor', 'type', 'min', 'max', 'step', 'rows', 'maxLength', 'inputMode', 'onclick', 'onchange', 'oninput']);
+const MP_FLAG = { normal: 'fwNormal', eco: 'fwEco', emergency: 'fwEmergency' };
+const MP_TONE = { applied: 'ok', satisfied: 'ok', relinquished: 'warn', failed: 'bad', 'restore-failed': 'bad' };
+// Each rule kind's fields: [name, unit key (none = HH:mm text), min, max, step]; hysteresis may be left out.
+const MP_KINDS = {
+  mainsOffFor: [['seconds', 'uSec', 0, 86400, 1]],
+  mainsOnFor: [['seconds', 'uSec', 0, 86400, 1]],
+  socBelow: [['percent', 'uPct', 0, 100, 'any'], ['hysteresis', 'uPct', 0, 100, 'any']],
+  cutWithin: [['minutes', 'uMin', 0, 1440, 1], ['hysteresis', 'uMin', 0, 100, 'any']],
+  timeWindow: [['from'], ['to']],
+};
+const MP_KIND_START = { mainsOffFor: { seconds: 180 }, mainsOnFor: { seconds: 180 }, socBelow: { percent: 20, hysteresis: 2 }, cutWithin: { minutes: 30, hysteresis: 5 }, timeWindow: { from: '23:00', to: '07:00' } };
+const mpKeep = (k) => k !== null && k !== undefined && k !== false && k !== '';
+function mpEl(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  e.append(...kids.flat(Infinity).filter(mpKeep));
+  // after the children: a select's value needs its options first
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v === null || v === undefined || v === false) continue;
+    if (MP_PROPS.has(k)) e[k] = v; else e.setAttribute(k, v === true ? '' : String(v));
+  }
+  return e;
+}
+function mpSet(box, ...kids) { box.replaceChildren(...kids.flat(Infinity).filter(mpKeep)); }
+const mpClone = (x) => JSON.parse(JSON.stringify(x === undefined ? null : x));
+const mpModule = (typeId) => ((mpCat && mpCat.modules) || []).find((m) => m.descriptor && m.descriptor.typeId === typeId) || null;
+const mpTitle = (typeId) => { const m = mpModule(typeId); return (m && m.descriptor.title) || typeId; };
+const mpTypes = (s) => (s && s.type !== undefined ? [].concat(s.type) : []);
+const mpModes = () => (mpView && mpView.settings && mpView.settings.modes) || [];
+const mpSlug = (name) => String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '').slice(0, 32).replace(/-+$/, '');
+// The fields of an object schema: each hint's order first (hints are keyed by the dotted path from the settings root), then the schema's own order.
+function mpFields(schema, hints, prefix) {
+  const props = (schema && schema.properties) || {}, req = (schema && schema.required) || [];
+  return Object.keys(props).map((name, i) => {
+    const path = prefix ? `${prefix}.${name}` : name, hint = (hints && hints[path]) || {}, s = props[name] || {};
+    return { name, path, schema: s, hint, required: req.includes(name), order: Number.isFinite(hint.order) ? hint.order : 1e6 + i,
+      label: hint.label || s.title || name, help: hint.help || s.description || '', units: hint.units || hint.unit || '' };
+  }).sort((a, b) => a.order - b.order);
+}
+// The widget a field gets: a discovery list or an enum = a select (several = a checkbox list), a slider only with both bounds.
+function mpWidget(s, hint) {
+  const types = mpTypes(s), ty = types.length === 1 ? types[0] : '', list = hint.discovery || hint.list;
+  if (ty === 'object') return 'object';
+  if (ty === 'array') return list || (s.items && s.items.enum) ? 'multi' : 'lines';
+  if (ty === 'boolean') return 'check';
+  if (list || s.enum) return 'select';
+  const num = ty === 'number' || ty === 'integer';
+  if (num && hint.widget === 'slider' && Number.isFinite(s.minimum) && Number.isFinite(s.maximum)) return 'slider';
+  return num ? 'number' : 'text';
+}
+function mpOptions(s, hint, entry) {
+  const list = hint.discovery || hint.list;
+  if (list) return ((entry && entry.discovery && entry.discovery[list]) || []).map((x) => ({ id: String(x.id), label: x.label || String(x.id) }));
+  return (s.enum || []).map((v) => ({ id: String(v), label: (hint.labels && hint.labels[v]) || String(v) }));
+}
+// An input's text as the JSON value its schema wants; undefined = the field is left out. A value that fits no type is sent as
+// typed, so the service names the field instead of the page guessing.
+function mpCoerce(s, raw) {
+  if (raw === undefined || raw === null) return undefined;
+  const text = String(raw).trim();
+  if (text === '') return undefined;
+  const types = mpTypes(s), num = Number(text.replace(',', '.'));
+  if ((types.includes('integer') && Number.isInteger(num)) || (types.includes('number') && Number.isFinite(num))) return num;
+  if (types.includes('boolean') && (text === 'true' || text === 'false')) return text === 'true';
+  return String(raw);
+}
+// An optional object left empty is left out: the form never makes a section the person did not fill in mandatory.
+function mpPrune(schema, obj) {
+  const props = (schema && schema.properties) || {}, req = (schema && schema.required) || [];
+  for (const [k, s] of Object.entries(props)) {
+    const v = obj[k];
+    if (v && typeof v === 'object' && !Array.isArray(v) && mpTypes(s)[0] === 'object') {
+      mpPrune(s, v);
+      if (!Object.keys(v).length && !req.includes(k)) delete obj[k];
+    }
+  }
+  return obj;
+}
+function mpErr(key, errs, used, id) {
+  if (!errs[key]) return null;
+  used.add(key);
+  return mpEl('div', { className: 'ferr', id, 'data-err': key }, errs[key]);
+}
+const mpUnit = (x, u) => (u ? `${x} ${u}` : String(x));
+function mpForm(schema, hints, obj, entry, ek, errs, used, prefix) {
+  return mpFields(schema, hints, prefix).map((f) => mpField(f, hints, obj, entry, ek, errs, used));
+}
+// One settings field: its label, the widget its schema and hint give, units, help, and the service's problem with it. The
+// inputs write into obj at once, so a repaint never loses an edit; what the form shows (a default included) is what it saves.
+function mpField(f, hints, obj, entry, ek, errs, used) {
+  const s = f.schema, w = mpWidget(s, f.hint), id = 'mf' + (++mpSeq), key = `${ek}.${f.path}`;
+  if (obj[f.name] === undefined && s.default !== undefined) obj[f.name] = mpClone(s.default);
+  if (obj[f.name] === undefined && w === 'check' && f.required) obj[f.name] = false;
+  if (w === 'slider' && typeof obj[f.name] !== 'number') obj[f.name] = s.minimum;
+  const set = (x) => { if (x === undefined) delete obj[f.name]; else obj[f.name] = x; };
+  const v = obj[f.name], label = f.label + (f.required ? ' *' : '');
+  const help = f.help ? mpEl('div', { className: 'help', id: id + 'h' }, f.help) : null, err = mpErr(key, errs, used, id + 'e');
+  const aria = { 'data-f': key, 'aria-describedby': [help && id + 'h', err && id + 'e'].filter(Boolean).join(' ') || null,
+    'aria-invalid': err ? 'true' : null, 'aria-required': f.required ? 'true' : null };
+  if (w === 'object') {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) obj[f.name] = {};
+    return mpEl('fieldset', { 'data-f': key }, mpEl('legend', {}, label), help, err, mpForm(s, hints, obj[f.name], entry, ek, errs, used, f.path));
+  }
+  let control, extra = null;
+  if (w === 'multi') {
+    const opts = mpOptions(s.items || {}, f.hint, entry), chosen = Array.isArray(v) ? v.map(String) : [];
+    // a chosen id not discovered here stays listed and chosen: a save never drops it unseen
+    for (const c of chosen) if (!opts.some((o) => o.id === c)) opts.push({ id: c, label: t('modesMissing', { v: c }) });
+    const boxes = opts.map((o) => mpEl('input', { type: 'checkbox', value: o.id, checked: chosen.includes(o.id), 'data-f': `${key}[]` }));
+    boxes.forEach((b) => { b.onchange = () => set(boxes.filter((x) => x.checked).map((x) => mpCoerce(s.items || {}, x.value))); });
+    control = mpEl('div', { ...aria, className: 'multi', role: 'group', 'aria-labelledby': id + 'l' }, opts.map((o, i) => mpEl('label', {}, boxes[i], o.label)));
+  } else if (w === 'lines') {
+    control = mpEl('textarea', { ...aria, id, rows: 3, value: Array.isArray(v) ? v.join('\n') : '' });
+    control.oninput = () => set(control.value.split('\n').map((x) => mpCoerce(s.items || {}, x.trim())).filter((x) => x !== undefined));
+  } else if (w === 'select') {
+    const opts = mpOptions(s, f.hint, entry), cur = v === undefined ? '' : String(v);
+    // a stored value not offered here (a plan deleted since) stays chosen and marked: never replaced unseen
+    if (cur && !opts.some((o) => o.id === cur)) opts.push({ id: cur, label: t('modesMissing', { v: cur }) });
+    control = mpEl('select', { ...aria, id, value: cur }, cur === '' ? mpEl('option', { value: '' }, t('modesPick')) : null, opts.map((o) => mpEl('option', { value: o.id }, o.label)));
+    control.onchange = () => set(mpCoerce(s, control.value));
+  } else if (w === 'check') {
+    control = mpEl('input', { ...aria, id, type: 'checkbox', checked: v === true });
+    control.onchange = () => set(control.checked);
+  } else if (w === 'slider') {
+    const out = mpEl('output', { htmlFor: id }, mpUnit(v, f.units));
+    control = mpEl('input', { ...aria, id, type: 'range', min: s.minimum, max: s.maximum, step: f.hint.step || (mpTypes(s).includes('integer') ? 1 : 'any'), value: String(v) });
+    control.oninput = () => { set(mpCoerce(s, control.value)); out.textContent = mpUnit(control.value, f.units); };
+    extra = out;
+  } else if (w === 'number') {
+    control = mpEl('input', { ...aria, id, type: 'number', min: s.minimum, max: s.maximum, step: f.hint.step || (mpTypes(s).includes('integer') ? 1 : 'any'), value: v === undefined ? '' : String(v) });
+    control.oninput = () => set(mpCoerce(s, control.value));
+  } else {
+    control = mpEl('input', { ...aria, id, type: 'text', maxLength: s.maxLength, value: v === undefined ? '' : typeof v === 'string' ? v : JSON.stringify(v) });
+    control.oninput = () => set(mpCoerce(s, control.value));
+  }
+  const unit = f.units && w !== 'slider' ? mpEl('span', { className: 'dim' }, f.units) : null;
+  const head = w === 'multi' ? mpEl('span', { id: id + 'l' }, label) : mpEl('label', { htmlFor: id }, label);
+  return mpEl('div', { className: 'f' }, head, mpEl('div', { className: 'row' }, control, extra, unit), help, err);
+}
+// The service's 400 text ("actions[0].settings.plan: required; name: ...") by field: a{i}.<path>, r{i}.<field>, else the path.
+function mpErrKey(path) {
+  let m = /^actions\[(\d+)\](?:\.settings)?(?:\.(.+))?$/.exec(path);
+  if (m) return 'a' + m[1] + (m[2] ? '.' + m[2].replace(/\[\d+\]/g, '') : '');
+  m = /^rules\[(\d+)\](?:\.condition)?(?:\.(.+))?$/.exec(path);
+  if (m) return 'r' + m[1] + (m[2] ? '.' + m[2] : '');
+  return path;
+}
+function mpProblems(text) {
+  const out = {};
+  String(text || '').trim().split('; ').forEach((p) => {
+    const i = p.indexOf(': '), k = i < 0 ? '' : mpErrKey(p.slice(0, i)), msg = i < 0 ? p : p.slice(i + 2);
+    out[k] = out[k] ? `${out[k]}; ${msg}` : msg;
+  });
+  return out;
+}
+const mpRest = (k, v) => (k ? `${k}: ${v}` : v);
+function mpRuleText(c) {
+  c = c || {};
+  const n = (x) => fmt(x, Number.isInteger(Number(x)) ? 0 : 1);
+  if (c.kind === 'mainsOffFor') return t('rdMainsOff', { n: n(c.seconds) });
+  if (c.kind === 'mainsOnFor') return t('rdMainsOn', { n: n(c.seconds) });
+  if (c.kind === 'socBelow') return t('rdSoc', { n: n(c.percent) });
+  if (c.kind === 'cutWithin') return t('rdCut', { n: n(c.minutes) });
+  if (c.kind === 'timeWindow') return t('rdTime', { a: c.from, b: c.to });
+  return String(c.kind || '');
+}
+function mpChip(title, a) {
+  const word = t(`st_${String(a.status || 'unknown').replace(/-/g, '_')}`);
+  const why = a.detail && ['failed', 'restore-failed', 'unsupported'].includes(a.status);
+  return mpEl('span', { className: `chip ${MP_TONE[a.status] || ''}`.trim(), title: a.detail || null, 'data-st': a.status },
+    mpEl('i'), mpEl('span', {}, why ? t('modesChipWhy', { a: title, s: word, r: a.detail }) : t('modesChip', { a: title, s: word })));
+}
+// The selector (Auto + every mode), why the active mode is in force, each action's state, the hibernate setting, the last write.
+function mpPaintTop() {
+  const v = mpView;
+  if (!v) return;
+  const s = v.settings || {}, sel = s.selection || {}, modes = mpModes();
+  const chosen = mpPress || (sel.kind === 'manual' ? sel.manualModeId : 'auto');
+  mpSet($('modesSel'), [{ id: 'auto', name: t('modeAuto') }].concat(modes).map((m) => {
+    const b = mpEl('button', { type: 'button', 'data-m': m.id, 'aria-pressed': String(m.id === chosen), disabled: mpBusy, 'data-pending': mpPress === m.id }, m.name);
+    b.onclick = () => mpSelect(m.id);
+    return b;
+  }));
+  const active = modes.find((m) => m.id === v.activeModeId), name = active ? active.name : v.activeModeId || '–';
+  const rule = sel.autoRule !== null && sel.autoRule !== undefined ? (s.rules || [])[sel.autoRule] : null, now = $('modesNow');
+  now.textContent = sel.kind === 'manual' ? t('modesNowManual', { m: name })
+    : rule ? t('modesNowAuto', { m: name, n: sel.autoRule + 1, c: mpRuleText(rule.condition) }) : t('modesNowKept', { m: name });
+  now.title = v.reason || '';
+  const chips = (v.actions || []).map((a) => mpChip(mpTitle(a.typeId), a));
+  mpSet($('modesStatus'), v.emergency ? mpEl('span', { className: 'chip bad' }, mpEl('i'), mpEl('span', {}, t('modesEmergency'))) : null,
+    chips, (v.restores || []).map((r) => mpChip(`${mpTitle(r.typeId)} (${r.key})`, r)),
+    chips.length ? null : mpEl('span', { className: 'dim' }, t('modesNoActions')), (v.problems || []).map((p) => mpEl('div', { className: 'bad' }, p)));
+  const hib = mpEl('input', { type: 'checkbox', checked: s.autoHibernate !== false, disabled: mpBusy, 'data-f': 'hibernate' });
+  hib.onchange = () => mpHibernate(hib.checked);
+  mpSet($('modesHib'), mpEl('label', { className: 'ck' }, hib, t('modesHibernate')));
+  const msg = $('modesMsg');
+  msg.textContent = mpMsg ? mpMsg.text : ''; msg.className = `msg ${mpMsg ? mpMsg.kind : ''}`.trim(); msg.hidden = !mpMsg;
+}
+function mpButton(act, id, text, onclick, extra) {
+  const b = mpEl('button', { type: 'button', className: 'b', 'data-act': act, 'data-id': id, ...extra }, text);
+  b.onclick = onclick;
+  return b;
+}
+function mpPaintList() {
+  const v = mpView;
+  if (!v) return;
+  mpSet($('modesList'), mpEl('h3', {}, t('modesList')), mpModes().map((m) => mpEl('div', { className: 'item' },
+    mpEl('span', { className: 'nm' }, m.name, m.builtIn ? mpEl('span', { className: 'tag' }, t('modesBuiltIn')) : null,
+      m.id === v.activeModeId ? mpEl('span', { className: 'tag on' }, t('modesActiveTag')) : null),
+    mpEl('span', { className: 'dim' }, t('modesFlagIs', { f: t(MP_FLAG[m.flagWord] || 'fwNormal') })),
+    mpButton('edit', m.id, t('modesEdit'), () => mpEditMode(m.id)),
+    m.builtIn ? null : mpButton('delete', m.id, t('modesDelete'), () => mpDeleteMode(m.id)))),
+  mpEl('div', { className: 'row', style: 'margin-top:8px' }, mpButton('new', '', t('modesNew'), mpNewMode)));
+}
+function mpEditMode(id) {
+  const m = mpModes().find((x) => x.id === id);
+  if (!m) return;
+  mpDraft = { create: false, mode: mpClone(m), errs: {}, msg: '' };
+  mpPaintEdit();
+}
+function mpNewMode() {
+  mpDraft = { create: true, mode: { id: '', name: '', flagWord: 'normal', actions: [] }, errs: {}, msg: '', idTouched: false };
+  mpPaintEdit();
+}
+function mpAddAction(typeId) {
+  const e = mpModule(typeId);
+  if (!mpDraft || !e) return;
+  // a copy: the catalogue's defaults stay as the module gave them
+  mpDraft.mode.actions.push({ typeId, enabled: true, enforce: false, settings: mpClone(e.descriptor.defaultSettings || {}) });
+  mpPaintEdit();
+}
+// One labelled text field of the mode itself (id, name) with its problem.
+function mpText(key, labelKey, value, onInput, errs, used, extra) {
+  const id = 'mf' + (++mpSeq), err = mpErr(key, errs, used, id + 'e');
+  const input = mpEl('input', { ...extra, type: 'text', id, value, 'data-f': key, 'aria-invalid': err ? 'true' : null, 'aria-describedby': err ? id + 'e' : null });
+  input.oninput = () => onInput(input.value);
+  return { row: mpEl('div', { className: 'f' }, mpEl('label', { htmlFor: id }, t(labelKey)), input, err), input };
+}
+function mpActionBox(a, i, errs, used) {
+  const e = mpModule(a.typeId), ek = 'a' + i;
+  if (!a.settings || typeof a.settings !== 'object') a.settings = {};
+  const on = mpEl('input', { type: 'checkbox', checked: a.enabled !== false, 'data-f': ek + '.enabled' });
+  on.onchange = () => { a.enabled = on.checked; };
+  const enf = mpEl('input', { type: 'checkbox', checked: !!a.enforce, 'data-f': ek + '.enforce' });
+  enf.onchange = () => { a.enforce = enf.checked; };
+  const body = e ? mpForm(e.descriptor.settingsSchema || {}, e.descriptor.uiHints || {}, a.settings, e, ek, errs, used, '')
+    : mpEl('div', { className: 'help' }, t('modesUnknownType'));
+  const rest = Object.keys(errs).filter((k) => (k === ek || k.startsWith(ek + '.')) && !used.has(k))
+    .map((k) => { used.add(k); return mpEl('div', { className: 'ferr', 'data-err': k }, mpRest(k.slice(ek.length + 1), errs[k])); });
+  return mpEl('fieldset', { 'data-f': ek }, mpEl('legend', {}, mpTitle(a.typeId)),
+    e && !e.available ? mpEl('div', { className: 'warn' }, t('modesUnavailable', { r: e.unavailableReason || '' })) : null,
+    mpEl('div', { className: 'row' }, mpEl('label', { className: 'ck' }, on, t('modesEnabled')),
+      mpEl('label', { className: 'ck', title: t('modesEnforceTip') }, enf, t('modesEnforce')), mpEl('span', { className: 'sp' }),
+      mpButton('remove-action', i, t('modesRemove'), () => { mpDraft.mode.actions.splice(i, 1); mpDraft.errs = {}; mpPaintEdit(); })),
+    body, rest);
+}
+// The mode editor, rebuilt only on a change of shape (open, an action added or removed, a refused save); typing never rebuilds it.
+function mpPaintEdit() {
+  const box = $('modesEdit'), d = mpDraft;
+  if (!d) { mpSet(box); box.hidden = true; return; }
+  box.hidden = false;
+  const m = d.mode, errs = d.errs || {}, used = new Set();
+  const idField = d.create ? mpText('id', 'modesId', m.id, (x) => { m.id = x; d.idTouched = true; }, errs, used, { maxLength: 32, title: t('modesIdHelp') }) : null;
+  const nameField = mpText('name', 'modesName', m.name, (x) => {
+    m.name = x;
+    if (idField && !d.idTouched) idField.input.value = m.id = mpSlug(x);
+  }, errs, used, { maxLength: 64 });
+  const flagId = 'mf' + (++mpSeq), flagErr = mpErr('flagWord', errs, used, flagId + 'e');
+  const flag = mpEl('select', { id: flagId, 'data-f': 'flagWord', value: m.flagWord, 'aria-describedby': flagErr ? flagId + 'e' : null },
+    Object.keys(MP_FLAG).map((w) => mpEl('option', { value: w }, t(MP_FLAG[w]))));
+  flag.onchange = () => { m.flagWord = flag.value; };
+  const boxes = m.actions.map((a, i) => mpActionBox(a, i, errs, used));
+  const mods = (mpCat && mpCat.modules) || [];
+  const pick = mpEl('select', { 'data-f': 'add-type', 'aria-label': t('modesActionType') },
+    mods.map((x) => mpEl('option', { value: x.descriptor.typeId }, x.available ? x.descriptor.title : t('modesUnavailable', { r: x.descriptor.title }))));
+  const top = Object.keys(errs).filter((k) => !used.has(k)).map((k) => mpEl('div', { className: 'ferr', 'data-err': k }, mpRest(k, errs[k])));
+  mpSet(box, mpEl('h3', {}, d.create ? t('modesNew') : t('modesEditTitle', { n: m.name })), top,
+    idField && idField.row, nameField.row, mpEl('div', { className: 'f' }, mpEl('label', { htmlFor: flagId }, t('modesFlag')), flag, flagErr),
+    mpEl('h3', {}, t('modesActions')), boxes,
+    mods.length ? mpEl('div', { className: 'row' }, pick, mpButton('add-action', '', t('modesAddAction'), () => mpAddAction(pick.value)))
+      : mpEl('div', { className: 'dim' }, t('modesNoModules')),
+    mpEl('div', { className: 'row', style: 'margin-top:12px' }, mpEl('span', { className: 'sp' }),
+      mpButton('cancel-mode', '', t('modesCancel'), () => { mpDraft = null; mpPaintEdit(); }),
+      mpButton('save-mode', '', t('modesSave'), mpSaveMode, { className: 'b pri' })),
+    d.msg ? mpEl('div', { className: 'msg bad' }, d.msg) : null);
+}
+// A write with the page's guard header; the answer is the whole view on success, the service's text on a refusal.
+async function mpWrite(method, url, body) {
+  mpBusy = true;
+  $('modesCard').setAttribute('aria-busy', 'true');
+  mpPaintTop();
+  try {
+    const r = await fetch(url, { method, headers: { 'X-Station': '1', 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (r.ok) { mpView = await r.json(); return { ok: true }; }
+    return { ok: false, status: r.status, text: String(await r.text()).trim() || `HTTP ${r.status}` };
+  } catch (e) {
+    return { ok: false, status: 0, text: t('serviceDown', { e: e.message }) };
+  } finally {
+    mpBusy = false;
+    $('modesCard').removeAttribute('aria-busy');
+  }
+}
+function mpPaintAll() { mpPaintTop(); mpPaintList(); mpPaintEdit(); mpPaintRules(); }
+async function mpSaveMode() {
+  const d = mpDraft;
+  if (!d || mpBusy) return;
+  const m = d.mode;
+  // settings go as edited (an unknown type's untouched); a copy is pruned so the editor keeps its sections for another try
+  const body = { id: m.id, name: m.name, flagWord: m.flagWord, actions: m.actions.map((a) => {
+    const e = mpModule(a.typeId);
+    return { typeId: a.typeId, enabled: a.enabled !== false, enforce: !!a.enforce, settings: e ? mpPrune(e.descriptor.settingsSchema, mpClone(a.settings)) : a.settings };
+  }) };
+  const r = await mpWrite(d.create ? 'POST' : 'PUT', d.create ? '/api/modes' : `/api/modes/${encodeURIComponent(m.id)}`, body);
+  if (r.ok) { mpDraft = null; mpMsg = { kind: 'ok', text: t('modesSaved') }; }
+  else { d.errs = r.status === 400 ? mpProblems(r.text) : {}; d.msg = r.status === 400 ? t('modesFix') : t('modesNotSaved', { e: r.text }); }
+  mpPaintAll();
+}
+async function mpDeleteMode(id) {
+  const m = mpModes().find((x) => x.id === id);
+  if (!m || m.builtIn || mpBusy) return;
+  if (!confirm(t('modesDeleteAsk', { n: m.name }))) return;
+  const r = await mpWrite('DELETE', `/api/modes/${encodeURIComponent(id)}`);
+  mpMsg = r.ok ? { kind: 'ok', text: t('modesDeleted', { n: m.name }) } : { kind: 'bad', text: t('modesNotSaved', { e: r.text }) };
+  if (r.ok && mpDraft && !mpDraft.create && mpDraft.mode.id === id) mpDraft = null;
+  mpPaintAll();
+}
+async function mpSelect(choice) {
+  if (mpBusy || mpPress) return;
+  mpPress = choice;
+  const r = await mpWrite('POST', '/api/modes/select', { mode: choice });
+  mpPress = null;
+  mpMsg = r.ok ? null : { kind: 'bad', text: t('modesNotSaved', { e: r.text }) };
+  mpPaintTop(); mpPaintList();
+  if (r.ok) await load(true);   // the header's mode state follows at once
+}
+async function mpHibernate(on) {
+  if (mpBusy) { mpPaintTop(); return; }
+  const r = await mpWrite('PUT', '/api/settings/hibernate', { autoHibernate: on });
+  mpMsg = r.ok ? { kind: 'ok', text: t(on ? 'modesHibOn' : 'modesHibOff') } : { kind: 'bad', text: t('modesNotSaved', { e: r.text }) };
+  mpPaintTop();   // the box shows the saved setting: a refused change springs back
+}
+function mpRulesTouched() { mpRulesDirty = true; mpRuleBtns.forEach((b) => { b.disabled = false; }); }
+function mpRuleRow(r, i, count, modes, errs, used) {
+  const ek = 'r' + i;
+  if (!r.condition || !MP_KINDS[r.condition.kind]) r.condition = { kind: 'mainsOffFor', ...MP_KIND_START.mainsOffFor };
+  const c = r.condition;
+  const kind = mpEl('select', { 'data-f': ek + '.kind', 'aria-label': t('modesRuleKind'), value: c.kind }, Object.keys(MP_KINDS).map((k) => mpEl('option', { value: k }, t(`ck_${k}`))));
+  kind.onchange = () => { r.condition = { kind: kind.value, ...MP_KIND_START[kind.value] }; mpRulesDirty = true; mpPaintRules(); };
+  const parts = MP_KINDS[c.kind].map(([name, unit, min, max, step]) => {
+    const id = 'mf' + (++mpSeq), err = mpErr(`${ek}.${name}`, errs, used, id + 'e');
+    const lab = { hysteresis: 'modesHyst', from: 'modesFrom', to: 'modesTo' }[name];
+    // HH:mm as typed text: a time input would show the browser's 12-hour clock in an English locale
+    const input = mpEl('input', { id, type: unit ? 'number' : 'text', inputMode: unit ? 'decimal' : 'numeric', maxLength: unit ? null : 5, min, max, step,
+      placeholder: unit ? null : 'HH:mm', value: c[name] === undefined || c[name] === null ? '' : String(c[name]), 'data-f': `${ek}.${name}`,
+      'aria-label': lab ? null : t(`ck_${c.kind}`), 'aria-invalid': err ? 'true' : null, 'aria-describedby': err ? id + 'e' : null });
+    input.oninput = () => {
+      const x = Number(String(input.value).replace(',', '.'));
+      if (!unit) c[name] = input.value.trim();
+      else if (String(input.value).trim() === '' || !Number.isFinite(x)) delete c[name];
+      else c[name] = x;
+      mpRulesTouched();
+    };
+    return mpEl('span', { className: 'row' }, lab ? mpEl('label', { htmlFor: id }, t(lab)) : null, input, unit ? mpEl('span', { className: 'dim' }, t(unit)) : null, err);
+  });
+  const modeErrId = 'mf' + (++mpSeq) + 'e', modeErr = mpErr(ek + '.modeId', errs, used, modeErrId);
+  const mode = mpEl('select', { 'data-f': ek + '.modeId', 'aria-label': t('modesRuleTo'), value: r.modeId, 'aria-invalid': modeErr ? 'true' : null, 'aria-describedby': modeErr ? modeErrId : null },
+    modes.map((m) => mpEl('option', { value: m.id }, m.name)), modes.some((m) => m.id === r.modeId) ? null : mpEl('option', { value: r.modeId }, t('modesMissing', { v: r.modeId })));
+  mode.onchange = () => { r.modeId = mode.value; mpRulesTouched(); };
+  const rest = Object.keys(errs).filter((k) => (k === ek || k.startsWith(ek + '.')) && !used.has(k))
+    .map((k) => { used.add(k); return mpEl('div', { className: 'ferr', 'data-err': k }, mpRest(k.slice(ek.length + 1), errs[k])); });
+  const move = (to) => () => { const [x] = mpRules.splice(i, 1); mpRules.splice(to, 0, x); mpRuleErrs = {}; mpRulesDirty = true; mpPaintRules(); };
+  return mpEl('li', { 'data-f': ek }, mpEl('div', { className: 'row' }, kind, parts, mpEl('span', { 'aria-hidden': 'true' }, '→'), mode, modeErr, mpEl('span', { className: 'sp' }),
+    mpButton('up', i, '↑', move(i - 1), { disabled: i === 0, 'aria-label': t('modesUp'), title: t('modesUp') }),
+    mpButton('down', i, '↓', move(i + 1), { disabled: i === count - 1, 'aria-label': t('modesDown'), title: t('modesDown') }),
+    mpButton('remove', i, '×', () => { mpRules.splice(i, 1); mpRuleErrs = {}; mpRulesDirty = true; mpPaintRules(); }, { 'aria-label': t('modesRemove'), title: t('modesRemove') })),
+  rest);
+}
+// The Auto rules in order; a saved copy is shown until the first edit, then the edit is kept until saved or cancelled.
+function mpPaintRules() {
+  const v = mpView;
+  if (!v) return;
+  if (!mpRulesDirty) mpRules = mpClone((v.settings && v.settings.rules) || []);
+  const modes = mpModes(), used = new Set(), errs = mpRuleErrs;
+  const rows = mpRules.map((r, i) => mpRuleRow(r, i, mpRules.length, modes, errs, used));
+  const rest = Object.keys(errs).filter((k) => !used.has(k)).map((k) => mpEl('div', { className: 'ferr', 'data-err': k }, mpRest(k, errs[k])));
+  const undo = mpButton('undo-rules', '', t('modesCancel'), () => { mpRulesDirty = false; mpRuleErrs = {}; mpRulesMsg = ''; mpPaintRules(); }, { disabled: !mpRulesDirty });
+  const save = mpButton('save-rules', '', t('modesSave'), mpSaveRules, { className: 'b pri', disabled: !mpRulesDirty });
+  mpRuleBtns = [undo, save];
+  mpSet($('modesRules'), mpEl('h3', {}, t('modesRules')), rest,
+    rows.length ? mpEl('ol', { className: 'rules' }, rows) : mpEl('div', { className: 'dim' }, t('modesNoRules')),
+    mpEl('div', { className: 'row', style: 'margin-top:8px' }, mpButton('add-rule', '', t('modesAddRule'), mpRuleAdd), mpEl('span', { className: 'sp' }), undo, save),
+    mpRulesMsg ? mpEl('div', { className: 'msg bad' }, mpRulesMsg) : null);
+}
+function mpRuleAdd() {
+  const s = (mpView && mpView.settings) || {};
+  mpRules.push({ condition: { kind: 'mainsOffFor', ...MP_KIND_START.mainsOffFor }, modeId: s.fallbackModeId || (mpModes()[0] || {}).id || '' });
+  mpRulesDirty = true;
+  mpPaintRules();
+}
+async function mpSaveRules() {
+  if (mpBusy) return;
+  const errs = {};
+  // only the kind's own fields go; an emptied value is refused here, never saved as 0
+  const body = mpRules.map((r, i) => {
+    const c = r.condition || {}, out = { kind: c.kind };
+    for (const [name] of MP_KINDS[c.kind] || []) {
+      if (c[name] !== undefined && c[name] !== '') out[name] = c[name];
+      else if (name !== 'hysteresis') errs[`r${i}.${name}`] = t('modesNeedValue');
+    }
+    return { condition: out, modeId: r.modeId };
+  });
+  if (Object.keys(errs).length) { mpRuleErrs = errs; mpRulesMsg = t('modesFix'); mpPaintRules(); return; }
+  const r = await mpWrite('PUT', '/api/modes/rules', body);
+  if (r.ok) { mpRulesDirty = false; mpRuleErrs = {}; mpRulesMsg = ''; mpMsg = { kind: 'ok', text: t('modesSaved') }; }
+  else { mpRuleErrs = r.status === 400 ? mpProblems(r.text) : {}; mpRulesMsg = r.status === 400 ? t('modesFix') : t('modesNotSaved', { e: r.text }); }
+  mpPaintTop(); mpPaintList(); mpPaintRules();
+}
+// The view: the legacy engine answers 409 and the panel stays away; an unreachable service is said on the panel's line.
+async function mpRefresh() {
+  let r;
+  try { r = await fetch('/api/modes', { cache: 'no-store' }); } catch (e) {
+    if (mpView) { mpMsg = { kind: 'bad', text: t('serviceDown', { e: e.message }), down: true }; mpPaintTop(); }
+    return;
+  }
+  if (r.status === 409) { mpView = null; $('modesCard').hidden = true; return; }
+  if (!r.ok) return;
+  mpView = await r.json();
+  if (mpMsg && mpMsg.down) mpMsg = null;
+  $('modesCard').hidden = false;
+  mpPaintTop(); mpPaintList(); mpPaintRules();
+}
+async function mpOpen() {
+  const [cat] = await Promise.all([fetch('/api/modes/catalogue', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null), mpRefresh()]);
+  mpCat = cat || { modules: [] };
+  mpPaintAll();
+}
+// Open: the catalogue once and the view each minute while the page is seen; closed: nothing is asked.
+function mpToggle(open) {
+  clearInterval(mpTimer); mpTimer = null;
+  if (!open) return;
+  mpOpen();
+  mpTimer = setInterval(() => { if (!document.hidden) mpRefresh(); }, POLL);
+}
+// --- end of the power modes panel ---
+$('modesMore').addEventListener('toggle', () => mpToggle($('modesMore').open));
+document.querySelectorAll('#langSeg button').forEach((b) => b.addEventListener('click', mpPaintAll));
+mpRefresh().then(() => { if ((window.location || {}).hash === '#modes' && mpView) $('modesMore').open = true; });   // the tray's "Open panel" lands here
 applyStatic();
 load().then(() => { settle(); schedule(); });   // a choice still applying from before the reload is followed too
 
