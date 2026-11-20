@@ -148,6 +148,12 @@ internal sealed class StationService(StationConfig config, IStationReader reader
     /// <summary>The station's codes active and its over-temperature state; in memory, so a code still set after a restart is said once more.</summary>
     private IReadOnlySet<string> _stationCodes = new HashSet<string>(StringComparer.Ordinal);
     private bool _stationHot;
+    private string[] _stationWarnings = [];
+    private string[] _stationFaults = [];
+    private double? _stationTempMax;
+
+    /// <summary>The station's active warnings, faults and over-temperature as the last reading that carried them said (the tray's alarm list).</summary>
+    public StationAlarmState StationAlarmsNow => new(_stationWarnings, _stationFaults, _stationHot, _stationTempMax);
 
     /// <summary>The station's own warnings, faults and temperature (V2 stations): an event row and the config's action per change.</summary>
     private void StationAlarmEvents(StationExtras? extras, DateTimeOffset now)
@@ -155,6 +161,12 @@ internal sealed class StationService(StationConfig config, IStationReader reader
         var (codes, hot, events) = StationAlarms.Step(_stationCodes, _stationHot, extras, config.StationTempHighC);
         _stationCodes = codes;
         _stationHot = hot;
+        if (extras is { Warnings: { } warnings, Faults: { } faults })
+        {
+            _stationWarnings = [.. warnings.Distinct(StringComparer.Ordinal)];
+            _stationFaults = [.. faults.Distinct(StringComparer.Ordinal)];
+        }
+        if (extras?.TempMax is { } t) _stationTempMax = t;
         foreach (var e in events)
         {
             store.AddEvent(now, e.Kind, e.Detail);

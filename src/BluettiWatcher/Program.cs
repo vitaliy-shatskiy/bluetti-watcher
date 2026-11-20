@@ -104,7 +104,7 @@ var api = new StationApi(config, service, store, time, started, dtek, Log, () =>
         }, account, bluetooth.StationBlocks, modes is null ? null : new ModesApi(config, modes), notificationSettings);
 // The notification-area icon and the notifications: a thread of this process, only in an interactive session (README, Tray).
 using var trayHost = config.Tray && Environment.UserInteractive
-    ? TrayHost.Start(new ManualTrayModes(service), new Uri($"http://127.0.0.1:{config.Port}/"), time.LocalTimeZone, Log)
+    ? TrayHost.Start(modes is null ? new ManualTrayModes(service) : new ModesTrayModes(modes), new Uri($"http://127.0.0.1:{config.Port}/"), time.LocalTimeZone, Log)
     : null;
 var tray = trayHost is null ? null : new TrayController(trayHost, notificationSettings);
 if (tray is not null) store.EventAdded = tray.OnEvent;
@@ -114,6 +114,7 @@ void ShowTray()
     var at = time.GetLocalNow();
     var last = service.LastAccepted;
     tray.Update(TraySnapshot.From(last, service.LastAcceptedAt, service.State, service.LastFlag, api.Runtime(last, at).HoursLeft, at, config.MaxGapSec));
+    tray.ReportAlarms(StationAlarm.ListOf(service.StationAlarmsNow));
 }
 ShowTray();
 using var http = new MiniHttpServer(IPAddress.Loopback, config.Port, api.HandleAsync, Log);
