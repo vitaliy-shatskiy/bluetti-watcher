@@ -145,6 +145,7 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             w.WriteBoolean("ok", res.Ok);
             w.WriteBoolean("accepted", res.Status == 202);
             w.WriteString("manual", res.Manual.ToString().ToLowerInvariant());
+            if (res.Pending is { } pending) w.WriteString("modePending", pending.ToString().ToLowerInvariant()); else w.WriteNull("modePending");
             w.WriteString("message", res.Message);
             w.WriteString("code", res.Ok ? "" : ModeErrorNote(res.Message)?.Code ?? "");
             w.WriteEndObject();
@@ -439,6 +440,7 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             w.WriteString("modeError", service.ModeError);
             w.WriteString("returnPlan", ReturnPlanFile.Read(config.FlagFile));
             Note(w, "modeErrorNote", ModeErrorNote(service.ModeError));
+            Note(w, "modeHold", ModeHold(s, service.AutoAwaitsReading));
             w.WriteString("powerMode", (flag?.View ?? FlagView.Unreadable).Mode);
             w.WriteStartObject("powerPlan");
             w.WriteString("id", plan.Id);
@@ -532,6 +534,20 @@ internal sealed class StationApi(StationConfig config, StationService service, S
         foreach (var n in notes) { w.WriteStartObject(); NoteBody(w, n); w.WriteEndObject(); }
         w.WriteEndArray();
     }
+
+    /// <summary>
+    /// What holds the mode, for the line under the buttons: a manual choice lasts until the next observed mains change or
+    /// Auto (design.md §5); an Auto after one waits for the next reading's decision. null = the battery rules decide.
+    /// </summary>
+    internal static PageNote? ModeHold(StationState s, bool autoAwaitsReading) => s.Manual switch
+    {
+        ManualMode.Max when s.Cut => new(PageCodes.MaxPinnedCut, "Max pinned until mains returns or you press Auto"),
+        ManualMode.Max => new(PageCodes.MaxPinnedMains, "Max pinned until mains goes out or you press Auto"),
+        ManualMode.Eco when s.Cut => new(PageCodes.EcoPinnedCut, "Eco pinned until mains returns or you press Auto"),
+        ManualMode.Eco => new(PageCodes.EcoPinnedMains, "Eco pinned until mains goes out or you press Auto"),
+        _ when autoAwaitsReading => new(PageCodes.AutoNext, "Auto: the battery rules decide at the next reading, taken now"),
+        _ => null,
+    };
 
     /// <summary>The saved mode refusal or failure as a coded note; "" = none. The text is the service's; the code is read from its known shapes.</summary>
     internal static PageNote? ModeErrorNote(string error)

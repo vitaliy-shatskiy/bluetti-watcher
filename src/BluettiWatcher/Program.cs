@@ -100,7 +100,8 @@ try
     var schedule = new PollSchedule(time);
     while (!stop.IsCancellationRequested)
     {
-        if (schedule.Due())
+        // An Auto pressed after a pinned Max or Eco asks for its reading now: the battery rules decide without the minute's wait.
+        if (schedule.Due(service.TakePollRequest()))
         {
             int delay;
             if (config.PollProblem is not null) delay = config.PollSec;   // no station to poll: the loop only idles

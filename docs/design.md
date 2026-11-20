@@ -222,6 +222,21 @@ fills the gaps of `station.db` from it (`cloudHistory` false = off).
 - The last refusal or failure of a page choice (`modeError`) is saved with the state: a restart keeps it shown until
   the next mode change. `/api/now` carries it in `modeError` only, never repeated in `note`. A gap reset keeps a page
   choice that is still pending.
+- The latest press wins: a press that replaces one whose command has not run yet stores a `mode-superseded` event
+  ("eco replaced by max before it ran") and logs it, so no press vanishes unseen.
+- An applied page choice reads the flag again right after its command: `/api/now` (`powerMode`, the eco chip) shows
+  what the command wrote at once, never the poll's flag of up to a minute ago.
+- What holds the mode is said under the buttons (`modeHold`): Max or Eco pinned until mains returns (in a cut) or goes
+  (on mains), or Auto. Auto after a pinned Max or Eco runs no command of its own: the battery rules decide at the next
+  reading, which the service loop takes at once instead of at its minute (`auto-next` until that reading; the page's
+  settle read waits for it).
+- The power-mode command's `plan:` lines (the plan recorded on eco and the one returned to) are logged with its
+  `warn:` and `note:` lines, the battery call excepted.
+- A stall is visible: a poll or a mode command that holds the station gate for more than 20 s logs
+  `slow: the poll held the station gate for <n> s` (or `the mode change`). The flag reads (under the writers' named
+  mutex, up to 5 s) run on their own thread, never on a thread-pool thread. A tool of the in-process switch that has
+  exited but whose output stays open (a child it left running) is waited for at most 2 s more; then the call stops
+  waiting, tries to stop the tool's tree and uses what it printed.
 - While mains is off and the cut has not begun, `/api/now` gives `ecoAt`: the first-off time plus `mainsLostSec`, when
   the cut begins with eco if mains stays off (eco itself comes with the first accepted reading at or after it). The
   page counts down to it. `ecoAt` is null when no eco is pending: mains on or unknown, the cut already begun, the

@@ -55,6 +55,72 @@ public sealed partial class PageI18nTests
     }
 
     [Fact]
+    public void PressMode_accepted_reply_keeps_the_pressed_choice_until_the_service_answers()
+    {
+        string page = Page();
+        string script = $$"""
+            var modeError = '', modeErrorCode = '', modePress = null, planError = null, writeSeq = 0, nowText = 'old', lastNow = { manual: 'auto', modePending: null, modeError: '' };
+            const painted = [];
+            function fetch() { return Promise.resolve({ ok: true, status: 202, json: () => Promise.resolve({ ok: true, accepted: true, manual: 'max', modePending: 'max' }) }); }
+            function load() { painted.push('load'); return Promise.resolve(); } async function settle() {}
+            function t(k) { return k; } function noteText(n) { return n.text; } function $() { return { hidden: true, lastChild: {} }; }
+            function paintMode(D) { painted.push({ press: modePress, manual: D.manual, pending: D.modePending }); }
+            const all = [{ dataset: { m: 'max' }, disabled: false, textContent: 'Max' }];
+            eval({{Js(FunctionText(page, "pressMode"))}});
+            pressMode(all[0], all).then(() => console.log(JSON.stringify({ painted, manual: lastNow.manual, pending: lastNow.modePending, nowText })));
+            """;
+        using var doc = JsonDocument.Parse(RunScript(script));
+        var r = doc.RootElement;
+        // the paint after the reply, before any read: the pressed choice stays pressed and applying, never the stale one
+        Assert.Equal("{\"press\":null,\"manual\":\"max\",\"pending\":\"max\"}", r.GetProperty("painted")[1].GetRawText());
+        Assert.Equal("\"load\"", r.GetProperty("painted")[2].GetRawText());
+        Assert.Equal("max", r.GetProperty("manual").GetString());
+        Assert.Equal("max", r.GetProperty("pending").GetString());
+        Assert.Equal("", r.GetProperty("nowText").GetString());   // the next answer repaints even when its text did not change
+    }
+
+    [Fact]
+    public void Settle_follows_an_Auto_until_the_reading_it_asked_for()
+    {
+        string page = Page();
+        string script = $$"""
+            var settling = false, nowText = 'a', lastNow = { modePending: null, modeError: '', modeHold: { code: 'auto-next' } };
+            let loads = 0;
+            function load(force, s) { loads++; lastNow = { modePending: null, modeError: '', modeHold: null }; nowText = 'b'; return Promise.resolve(); }
+            function $() { return { hidden: true }; }
+            eval({{Js(FunctionText(page, "settle"))}});
+            settle().then(() => console.log(JSON.stringify({ loads })));
+            """;
+        using var doc = JsonDocument.Parse(RunScript(script));
+        Assert.Equal(1, doc.RootElement.GetProperty("loads").GetInt32());
+    }
+
+    [Fact]
+    public void ModeLine_says_what_holds_the_mode_unless_a_press_applies_or_failed()
+    {
+        string page = Page();
+        string script = $$"""
+            function t(k, p) { return p ? k + JSON.stringify(p) : k; }
+            function noteText(n) { return 'note:' + n.code; }
+            {{Const(page, "MODE_KEY")}}
+            {{Const(page, "ACTIVE_PLAN_KEY")}}
+            {{Const(page, "HELD_CODES")}}
+            eval({{Js(FunctionText(page, "modeLine"))}});
+            const base = { modeError: '', modePending: null, powerMode: 'normal', powerPlan: { id: 'high', name: 'High performance' }, modeHold: { code: 'max-pinned-cut', text: 'Max pinned', args: [] } };
+            console.log(JSON.stringify([
+              modeLine(base, null),
+              modeLine({ ...base, modePending: 'max' }, null),
+              modeLine({ ...base, modeError: 'Max held back', modeErrorNote: { code: 'max-held' } }, null),
+            ]));
+            """;
+        using var doc = JsonDocument.Parse(RunScript(script));
+        var got = doc.RootElement.EnumerateArray().Select(e => (e.GetProperty("kind").GetString(), e.GetProperty("text").GetString())).ToArray();
+        Assert.Equal(("info", "note:max-pinned-cut"), got[0]);
+        Assert.Equal(("pend", "modeApplying{\"m\":\"modeMax\"}"), got[1]);
+        Assert.Equal(("warn", "note:max-held"), got[2]);
+    }
+
+    [Fact]
     public void A_refused_press_settles_nothing_and_keeps_the_reason()
     {
         string page = Page();

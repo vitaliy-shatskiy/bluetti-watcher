@@ -413,6 +413,11 @@ en: {
   n_mode_dropped: "{0} dropped: {1}",
   n_mode_failed: "{0}: {1}",
   n_mode_other: "{0}",
+  n_max_pinned_cut: "Max pinned until mains returns or you press Auto",
+  n_max_pinned_mains: "Max pinned until mains goes out or you press Auto",
+  n_eco_pinned_cut: "Eco pinned until mains returns or you press Auto",
+  n_eco_pinned_mains: "Eco pinned until mains goes out or you press Auto",
+  n_auto_next: "Auto: the battery rules decide at the next reading, taken now",
   n_eco_emergency: "Emergency mode",
   n_eco_emergency_over: "Emergency mode (over eco until {0})",
   n_eco_mains: "Eco mode while mains is off",
@@ -675,6 +680,11 @@ uk: {
   n_mode_dropped: "{0} скасовано: {1}",
   n_mode_failed: "{0}: {1}",
   n_mode_other: "{0}",
+  n_max_pinned_cut: "Макс закріплено, доки не повернеться світло або ви не натиснете Авто",
+  n_max_pinned_mains: "Макс закріплено, доки не зникне світло або ви не натиснете Авто",
+  n_eco_pinned_cut: "Еко закріплено, доки не повернеться світло або ви не натиснете Авто",
+  n_eco_pinned_mains: "Еко закріплено, доки не зникне світло або ви не натиснете Авто",
+  n_auto_next: "Авто: режим вирішать правила батареї за наступним зчитуванням, воно вже йде",
   n_eco_emergency: "Аварійний режим",
   n_eco_emergency_over: "Аварійний режим (поверх еко-режиму до {0})",
   n_eco_mains: "Еко-режим, поки немає світла",
@@ -1243,20 +1253,24 @@ async function pressMode(b, all) {
   modePress = b.dataset.m; modeError = ''; modeErrorCode = ''; planError = null; writeSeq++;
   all.forEach((x) => { x.disabled = true; });
   if (lastNow) paintMode(lastNow);
-  let accepted = false;
+  let accepted = false, reply = {};
   try {
     // a reply that never comes must not leave the group disabled: the press gives up after 15 s as a failure
     const signal = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined;
     const r = await fetch('/api/mode', { method: 'POST', headers: { 'X-Station': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: b.dataset.m }), signal });
     const j = await r.json().catch(() => ({ message: `HTTP ${r.status}` }));
     if (!r.ok) { modeError = j.code ? noteText({ code: j.code, text: j.message, args: [] }) : `${b.textContent}: ${j.message || r.status}`; modeErrorCode = j.code || ''; }
-    accepted = r.status === 202;
+    accepted = r.status === 202; reply = j;
   } catch (e) {
     modeError = `${b.textContent}: ${t('serviceDown', { e: e.message })}`;
   } finally {
     modePress = null; writeSeq++;
     all.forEach((x) => { x.disabled = false; });
-    paintMode(lastNow || {});   // the refusal or failure on the line at once, the service down and no /api/now answer yet included
+    // a saved choice is the page's state at once (pressed, applying while its command waits), never the answer read
+    // before the press; the next answer repaints even when its text is unchanged
+    const D = accepted ? { ...(lastNow || {}), manual: reply.manual || b.dataset.m, modePending: reply.modePending || null, modeError: '', modeErrorNote: null, modeHold: null } : lastNow || {};
+    if (accepted && lastNow) { lastNow = D; nowText = ''; }
+    paintMode(D);   // the refusal or failure on the line at once, the service down and no /api/now answer yet included
   }
   await load(true);
   if (accepted) await settle();
@@ -1267,7 +1281,8 @@ async function settle() {
   if (settling) return;
   settling = true;
   try {
-    for (let i = 0; i < 8 && lastNow && lastNow.modePending && !lastNow.modeError; i++) {
+    const waits = () => lastNow && ((lastNow.modePending && !lastNow.modeError) || (lastNow.modeHold && lastNow.modeHold.code === 'auto-next'));
+    for (let i = 0; i < 8 && waits(); i++) {
       const before = nowText;
       await load(true, true);
       if (nowText === before && $('staleChip') && !$('staleChip').hidden) break;
@@ -1285,6 +1300,8 @@ function modeLine(D, press, own, ownCode) {
     const n = D.modeErrorNote;
     return { kind: n && HELD_CODES.includes(n.code) ? 'warn' : 'bad', text: n ? noteText(n) : D.modeError };
   }
+  // what holds the mode and until when (a pinned Max or Eco, an Auto waiting for its reading)
+  if (D.modeHold) return { kind: 'info', text: noteText(D.modeHold) };
   const mode = t({ normal: 'pmNormal', eco: 'pmEco', emergency: 'pmEmergency' }[D.powerMode] || 'pmUnknown');
   const p = D.powerPlan || {}, plan = ACTIVE_PLAN_KEY[p.id] ? t(ACTIVE_PLAN_KEY[p.id]) : p.name;
   return { kind: '', text: plan ? t('modeNowPlan', { m: mode, p: plan }) : t('modeNow', { m: mode }) };
@@ -1307,8 +1324,10 @@ function paintMode(D) {
   el.textContent = l.text; el.className = `hint ${l.kind}`.trim(); el.hidden = !l.kind;
   const p = D.powerPlan || {}, plan = ACTIVE_PLAN_KEY[p.id] ? t(ACTIVE_PLAN_KEY[p.id]) : p.name, pc = $('planChip');
   pc.className = 'chip' + (p.id === 'saver' ? ' acc' : '');
-  pc.lastChild.textContent = plan ? t('planChip', { p: plan }) : l.text;
-  pc.hidden = Boolean(l.kind) || !(plan || D.powerMode === 'unreadable');
+  // a hold is information beside the plan; applying, held back or failed takes the chip's place
+  const shout = l.kind && l.kind !== 'info';
+  pc.lastChild.textContent = plan ? t('planChip', { p: plan }) : l.kind === 'info' ? modeLine({ ...D, modeHold: null }, null).text : l.text;
+  pc.hidden = Boolean(shout) || !(plan || D.powerMode === 'unreadable');
 }
 var ecoTimer = null; // the eco countdown's one-second tick, stopped while the page is hidden
 var dtekDay = 'today'; // the DTEK tab picked: today or tomorrow
