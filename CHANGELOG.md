@@ -6,6 +6,40 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-20
+
+### Added
+
+- Power modes are on by default (`modes.engine` = `v2`): Normal, Eco, Max and your own modes, each a list of actions,
+  chosen by Auto rules (mains off or on for a while, battery under a level, a planned outage within some minutes from
+  the DTEK module, a time window) or held by hand. Every write is journaled and undone on leaving the mode unless it
+  was changed by hand meanwhile (`enforce` writes it back instead). `modes.engine` = `legacy` keeps the fixed eco.
+- Action modules: power plan, processor maximum state and boost, display-off timeout, NVIDIA GPU power limit and
+  driver profile, display refresh rate and brightness (DDC/CI), service state and start type, scheduled task on/off,
+  apps closed, Phone Link closed, a command pair from `modes.commands`, and a GPU idle watcher that logs what keeps the
+  GPU at full clock. The built-in Eco lists the optional ones off.
+- A Power modes panel on the page: the mode in force and why, a status per action, the modes with editors generated
+  from each module's settings schema, the Auto rules.
+- The admin broker: a SYSTEM scheduled task with a default-deny policy for the actions that need administrator rights
+  (services, tasks, GPU power limit, NVIDIA profiles). `install.ps1` sets it up in an elevated shell, as part of the
+  normal install, and then removes the switch's old GPU cap tasks. `/api/health` names a missing or stale broker; a
+  stale one is also an event and a tray notice at start.
+- The notification-area icon: the charge, the mains state, a menu with Auto and every power mode, and Windows
+  notifications for mains, mode changes, low battery, failures and station faults, warnings and over-temperature,
+  each group switchable in `notifications.json` (`GET`/`PUT /api/settings/notifications`).
+
+### Changed
+
+- `actions.eco` and `actions.normal` become the commands `eco` and `normal` run by the built-in Eco's command pair on
+  entering and leaving it; under `v2` the station's eco and mains-back no longer run them directly.
+- The power-modes routes accept bodies up to 64 KB (4 KB elsewhere); a mode id `auto` is refused.
+- The NVIDIA profile is read on entering and leaving a mode, not at every poll.
+
+### Fixed
+
+- A command pair entered before a service restart runs its leave command when the mode is left (the journal, not the
+  process's memory, says it was entered).
+
 ## [1.7.0] - 2026-11-20
 
 ### Added
@@ -420,7 +454,9 @@ with `-Apply`. Requirements and details: [README](https://github.com/vitaliy-sha
 
 Source at this tag: [v1.0.0](https://github.com/vitaliy-shatskiy/bluetti-watcher/tree/v1.0.0)
 
-[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.7.0...v1.8.0
+[1.7.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/vitaliy-shatskiy/bluetti-watcher/compare/v1.4.0...v1.4.1

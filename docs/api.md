@@ -110,6 +110,7 @@ Stored events, same time defaults: `{ "events": [ { "at", "kind", "detail" } ] }
 | `cloud` | The cloud's state `{ "state", "detail", "at" }`: `off` (the source never calls it) · `signed-out` (no token) · `ok` · `sign-in-needed` (the server refused the token refresh: sign in again) · `error` (the last read failed; `detail` names why). `at` = when it was seen, or null. Never a token. |
 | `bluetoothStalled` | true while a Bluetooth read abandoned at `readerTimeoutSec` plus 2 s (a Bluetooth call that ignored its timeout) is still running: no new Bluetooth read starts and the cloud fallback answers, until it ends or, after max(4 x that bound, 2 minutes), is given up. Information, not a problem: `ok` does not change. false otherwise. |
 | `stationBlocks` | The station's optional register blocks (`battery`, `stationTime`, `alarms`, `temperatures`) and whether it serves them: `supported`, `not supported: <why>` (until the service restarts), `not asked yet`, or `not on this protocol (V1)`. Information only. |
+| `broker` | The power modes' admin broker ([design.md](design.md) §13): `{ "state": "missing" \| "stale" \| "current", "version", "problem" }`. `stale` = its copy of the exe is older than the service: run `install.ps1 -Broker -Apply` in an elevated shell (`problem` says so; at start it is also event `broker-stale` and a tray notice). Information only: `ok` does not change. |
 | `misses` | Misses in a row. |
 | `silent` | true while the station does not answer. |
 | `rawRows`, `aggregateRows` | Rows in the database. |
@@ -161,10 +162,11 @@ during a battery emergency (`code` names it: `max-held`, `eco-held`). 400 = a bo
 
 ## Power modes (`modes.engine` = `v2`)
 
-User-defined modes, the Auto rules and per-action status ([design.md](design.md) §12). With the engine at `legacy`
-every route below answers 409; under `v2`, `POST /api/mode` selects the built-in `eco` / `max` or `auto` and answers
-like `GET /api/modes`. Writes (POST, PUT, DELETE) take the guard above (`X-Station: 1`, own or no `Origin`); bodies are
-at most 4 KB. A change is saved to `modes.json`, reconciled at once, and answered with the whole view (200); a refusal
+User-defined modes, the Auto rules and per-action status ([design.md](design.md) §12). `v2` is the default; with the
+engine at `legacy` every route below answers 409; under `v2`, `POST /api/mode` selects the built-in `eco` / `max` or
+`auto` and answers like `GET /api/modes`. Writes (POST, PUT, DELETE) take the guard above (`X-Station: 1`, own or no
+`Origin`); bodies on these routes are at most 64 KB (413 above; every other route keeps 4 KB). A mode id `auto` is
+refused (400): it is the selection value of the rules. A change is saved to `modes.json`, reconciled at once, and answered with the whole view (200); a refusal
 is text: 400 a bad body or setting (each problem names its field, `actions[0].settings.plan: required`), 404 no such
 mode, 409 a conflict (a built-in deleted, a mode a rule still chooses, an id taken, `modes.json` not writable).
 

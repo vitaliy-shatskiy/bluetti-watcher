@@ -138,11 +138,28 @@ pwsh -NoProfile -File "$env:LOCALAPPDATA\bluetti-watcher\power-mode\power-mode.p
 
 The service shows its own notification-area icon (no second program): the charge in digits over a bar, green on mains,
 amber on battery, grey when no fresh reading has come for `maxGapSec`. Hover for the watts in and out, the mode and the
-time left; click for a menu with Auto, Eco and Max (the page's buttons), "Open panel" (this page in your browser) and
-"Exit tray" (removes the icon until the service starts again; the service keeps running). Its notifications are Windows
-toasts for mains lost and back, the service's own mode changes, low battery, failed actions and station alarms; switch
+time left; click for a menu with Auto and every power mode (below), "Open panel" (this page in your browser) and
+"Exit tray" (removes the icon and its notifications until the service starts again; the service keeps running). Its
+notifications are Windows toasts for mains lost and back, the power mode changing, low battery, failed actions, an
+admin broker older than the service, and station faults, warnings and over-temperature (V2 stations); switch
 each group in `notifications.json` ([configuration.md](docs/configuration.md#notifications-notificationsjson)). The
 notifications come from the icon: with the icon closed or `"tray": false` (or `--no-tray`) there are none.
+
+## Power modes
+
+A power mode is a named list of actions the service applies to this PC: Normal, Eco and Max are built in, and you can
+add your own on the page (Power modes panel) or through the API ([api.md](docs/api.md#power-modes-modesengine--v2)).
+Auto picks the mode by rules in order: mains off or on for a while, battery under a level, a planned outage within some
+minutes (with the DTEK module), a time window; a mode you choose holds until Auto. The actions: the power plan, the
+processor's maximum state and boost, the display-off timeout, the NVIDIA GPU power limit and a driver profile, the
+display refresh rate and brightness, services and scheduled tasks, apps and Phone Link closed, a command pair from
+your config (pause a backup on entering Eco, resume it on leaving), and a watcher that logs what keeps the GPU at full
+clock. Every change is journaled and undone when the mode is left, unless you changed that setting by hand meanwhile:
+then it is left as you set it. The built-in Eco lists the optional ones off; an existing install's `actions.eco` and
+`actions.normal` become Eco's command pair. Actions that need administrator rights go through the admin broker, a
+SYSTEM task with a default-deny allow list that `install.ps1` sets up in an elevated shell; run that step again after
+each upgrade (`/api/health` and the tray say when it is due). `"modes": { "engine": "legacy" }` keeps the old
+fixed eco ([configuration.md](docs/configuration.md#power-mode-and-actions)).
 
 ## Screenshots
 

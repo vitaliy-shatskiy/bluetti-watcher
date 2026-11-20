@@ -688,7 +688,8 @@ those three calls and the `dtekWatcher` config property.
 
 ## 12. Power modes (`modes.engine` = `v2`)
 
-Off by default (`legacy`: §5's fixed eco). Code in `src/BluettiWatcher/Modes/`; API in [api.md](api.md), Power modes.
+On by default since 1.8.0 (`modes.engine` = `legacy` keeps §5's fixed eco). Code in `src/BluettiWatcher/Modes/`; API
+in [api.md](api.md), Power modes.
 
 1. A **mode** is a named list of actions (`{ typeId, enabled, enforce, settings }`) plus the flag word it maps to
    (`normal`, `eco`, `emergency`). Exactly one mode is active. Built-ins `normal`, `eco`, `max` are editable, never
@@ -700,10 +701,29 @@ Off by default (`legacy`: §5's fixed eco). Code in `src/BluettiWatcher/Modes/`;
    are registered by hand (`ModuleCatalog`, no reflection: NativeAOT); the registry refuses a duplicate type id or
    defaults that fail their own schema. Settings are checked against the schema (type, properties, required,
    additionalProperties, enum, minimum, maximum, minLength, maxLength, items, maxItems) and the module's own checks
-   before they are saved.
+   before they are saved. A mode id is 1-32 of `a-z 0-9 -`; `auto` is reserved (it selects the rules). The modules
+   (restoration class in brackets; * = writes through the admin broker, §13):
+   - `windows.powerPlan` (reversible): the active power plan.
+   - `windows.cpuPolicy` (reversible): the processor's maximum state and boost mode of a plan, on mains and on battery
+     (`plan`: a GUID or `active`; with `active` a plan switch during the mode leaves the old plan holding the mode's values).
+   - `display.offTimeout` (reversible): the display-off timeout of the active plan, on battery and on mains.
+   - `gpu.powerLimit`* (reversible): the NVIDIA board power limit (`min`, `default` or watts within the GPU's range).
+   - `display.refreshRate` (reversible), `display.brightness` (reversible, DDC/CI monitors).
+   - `nvidia.profile`* (compensatable): a Profile Inspector `.nip` imported, the customised profiles exported first
+     and imported back on leaving. Its read is a broker export, so it is read and written on entering and leaving the
+     mode, not at every poll; a failed read is tried again at the next poll.
+   - `gpu.idleWatcher` (token): writes nothing; logs the processes holding a GPU that stays in P0 at a high clock with
+     next to no load, once per idle stretch.
+   - `service.state`* (reversible): a service's running state and start type (Windows Search, Xbox gaming services, ...).
+   - `scheduledTask.state` (reversible): a scheduled task enabled or disabled.
+   - `process.close`, `windows.phoneLink` (irreversible): apps closed, Phone Link closed.
+   - `command.pair` (compensatable): a named command (`modes.commands`) on entering and another on leaving. The module
+     cannot read what its commands changed, so its read is its memory of what it ran; after a restart the reconciler
+     hands it the journaled target of every pair it still owns (`IRecallsWrites`), so leaving still runs the leave
+     command.
 3. **Selection.** A manual pick holds until Auto. Auto takes the first rule (in order) whose condition holds:
-   `mainsOffFor` / `mainsOnFor` N s (mains as the decision confirmed it), `socBelow` X %, `cutWithin` N min (no input
-   yet: never matches), `timeWindow` from-to local time (may wrap midnight). A rule in force keeps matching within its
+   `mainsOffFor` / `mainsOnFor` N s (mains as the decision confirmed it), `socBelow` X %, `cutWithin` N min (the DTEK
+   module's next planned outage, §11; 0 while a cut is on; with the module off or failing it never matches), `timeWindow` from-to local time (may wrap midnight). A rule in force keeps matching within its
    hysteresis (SoC points, minutes; a mains rule for its whole spell); when no rule matches, the last mode stays.
    Unknown inputs match nothing. The default rules reproduce §5: `eco` after `mainsLostSec` off, `normal` after
    `mainsBackSec` on. A battery emergency (§6) overrides both: the mode's actions stay and the engine never writes
@@ -729,8 +749,10 @@ Off by default (`legacy`: §5's fixed eco). Code in `src/BluettiWatcher/Modes/`;
    the switch before (its flag or `power-mode.config.json` exists) is migrated: `returnPlan` becomes Normal's plan
    (`previous` = no plan action, so leaving Eco restores whatever plan was active before it), `gpuCap` turns Eco's GPU
    limit on or off, the `no-hibernate` file turns `autoHibernate` off; a fresh install gets the public defaults (Eco =
-   Power saver, its GPU limit listed but off; Max = High performance). The config's `actions` are not migrated: they
-   still fire on the station's eco and mains-back transitions. A file this build cannot parse is moved aside and
+   Power saver, its GPU limit, a command pair, services, Phone Link and the GPU idle watcher listed but off; Max = High
+   performance). The config's `actions.eco` / `actions.normal` become the commands `eco` / `normal` and the built-in
+   Eco's command pair runs them on entering and leaving Eco (configuration.md, Power mode and actions); under `v2` the
+   station's eco and mains-back no longer fire them. The other `actions` keys fire as before. A file this build cannot parse is moved aside and
    replaced; one from a newer build is left alone and the defaults run in memory.
 7. **Flag.** The active mode's flag word is written through the switch's own flag code (same lock, same format; the
    battery fields and any plan or GPU limit an older eco still owes are carried over), so its readers are unchanged.
@@ -751,7 +773,11 @@ no trigger, which it starts on demand (`schtasks /run`), and waits up to 10 s fo
 - Folder: `%ProgramData%\BluettiWatcher\broker`, owned by Administrators; Administrators and SYSTEM write it, the user
   reads it and may only add files to `requests\` (never folders). `bin\` holds the copy of `BluettiWatcher.exe` the task
   runs: SYSTEM never runs the exe in the user's own bin, which the user can replace. `install.ps1 -Broker -Apply`
-  (elevated) creates it all; run it again after an upgrade to refresh the copy.
+  (elevated) creates it all; the normal `install.ps1 -Apply` runs that step too when its shell is elevated, else it
+  names it as the step left to run. Once the broker is registered, the switch's old GPU cap tasks (`<prefix>GpuCap`,
+  `<prefix>GpuRestore`) are removed: the broker's `gpu.setPowerLimit` replaces them. After an upgrade the copy is
+  stale until that step runs again: the service compares the copy's file version with its own and names a missing or
+  older broker in `/api/health` (`broker`), and an older one at start as event `broker-stale` (a tray notice).
 - Request: `requests\<id>.json` (`{ v, id, op, args, issued }`, id = 32 hex digits, written as `.tmp` and renamed into
   place); answer: `responses\<id>.json` (`{ id, ok, error, value }`), pruned after 10 minutes. The broker logs every
   request to `broker.log` beside them.
@@ -767,6 +793,7 @@ no trigger, which it starts on demand (`schtasks /run`), and waits up to 10 s fo
   Profile Inspector must sit under Program Files or the broker folder. Nothing from a request reaches a shell: services
   and tasks go by their policy spelling, numbers are re-formatted, files are names joined to a fixed folder.
 - `BluettiWatcher.exe --broker-allow service|task|profile|inspector <name>` (elevated) adds to the policy.
+
 ## 14. Tray and notifications
 
 1. The icon lives in the service process: one more thread (STA) with a hidden top-level window and a blocking
@@ -783,17 +810,20 @@ no trigger, which it starts on demand (`schtasks /run`), and waits up to 10 s fo
    tooltip only when its text changes.
 4. The menu is Auto and the modes as one radio group, "Open panel" (the page through the shell, no window of ours),
    "Exit tray" (the icon and its notifications go until the next start; the service runs on). The modes come through
-   a small port (list, current, select), today the page's Auto / Eco / Max; a choice goes to the same path as
-   `POST /api/mode`, off the tray thread.
+   a small port (list, current, select): under `v2` every mode of `modes.json` in its order, a choice held until Auto
+   as `POST /api/modes/select` holds it; under `legacy` the page's Auto / Eco / Max through the path of
+   `POST /api/mode`. A choice runs off the tray thread.
 5. Explorer's restart (`TaskbarCreated`) adds the icon again; so does a taskbar that was not there yet when the
    service started at logon.
 6. Notifications are shell balloons (`NIF_INFO`), shown by Windows 10 and 11 as toasts with no app registration or
    AUMID, respecting quiet time. A WinRT toast would need a Start-menu shortcut with an AUMID for an unpackaged exe
    and the WinRT notification projection in the NativeAOT image. Without the icon there is nowhere to show them.
 7. Sources: each stored event (a hook on the store, so every writer's events count) by kind: `eco-on`, `mains-back`,
-   `mode-dropped` (mode changes); `emergency-on`, `stop`, `hibernate-warning` (low battery); `action-failed`,
-   `mode-refused` (failures); `grid-voltage-high` (faults). Mains lost and back follow the confirmed cut between two
-   snapshots, never the first one after a start. Station faults, warnings and over-temperature come as the whole
-   active list per reading (`TrayController.ReportAlarms`): an alarm notifies when it appears, not while it stays.
+   `mode-changed`, `mode-dropped` (mode changes); `emergency-on`, `stop`, `hibernate-warning` (low battery);
+   `action-failed`, `mode-refused`, `broker-stale` (failures); `grid-voltage-high` (faults). Mains lost and back follow
+   the confirmed cut between two snapshots, never the first one after a start. Station faults, warnings and
+   over-temperature (V2 stations, §3) come as the whole active list after each poll (`TrayController.ReportAlarms`,
+   fed from the station's own codes and its temperature against `stationTempHighC`): an alarm notifies when it
+   appears, not while it stays.
 8. Each group is switched in `notifications.json`, read at start and on each `PUT /api/settings/notifications`
    (all or nothing, written as a temp file moved over the old one); a change applies to the next notification.

@@ -173,7 +173,8 @@ config.json still loads, and `service.log` names them once at start.
 | `actionTimeoutSec` | int | 30 | 1-600: time limit of each action (only actions). |
 | `actions` | object | none | Commands run when the service enters a state: keys `eco`, `emergency`, `stop`, `hibernate-warn`, `normal`; and the alert `grid-voltage-high` (grid input above 253 V, again after it was under 250 V); V2 stations also `station-warning`, `station-fault`, `station-alarm-cleared` and `station-hot`. See below. |
 | `dryRun` | bool | false | Log every power-mode command, action and hibernation instead of running it (also `--dry-run`). |
-| `modes.engine` | string | `legacy` | `legacy`: the fixed eco above and the page's Auto / Eco / Max. `v2`: user-defined power modes with Auto rules, set through the API ([design.md](design.md) §12, [api.md](api.md) Power modes); their settings live in `modes.json` in the data directory, not here. Any other value = `legacy`, named in the log. |
+| `modes.engine` | string | `v2` | `v2`: user-defined power modes with Auto rules, set on the page or through the API ([design.md](design.md) §12, [api.md](api.md) Power modes); their settings live in `modes.json` in the data directory, not here. `legacy`: the fixed eco above and the page's Auto / Eco / Max. Any other value = `legacy`, named in the log. |
+| `modes.commands` | object | `{}` | Named commands a mode's "Run a command on enter and on leave" action (`command.pair`) may run: `{ "<name>": { "exe": "<path>", "args": ["..."], "timeoutSec": 30 } }`. Only this file defines them; a mode, the page and the API pick a name, never an executable or an argument. Each run is windowless, with no shell, killed at `timeoutSec` (1-600); a non-zero exit is a failed action. See below. |
 
 An action is an executable followed by its arguments, started directly with no shell: a pipe, a redirect or a shell
 built-in needs `cmd /c ...`. It runs windowless, with the environment values `POWER_MODE_FILE`, `POWER_MODE_MUTEX`,
@@ -184,6 +185,26 @@ Auto-lift fire `normal`. A dry run logs the actions and their environment instea
 
 A flag path set while `powerMode.mutex` is left at its default is reported at start (log and event `config-warning`):
 set both, or neither.
+
+Under `modes.engine` = `v2` (the default) the station's eco and mains-back run no power-mode command and no
+`actions.eco` / `actions.normal` line: at the first v2 start those two lines become the commands `eco` and `normal`
+(split into the executable and its arguments by the Windows rules, the same arguments the program received before;
+a name already in `modes.commands` wins) and the built-in Eco's command pair runs `eco` on entering Eco and `normal`
+on leaving it. The other `actions` keys fire as before. A pair entered before a restart still runs its leave command
+when the mode is left: the modes journal, not the process's memory, says it was entered.
+
+```json
+"modes": {
+  "commands": {
+    "backup-pause":  { "exe": "C:\\Program Files\\Backup\\backup.exe", "args": ["pause"],  "timeoutSec": 30 },
+    "backup-resume": { "exe": "C:\\Program Files\\Backup\\backup.exe", "args": ["resume"], "timeoutSec": 30 }
+  }
+}
+```
+
+The built-in Eco lists its optional actions off and empty: a command pair (a backup pause), services to stop (Windows
+Search, Xbox gaming services, Windows Health, ... - the admin broker runs the stop and the start), Phone Link closed,
+and the GPU idle watcher, which logs what holds the GPU at full clock. Turn them on and fill them in on the page.
 
 Hibernation off: create an empty file `no-hibernate` in the data directory. It is read on every poll. With
 `modes.engine` = `v2`, `PUT /api/settings/hibernate` turns it off too; the file is still honoured.
@@ -228,11 +249,11 @@ group stays on until the next change rewrites it.
 | Key | Default | Notifications |
 |---|---|---|
 | `mains` | true | Mains lost, mains back (the confirmed cut, not a single reading). |
-| `modeChanges` | true | Eco switched on by the service, modes lifted when mains is back, a page choice dropped. |
+| `modeChanges` | true | Eco switched on by the service, modes lifted when mains is back, a power mode the Auto rules or a choice put in force (`v2`), a page choice dropped. |
 | `lowBattery` | true | Battery emergency, stop, the hibernate warning. |
-| `failures` | true | A power-mode command or action that failed, a mode choice refused. |
+| `failures` | true | A power-mode command or action that failed, a mode choice refused, an admin broker older than the service. |
 | `faults` | true | Station faults and warnings, the grid voltage alert. |
-| `overTemperature` | true | The station reports over-temperature. |
+| `overTemperature` | true | The station's hottest temperature is above `stationTempHighC` (V2 stations). |
 
 ## DTEK module (`dtekWatcher`)
 
