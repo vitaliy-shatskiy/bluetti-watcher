@@ -6,6 +6,21 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.10.2] - 2026-11-20
+
+### Fixed
+
+- Bluetooth opens that stalled for over 12 s every 7-30 minutes, twice in a row: each poll looked the station's GATT
+  services and characteristics up over the air. They now come from Windows' cache first; only when the cache fails or
+  holds no ff01/ff02 does the same open look them up over the air, within the same cap. The connection is still closed
+  after each poll, so the phone app can connect. The `hung in:` step of a cut open names the cache mode, for example
+  `hung in: GATT services (uncached), try 2 (the last answered Unreachable)`.
+- No more "Admin broker out of date" notice at every elevated upgrade: the new service started seconds before
+  `install.ps1` refreshed the broker. The service now tells a broker still older than itself 10 minutes after its
+  start, once per version (`/api/health` names the state all along).
+- The first notices after an install are Windows toasts, no longer tray balloons: `install.ps1` writes the shortcuts
+  (the Start-menu one carries the notifications' app id) before it starts the new service.
+
 ## [1.10.1] - 2026-11-20
 
 ### Changed
