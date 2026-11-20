@@ -107,11 +107,13 @@ Everything lands in `%LOCALAPPDATA%\bluetti-watcher` (`bin\`, `power-mode\`, `co
 for `/api/health`, registers the wake task (disabled) and creates the `Bluetti Watcher` shortcut on the Desktop and in
 the Start menu.
 
-Optional, once, from an elevated PowerShell: the GPU power cap during eco on NVIDIA cards needs two scheduled tasks
-that only an administrator can register:
+The power modes' actions that need administrator rights (services, scheduled tasks, the NVIDIA GPU power limit and
+profiles) run through the admin broker. Run the install from an elevated PowerShell and it sets the broker up too;
+from a normal one it installs the service and names the elevated step left, which you can run later, and again after
+every upgrade (`/api/health` and the tray say when it is due):
 
 ```powershell
-pwsh -NoProfile -File "$env:LOCALAPPDATA\bluetti-watcher\power-mode\power-mode.ps1" gpu-task install
+pwsh -NoProfile -File install.ps1 -Broker -Apply   # elevated, in the extracted release folder
 ```
 
 ## Features
@@ -308,7 +310,8 @@ The command line: `--help`, `--version` and the power-mode switch (`power-mode s
 
 To update, run `install.ps1 -Apply` from the new release's folder. `config.json`, the history and the cloud token stay;
 the new exe is staged next to the running one and swapped in seconds, and a failed health check puts the previous
-version back. What changed: [CHANGELOG.md](CHANGELOG.md).
+version back. With the admin broker installed, run `install.ps1 -Broker -Apply` from an elevated PowerShell after the
+update too: the broker runs its own copy of the exe. What changed: [CHANGELOG.md](CHANGELOG.md).
 
 Going back from 1.7 to 1.6 or older: from 1.7 an eco's end task starts `bin\BluettiWatcherService.exe`, which older
 releases do not have, so after the swap that task cannot start and the eco does not end at its time. Leave eco before
