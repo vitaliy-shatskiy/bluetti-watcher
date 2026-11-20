@@ -86,7 +86,7 @@ internal sealed class ScheduledTaskModule(ITaskScheduler tasks, IAdminBroker bro
         string? direct = await tasks.SetEnabledAsync(path, want, ct);
         if (direct is not null)
         {
-            var r = await broker.RunAsync(want ? "task.enable" : "task.disable", new JsonObject { ["path"] = path }, ct);
+            var r = await broker.RunAsync(want ? "task.enable" : "task.disable", new JsonObject { ["name"] = path }, ct);
             if (!r.Ok) return ApplyResult.Failed($"task '{path}': {direct}; the broker refused or failed: {r.Error}");
         }
         var after = await tasks.ReadEnabledAsync(path, ct);

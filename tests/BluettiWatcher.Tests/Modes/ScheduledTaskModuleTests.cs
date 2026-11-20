@@ -14,7 +14,8 @@ public sealed class ScheduledTaskModuleTests
     public ScheduledTaskModuleTests()
     {
         _module = new ScheduledTaskModule(_tasks, _broker);
-        _broker.OnRun = (op, args) => _tasks.Tasks[args["path"]!.GetValue<string>()] = op == "task.enable";
+        // The broker takes the task as "name" (BrokerCore task.enable / task.disable): any other key is refused.
+        _broker.OnRun = (op, args) => _tasks.Tasks[args["name"]!.GetValue<string>()] = op == "task.enable";
     }
 
     private ResourceIntent Single(string json) => Assert.Single(_module.Expand((JsonObject)JsonNode.Parse(json)!));
@@ -42,7 +43,7 @@ public sealed class ScheduledTaskModuleTests
         Assert.True(r.Ok);
         var call = Assert.Single(_broker.Calls);
         Assert.Equal("task.disable", call.Op);
-        Assert.Equal(@"\Vendor\Updater", call.Args["path"]!.GetValue<string>());
+        Assert.Equal(@"\Vendor\Updater", call.Args["name"]?.GetValue<string>());
     }
 
     [Fact]
