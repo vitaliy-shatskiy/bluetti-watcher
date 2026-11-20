@@ -70,11 +70,26 @@ public sealed class PowerModeFlagAclExeTests
         Assert.False(Directory.Exists(Path.Combine(dir, "pd", "other")));
     }
 
-    [Fact(DisplayName = "exe: a folder that inherits its ACL refuses the write and keeps its ACL")]
-    public async Task A_folder_that_inherits_its_ACL_refuses_the_write()
+    [Fact(DisplayName = "exe: a folder the user owns that inherits its ACL is given the flag's own ACL and written")]
+    public async Task A_folder_the_user_owns_that_inherits_its_ACL_is_repaired()
     {
         await using Cleanup t = new();
-        Res r = await AclCaseAsync(t, "$null");
+        (_, string flag, string folder) = AclWorld(t);
+        Directory.CreateDirectory(folder);   // as an older install's broker step left it: inherited, before any flag write
+
+        Res r = await CliAsync(["on"], flag);
+
+        Eq(0, r.Status, r.Out + r.Err);
+        Assert.True(new DirectoryInfo(folder).GetAccessControl().AreAccessRulesProtected, "the folder still inherits its ACL");
+        Eq(0, (await CliAsync(["on"], flag)).Status);   // the repaired folder passes its own check
+    }
+
+    [Fact(DisplayName = "exe: a folder that inherits its ACL, holds files and is someone else's is refused and kept")]
+    public async Task A_folder_that_inherits_its_ACL_and_is_someone_elses_refuses_the_write()
+    {
+        await using Cleanup t = new();
+        // The owner is the real user; the seam makes the running user someone else; a file in it: not the user's to fix.
+        Res r = await AclCaseAsync(t, "New-Item -ItemType File -Path (Join-Path $d 'other.txt') | Out-Null", Env(("POWER_MODE_ME_SID", "S-1-5-21-1-2-3-1001")));
         Eq(2, r.Status, r.Out + r.Err);
         Match(Refused + @"it inherits its ACL \(inheritance must be off\)", r.Out);
     }

@@ -92,7 +92,10 @@ One line of JSON, UTF-8 without BOM, written to a temp file and moved over the f
 A missing file is normal. The configured flag's folder is created on the first write with its own ACL: you Modify,
 SYSTEM and Administrators Full control, nothing inherited. An existing folder with any other entry (beyond the read of
 `POWER_MODE_EXTRA_READERS`), inheritance on, or a junction in its place refuses every write and reads as untrusted;
-the scripts never change that ACL, fix it by hand. A reader running as another account (a service, SYSTEM) therefore
+the scripts never change that ACL, fix it by hand. One exception, in the exe's writer (`BluettiWatcher.exe
+power-mode` and the service): a folder that only inherits its ACL (an older install created it before the first flag
+write) is given the folder's own ACL when you own it or it is empty; anything else stays refused, and the service
+alerts once per reason, not every poll. A reader running as another account (a service, SYSTEM) therefore
 always reads the flag as untrusted: run the readers as the user.
 
 ## Power plan and GPU

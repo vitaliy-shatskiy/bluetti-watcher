@@ -18,6 +18,7 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
     private string _reason = "";
     private bool _emergency;
     private FlagWord? _flagWritten;
+    private string? _flagFailure;
     private readonly List<string> _problems = [];
 
     public ModuleRegistry Registry => registry;
@@ -128,8 +129,17 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
         if (journal.Count > ModeJournal.CompactAbove) CompactJournal();
         if (_emergency || _flagWritten == mode.FlagWord) return;
         string why = await flag.WriteAsync(mode.FlagWord, ct);
-        if (why.Length == 0) _flagWritten = mode.FlagWord;
-        else onEvent?.Invoke("action-failed", $"power-mode flag: {why}");
+        if (why.Length == 0)
+        {
+            _flagWritten = mode.FlagWord;
+            _flagFailure = null;
+        }
+        else if (why != _flagFailure)
+        {
+            // Tried every poll, alerted once per reason: a refused flag folder is not a notification a minute.
+            _flagFailure = why;
+            onEvent?.Invoke("action-failed", $"power-mode flag: {why}");
+        }
     }
 
     private void SaveQuietly()

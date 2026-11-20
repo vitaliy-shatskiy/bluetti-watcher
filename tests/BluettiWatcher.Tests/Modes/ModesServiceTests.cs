@@ -126,6 +126,29 @@ public sealed class ModesServiceTests : IDisposable
         Assert.False(new ModesStore(sub).Load(() => new ModesSettings(), T0).Settings.AutoHibernate);
     }
 
+    [Fact]
+    public async Task Step_FlagFolderRefusedEveryPoll_AlertsOnceUntilItIsWritten()
+    {
+        var flag = new FakeFlagWriter { Fail = "the flag folder is not the user's" };
+        var events = new List<string>();
+        string sub = Directory.CreateDirectory(Path.Combine(_dir, "alert")).FullName;
+        var cfg = new StationConfig { DataDir = sub };
+        using var engine = new ModesEngine(cfg, new ModuleRegistry([new FakeModule(BuiltInModes.PowerPlanType, _m)]), new ModesStore(sub),
+            new ModeJournal(Path.Combine(sub, ModeJournal.FileName)), flag, _clock, _ => { }, (k, _) => events.Add(k));
+        engine.Start(T0.AddDays(-1));
+        var input = new SelectorInput(true, TimeSpan.FromHours(1), 80, null, _clock.GetLocalNow());
+
+        for (int i = 0; i < 5; i++) await engine.StepAsync(input, emergency: false, TestContext.Current.CancellationToken);
+        flag.Fail = "";
+        await engine.StepAsync(input, emergency: false, TestContext.Current.CancellationToken);
+        flag.Fail = "the flag folder is not the user's";
+        await engine.StepAsync(input, emergency: true, TestContext.Current.CancellationToken);
+        await engine.StepAsync(input, emergency: false, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, events.Count(e => e == "action-failed"));
+        Assert.Equal([FlagWord.Normal], flag.Written);
+    }
+
     private static List<Rule> CutRule() => [new() { Condition = new RuleCondition { Kind = ConditionKind.CutWithin, Minutes = 30 }, ModeId = BuiltInModes.Eco }];
 
     [Fact]

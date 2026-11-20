@@ -158,11 +158,18 @@ internal sealed partial class PowerModeSwitch
         bool isDefault = string.Equals(full, DefaultFlagPath, StringComparison.OrdinalIgnoreCase);
         if (Directory.Exists(dir))
         {
-            if (isDefault && FlagDirAclReason(dir) is { Length: > 0 } why)
+            if (isDefault && FlagDirAclReason(dir) is { Length: > 0 } why && !RepairInheritedFlagDir(dir))
                 throw new InvalidOperationException($"the flag folder {dir} is not the user's: {why}; nothing written (fix the ACL by hand)");
             return;
         }
         if (!isDefault) throw new InvalidOperationException($"directory missing: {dir}");
+        // Created WITH the ACL, so the folder is never open under the inherited one, not even for a moment.
+        new DirectoryInfo(dir).Create(FlagDirSecurity(dir));
+    }
+
+    /// <summary>The flag folder's own ACL: the user Modify, SYSTEM and Administrators Full control, nothing inherited.</summary>
+    private DirectorySecurity FlagDirSecurity(string dir)
+    {
         var me = WindowsIdentity.GetCurrent().User ?? throw new InvalidOperationException("the user's SID cannot be read");
         if (me.Value is SystemSid or "S-1-5-19" or "S-1-5-20" || ExtraReaderSids().Contains(me.Value))
             throw new InvalidOperationException($"the flag folder {dir} is created by the user only, not by {me.Value}");
@@ -172,8 +179,31 @@ internal sealed partial class PowerModeSwitch
         sec.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(SystemSid), FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
         sec.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(AdministratorsSid), FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
         sec.AddAccessRule(new FileSystemAccessRule(me, FileSystemRights.Modify, inherit, PropagationFlags.None, AccessControlType.Allow));
-        // Created WITH the ACL, so the folder is never open under the inherited one, not even for a moment.
-        new DirectoryInfo(dir).Create(sec);
+        return sec;
+    }
+
+    /// <summary>
+    /// The default flag folder left inheriting its ACL (an older install created it before the first flag write) gets the
+    /// flag's own ACL when it is the user's to fix: the user owns it, or it is empty. Anything else - a link, a folder
+    /// holding someone else's files - stays refused. true = repaired and it now passes the check.
+    /// </summary>
+    private bool RepairInheritedFlagDir(string dir)
+    {
+        try
+        {
+            var info = new DirectoryInfo(dir);
+            if ((info.Attributes & FileAttributes.ReparsePoint) != 0) return false;
+            var acl = info.GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
+            if (acl.AreAccessRulesProtected) return false;
+            if (OwnerOf(acl) != MeSid() && info.EnumerateFileSystemInfos().Any()) return false;
+            info.SetAccessControl(FlagDirSecurity(dir));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidOperationException or PrivilegeNotHeldException)
+        {
+            Skip(e);
+            return false;
+        }
+        return FlagDirAclReason(dir).Length == 0;
     }
 
     // ---- the writers' lock -----------------------------------------------------------------------------------------------
