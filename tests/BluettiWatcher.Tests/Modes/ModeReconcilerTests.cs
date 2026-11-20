@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using BluettiWatcher.Io;
 using BluettiWatcher.Modes;
 
 namespace BluettiWatcher.Tests.Modes;
@@ -248,6 +249,36 @@ public sealed class ModeReconcilerTests : IDisposable
 
         Assert.Empty(_m.Writes);
         Assert.Empty(r.Owned);
+    }
+
+    [Fact]
+    public async Task Restart_AfterHibernate_TokenWriteStaysOwned()
+    {
+        // The machine booted an hour before the write, then hibernated for five hours; the service restarts ten minutes after
+        // the wake. Windows' time since boot counts the hibernation (GetTickCount64); the awake time does not.
+        var sinceBootAtWrite = TimeSpan.FromHours(1);
+        _m.Values["pause/backup"] = false;
+        var paused = new Mode { Id = "eco", Name = "Eco", Actions = [Act("pause", "pause/backup", true)] };
+        await New().ReconcileAsync(paused, TestContext.Current.CancellationToken);
+        var slept = TimeSpan.FromHours(5);
+        var awakeAfter = TimeSpan.FromMinutes(10);
+        _clock.Now += slept + awakeAfter;
+
+        var j = new ModeJournal(JournalPath);
+        var r = new ModeReconciler(_registry, j, _clock, (k, d) => _events.Add($"{k}: {d}"));
+        r.Replay(j.Load().Records, BootClock.BootAt(_clock, () => sinceBootAtWrite + slept + awakeAfter));
+
+        Assert.True(r.Owned.ContainsKey("pause/backup"));
+        Assert.DoesNotContain(_events, e => e.Contains("did not survive the reboot", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SinceBoot_AfterAwakeTimeRead_IsAtLeastIt()
+    {
+        // Environment.TickCount64 is the awake time on .NET 11 (sleep and hibernation excluded); the time since boot holds it,
+        // give or take GetTickCount64's resolution (the system timer, 10-16 ms).
+        var awake = TimeSpan.FromMilliseconds(Environment.TickCount64);
+        Assert.InRange(BootClock.SinceBoot(), awake - TimeSpan.FromSeconds(1), TimeSpan.MaxValue);
     }
 
     [Fact]

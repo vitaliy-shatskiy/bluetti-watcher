@@ -83,7 +83,7 @@ using var modes = config.Modes.V2On ? new BluettiWatcher.Modes.ModesEngine(confi
         // Read, never written: an entry it lacks is said on the page with the elevated --broker-allow command.
         ReadPolicy = () => BluettiWatcher.Modes.Broker.BrokerPolicy.Read(BluettiWatcher.Modes.Broker.BrokerPaths.Default.Policy),
     } : null;
-modes?.Start(time.GetUtcNow() - TimeSpan.FromMilliseconds(Environment.TickCount64));
+modes?.Start(BluettiWatcher.Io.BootClock.BootAt(time, BluettiWatcher.Io.BootClock.SinceBoot));
 using var service = new StationService(config, new FallbackReader(bluetooth, cloud, () => config.CloudOn, r => StationDecision.Check(r, new StationState(), time.GetUtcNow(), config), Log, () => config.CloudOnly), new PowerModeAdapter(config, runner, Log, new BluettiWatcher.PowerMode.InProcessPowerMode()),
     config.DryRun ? new DryRunHibernator(Log) : new ShutdownHibernator(runner, Log),
     new FlagFileReader(config.FlagFile, Log, config.PowerModeMutex), store, time, Log, wake, new StateActions(config, runner, store, time, Log)) { Modes = modes };
