@@ -6,6 +6,49 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-20
+
+### Added
+
+- Reading source: `auto` (Bluetooth, the cloud when it misses), `bluetooth` or `cloud`, set by the `readingSource`
+  config key or on the page (saved in `reading-source.json`, in force from the next poll, Use config resets it). A
+  source with which nothing would be polled is refused with 409 and the reason.
+- BLUETTI cloud sign-in and sign-out from the page, and a cloud state on the page and in `/api/cloud`: a refused token
+  refresh is not retried until a new token arrives, and the token is refreshed once a day while the source allows the
+  cloud, so it never lapses while Bluetooth answers.
+- V2 stations: pack voltage and current, the station's own time to full and to empty, its warnings and faults and its
+  temperatures on the page, with events and `stationTempHighC`. A block the station does not answer is marked not
+  supported.
+- Battery levels rise with the measured drain: at a high drain the warning, stop and emergency come early enough that
+  the hibernate comes at its first agreed poll at or under `hibernateAt`. Each raise is at most 10 points over the
+  configured level; `hibernateAt` never moves. `/api/now` gives the levels in force as `effectiveThresholds`.
+- Mode buttons answer at once and the page says what holds the mode (`modeHold`); a press that replaces one still
+  waiting is recorded as a `mode-superseded` event.
+- `tools/release.ps1`: checks main, tags, waits for the release workflow and verifies the published zip.
+
+### Changed
+
+- The level after the hibernate warning is named `warning` in `/api/now` (it said `hibernating` while the PC kept
+  running above `hibernateAt`). The flag keeps the word `hibernating` for the hook; a state saved under the old name
+  still loads.
+- `BluettiWatcher.exe` is a console program (its `--help`, `--version` and `power-mode` output reach the terminal); the
+  scheduled tasks start its windowless twin `bin\BluettiWatcherService.exe`, and a pending eco end task is pointed at
+  the twin when the service starts.
+
+### Fixed
+
+- A mode change can no longer stall the service unseen: flag reads run off the thread pool, a gate held over 20 s is
+  logged, and a tool's output is drained within a bound, its lines kept when the rest of its tree is stopped.
+- `/api/now?settle=1` answers within the request's time even when the request started late or the power plan read
+  hangs. Auto pressed with nothing to poll no longer waits for a reading that never comes.
+- Bluetooth: a failed connection is opened once more, and the fields read before the time budget ran out are kept.
+
+### Downgrade
+
+Going back to 1.6 or older: an eco end task registered by 1.7 starts `bin\BluettiWatcherService.exe`, which older
+releases do not have. Run `power-mode.ps1 off` before installing the older release, or once after it (README, Update
+and uninstall).
+
 ## [1.6.0] - 2026-10-28
 
 ### Added
