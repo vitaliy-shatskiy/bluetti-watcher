@@ -183,10 +183,23 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         KeyExchangeGuardLink? link = null;
         int opens = 0;
         bool stopped = false;
+        bool openRetried = false;
+        // What the poll waits for now: a budget that runs out names it, so the log tells a slow open from a silent station.
+        string waiting = "the connection to open";
         var values = new Dictionary<string, FieldValue>(StringComparer.Ordinal);
         var problems = new List<string>();
         List<ReadRequest> unanswered;
         lock (_flightLock) unanswered = _unanswered;
+
+        // The fields that answered are this poll's own, whatever failed after them: a partial reading, never nothing.
+        Reading? Result()
+        {
+            var reading = V1Models.ToReading(values, deriveMode: !model.HasOutputMode);
+            if (reading is null) return Miss(problems.Count > 0 ? string.Join("; ", problems) : "no field answered");
+            if (problems.Count > 0) Note($"partial reading: {string.Join("; ", problems)}");
+            else Recovered();
+            return reading;
+        }
 
         // A request whose answer was lost (its connection dropped, timed out or garbled) is asked once more over a new connection,
         // so a spurious disconnect never costs its fields; the first answer stands when no new connection opens.
@@ -209,8 +222,19 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
             if (link is null)
             {
                 if (opens > MaxReconnects) { problems.Add(string.Create(CultureInfo.InvariantCulture, $"stopped after {opens} connections")); stopped = true; return null; }
+                waiting = "the connection to open";
                 var open = await connector.OpenAsync(address, budget.Token);
                 opens++;
+                if (open.Link is null && !openRetried && opens <= MaxReconnects)
+                {
+                    // Windows fails one GATT setup now and then (Unreachable, no ff01/ff02) and the next one a second later
+                    // works: one more open inside this poll's budget before the poll is given to the cloud.
+                    openRetried = true;
+                    string first = open.Failure ?? "no connection";
+                    open = await connector.OpenAsync(address, budget.Token);
+                    opens++;
+                    if (open.Link is not null) Note($"connection opened at the second try (first: {first})", miss: false);
+                }
                 if (open.Link is null) { problems.Add(open.Failure ?? "no connection"); stopped = true; return null; }
                 // Owned by this poll: disposed when the connection is dropped, or in the finally below.
                 // lift-verified 2026-10-14 CA2000 fires without it
@@ -218,6 +242,7 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
                 link = new KeyExchangeGuardLink(open.Link);
 #pragma warning restore CA2000
             }
+            waiting = string.Create(CultureInfo.InvariantCulture, $"registers {start}+{quantity}");
             var answer = await ExchangeAsync(link, ModbusRead.Request(start, quantity), unanswered, budget.Token);
             if (answer.State == AssemblyState.Invalid)
             {
@@ -248,15 +273,12 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
                 }
                 Take(answer, range.Start, model, values, problems);
             }
-            var reading = V1Models.ToReading(values, deriveMode: !model.HasOutputMode);
-            if (reading is null) return Miss(problems.Count > 0 ? string.Join("; ", problems) : "no field answered");
-            if (problems.Count > 0) Note($"partial reading: {string.Join("; ", problems)}");
-            else Recovered();
-            return reading;
+            return Result();
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            return Miss(string.Create(CultureInfo.InvariantCulture, $"no reading within readerTimeoutSec ({config.ReaderTimeoutSec} s)"));
+            problems.Add(string.Create(CultureInfo.InvariantCulture, $"readerTimeoutSec ({config.ReaderTimeoutSec} s) ran out waiting for {waiting}"));
+            return Result();
         }
         catch (EncryptedStationException)
         {
