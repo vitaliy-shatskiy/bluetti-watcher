@@ -26,8 +26,6 @@ pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048 -Apply
 
 <p align="center">
   <a href="docs/media/demo.mp4"><img src="docs/media/demo.webp" alt="The dashboard through a simulated power cut: mains lost, eco, the battery draining" width="820"></a>
-  <br>
-  <sub>The real dashboard (station.html) on demo readings through a simulated cut: about seven hours shown in 28 seconds. Recorded 28.10.2026 by <code>docs/media/record-demo.mjs</code>. <a href="docs/media/demo.mp4">MP4</a>.</sub>
 </p>
 
 > [!IMPORTANT]
@@ -55,8 +53,6 @@ flowchart LR
 
 <p align="center">
   <a href="docs/media/explainer/explainer.mp4"><img src="docs/media/explainer/explainer.webp" alt="What happens in a power cut: mains lost, eco after 3 minutes, emergency at 20 %, stop at 10 %, hibernate at 5 %, mains back" width="820"></a>
-  <br>
-  <sub>Illustration, default thresholds. Drawn by <code>docs/media/explainer/render.mjs</code>. <a href="docs/media/explainer/explainer.mp4">MP4</a>.</sub>
 </p>
 
 ## How it reacts
@@ -65,7 +61,6 @@ flowchart LR
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/flow-dark.svg">
   <img alt="Battery level through one power cut and what happens at each default threshold" src="docs/media/flow-light.svg" width="100%">
 </picture>
-<p align="center"><sub>Illustration, default thresholds: mains lost, eco, 20 %, 10 %, 5 % hibernate, mains back.</sub></p>
 
 | When | What happens |
 |---|---|
@@ -168,8 +163,6 @@ fixed eco ([configuration.md](docs/configuration.md#power-mode-and-actions)).
 | Ukrainian, desktop | English, phone |
 |---|---|
 | <img src="docs/media/screen-uk.png" alt="The dashboard in Ukrainian on a desktop, four hours into a cut" width="560"> | <img src="docs/media/screen-mobile.png" alt="The dashboard in English on a phone" width="220"> |
-
-<sub>Demo readings, four hours into a simulated cut. Captured by <code>docs/media/capture-screens.mjs</code>.</sub>
 
 ## Supported hardware
 
@@ -302,8 +295,6 @@ The command line: `--help`, `--version` and the power-mode switch (`power-mode s
 
 <p align="center">
   <a href="docs/demos/cli.mp4"><img src="docs/demos/cli.webp" alt="BluettiWatcher.exe --help, power-mode status and --version in PowerShell" width="820"></a>
-  <br>
-  <sub>Recorded 28.10.2026 with VHS by <code>docs/demos/cli.tape</code>: read-only commands, a demo flag file. <a href="docs/demos/cli.mp4">MP4</a>.</sub>
 </p>
 
 ## Update and uninstall

@@ -26,8 +26,6 @@ pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048 -Apply
 
 <p align="center">
   <a href="docs/media/demo.mp4"><img src="docs/media/demo.webp" alt="Панель під час змодельованого відключення: світла немає, еко, батарея розряджається" width="820"></a>
-  <br>
-  <sub>Справжня панель (station.html) на демонстраційних даних під час змодельованого відключення: близько семи годин за 28 секунд. Записано 28.10.2026 скриптом <code>docs/media/record-demo.mjs</code>. <a href="docs/media/demo.mp4">MP4</a>.</sub>
 </p>
 
 > [!IMPORTANT]
@@ -55,8 +53,6 @@ flowchart LR
 
 <p align="center">
   <a href="docs/media/explainer/explainer-uk.mp4"><img src="docs/media/explainer/explainer-uk.webp" alt="Що відбувається, коли зникає світло: світла немає, еко через 3 хвилини, аварія на 20 %, стоп на 10 %, глибокий сон на 5 %, світло є" width="820"></a>
-  <br>
-  <sub>Ілюстрація, пороги за замовчуванням. Намальовано скриптом <code>docs/media/explainer/render.mjs</code>. <a href="docs/media/explainer/explainer-uk.mp4">MP4</a>.</sub>
 </p>
 
 ## Як він реагує
@@ -65,7 +61,6 @@ flowchart LR
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/flow-dark.svg">
   <img alt="Заряд батареї протягом одного відключення і що відбувається на кожному порозі за замовчуванням" src="docs/media/flow-light.svg" width="100%">
 </picture>
-<p align="center"><sub>Ілюстрація, пороги за замовчуванням: світла немає, еко, 20 %, 10 %, 5 % глибокий сон, світло є.</sub></p>
 
 | Коли | Що відбувається |
 |---|---|
@@ -171,8 +166,6 @@ pwsh -NoProfile -File install.ps1 -Broker -Apply   # від імені адмі�
 |---|---|
 | <img src="docs/media/screen-uk.png" alt="Панель українською на комп'ютері, чотири години відключення" width="560"> | <img src="docs/media/screen-mobile.png" alt="Панель англійською на телефоні" width="220"> |
 
-<sub>Демонстраційні дані, чотири години змодельованого відключення. Знято скриптом <code>docs/media/capture-screens.mjs</code>.</sub>
-
 ## Підтримуване обладнання
 
 - BLUETTI AC200PL: перевірено.
@@ -238,8 +231,6 @@ Bluetti Watcher - незалежний проєкт, не пов'язаний з
 
 <p align="center">
   <a href="docs/demos/cli.mp4"><img src="docs/demos/cli.webp" alt="BluettiWatcher.exe --help, power-mode status і --version у PowerShell" width="820"></a>
-  <br>
-  <sub>Записано 28.10.2026 за допомогою VHS скриптом <code>docs/demos/cli.tape</code>: лише команди читання, демонстраційний прапорець. Вивід програми англійською. <a href="docs/demos/cli.mp4">MP4</a>.</sub>
 </p>
 
 ## Часті запитання
