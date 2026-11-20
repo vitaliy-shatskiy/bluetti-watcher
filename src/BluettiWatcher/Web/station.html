@@ -162,6 +162,7 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 .mp input[type=checkbox],.mp input[type=range]{accent-color:var(--accent)}
 .mp [aria-invalid=true]{border-color:var(--bad)!important}
 .mp :is(input,select,textarea):focus-visible{outline:1px solid var(--accent)}
+.mp .tbl{display:flex;flex-direction:column;gap:6px;align-items:flex-start}.mp .trow{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .mp .multi{display:flex;flex-direction:column;gap:2px;max-height:180px;overflow:auto}
 .mp .multi label,.mp label.ck{display:inline-flex;align-items:center;gap:6px}
 .mp ol.rules{margin:0;padding-left:22px}.mp ol.rules li{padding:6px 0;border-top:1px solid var(--line)}
@@ -369,6 +370,8 @@ en: {
   modesUnknownType: "not known to this build: kept as is",
   modesPick: "– choose –",
   modesMissing: "{v} (not found here)",
+  modesRemoveRow: "Remove",
+  modesAddRow: "Add a row",
   modesSave: "Save",
   modesCancel: "Cancel",
   modesSaved: "Saved",
@@ -775,6 +778,8 @@ uk: {
   modesUnknownType: "невідомо цій версії: збережено як є",
   modesPick: "– оберіть –",
   modesMissing: "{v} (тут не знайдено)",
+  modesRemoveRow: "Видалити",
+  modesAddRow: "Додати рядок",
   modesSave: "Зберегти",
   modesCancel: "Скасувати",
   modesSaved: "Збережено",
@@ -1767,12 +1772,48 @@ function mpFields(schema, hints, prefix) {
 function mpWidget(s, hint) {
   const types = mpTypes(s), ty = types.length === 1 ? types[0] : '', list = hint.discovery || hint.list;
   if (ty === 'object') return 'object';
+  // a list of objects (services, tasks, per-monitor values) is rows of controls: joined as text it would read [object Object]
+  if (ty === 'array' && s.items && mpTypes(s.items).includes('object')) return 'table';
   if (ty === 'array') return list || (s.items && s.items.enum) ? 'multi' : 'lines';
   if (ty === 'boolean') return 'check';
   if (list || s.enum) return 'select';
   const num = ty === 'number' || ty === 'integer';
   if (num && hint.widget === 'slider' && Number.isFinite(s.minimum) && Number.isFinite(s.maximum)) return 'slider';
   return num ? 'number' : 'text';
+}
+// The rows of a list of objects: a control per property (a switch for a boolean, a list for an enum or the discovered items,
+// a number, else text), a remove button per row and an add button. Every edit writes the row object itself, so a save
+// with nothing touched sends exactly what was loaded.
+function mpTable(f, s, obj, entry, aria, id) {
+  const props = Object.entries((s.items && s.items.properties) || {}), list = f.hint.discovery || f.hint.list;
+  if (!Array.isArray(obj[f.name])) obj[f.name] = [];
+  const rows = obj[f.name], box = mpEl('div', { ...aria, id, className: 'tbl', role: 'group', 'aria-labelledby': id + 'l' });
+  const cell = (row, [name, ps], first) => {
+    const label = ps.title || name, ty = mpTypes(ps)[0], cur = row[name];
+    const put = (x) => { if (x === undefined) delete row[name]; else row[name] = x; };
+    if (ty === 'boolean') {
+      const c = mpEl('input', { type: 'checkbox', checked: cur === true, 'aria-label': label });
+      c.onchange = () => put(c.checked);
+      return mpEl('label', { className: 'ck' }, c, label);
+    }
+    const found = first && list ? mpOptions({}, { list }, entry) : ps.enum ? ps.enum.map((v) => ({ id: String(v), label: String(v) })) : null;
+    if (found) {
+      const v = cur === undefined ? '' : String(cur), opts = found.slice();
+      if (v && !opts.some((o) => o.id === v)) opts.push({ id: v, label: t('modesMissing', { v }) });
+      const c = mpEl('select', { 'aria-label': label, value: v }, v === '' ? mpEl('option', { value: '' }, t('modesPick')) : null, opts.map((o) => mpEl('option', { value: o.id }, o.label)));
+      c.onchange = () => put(mpCoerce(ps, c.value));
+      return c;
+    }
+    const num = ty === 'integer' || ty === 'number';
+    const c = mpEl('input', { type: num ? 'number' : 'text', 'aria-label': label, min: ps.minimum, max: ps.maximum, value: cur === undefined ? '' : String(cur) });
+    c.oninput = () => put(mpCoerce(ps, c.value));
+    return c;
+  };
+  const paint = () => mpSet(box, rows.map((row, i) => mpEl('div', { className: 'trow' }, props.map((p, j) => cell(row, p, j === 0)),
+    mpButton('row-remove', String(i), t('modesRemoveRow'), () => { rows.splice(i, 1); paint(); }))),
+    mpButton('row-add', '', t('modesAddRow'), () => { rows.push({}); paint(); }));
+  paint();
+  return box;
 }
 function mpOptions(s, hint, entry) {
   const list = hint.discovery || hint.list;
@@ -1835,6 +1876,8 @@ function mpField(f, hints, obj, entry, ek, errs, used) {
     const boxes = opts.map((o) => mpEl('input', { type: 'checkbox', value: o.id, checked: chosen.includes(o.id), 'data-f': `${key}[]` }));
     boxes.forEach((b) => { b.onchange = () => set(boxes.filter((x) => x.checked).map((x) => mpCoerce(s.items || {}, x.value))); });
     control = mpEl('div', { ...aria, className: 'multi', role: 'group', 'aria-labelledby': id + 'l' }, opts.map((o, i) => mpEl('label', {}, boxes[i], o.label)));
+  } else if (w === 'table') {
+    control = mpTable(f, s, obj, entry, aria, id);
   } else if (w === 'lines') {
     control = mpEl('textarea', { ...aria, id, rows: 3, value: Array.isArray(v) ? v.join('\n') : '' });
     control.oninput = () => set(control.value.split('\n').map((x) => mpCoerce(s.items || {}, x.trim())).filter((x) => x !== undefined));
