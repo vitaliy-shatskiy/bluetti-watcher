@@ -53,9 +53,13 @@ internal static class PageCodes
         DtekModuleError,
     ];
 
-    /// <summary>Codes sent as values: DTEK states and sources, source states, read error classes, the page's modes, "battery lasts".</summary>
+    /// <summary>
+    /// Codes sent as values: DTEK states and sources, source states, read error classes, the page's modes, "battery lasts",
+    /// the reading sources, the cloud's states and the sign-in's (GET /api/cloud).
+    /// </summary>
     public static IReadOnlyList<string> Values { get; } =
-        ["off", "ok", "stale", "none", "blocked", "failed", "network", "format", "dataset", "site", "auto", "eco", "max", "yes", "no", "unknown"];
+        ["off", "ok", "stale", "none", "blocked", "failed", "network", "format", "dataset", "site", "auto", "eco", "max", "yes", "no", "unknown",
+         "bluetooth", "cloud", "signed-out", "sign-in-needed", "error", "idle", "waiting", "signed-in"];
 
     /// <summary>The station's output modes (bluetti_bt_lib enums/output_mode.py), CLOUD_MAINS (a cloud reading with AC input, design.md §4 AC2a) and BLE_MAINS (the same from a Bluetooth model with no output-mode field).</summary>
     public static IReadOnlyList<string> OutputModes { get; } = ["STOP", "INVERTER_OUTPUT", "BYPASS_OUTPUT_C", "BYPASS_OUTPUT_D", "LOAD_MATCHING", "CLOUD_MAINS", "BLE_MAINS"];

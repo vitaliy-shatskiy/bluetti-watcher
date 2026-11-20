@@ -17,7 +17,7 @@ namespace BluettiWatcher.Http;
 /// from / to: ISO 8601 or Unix milliseconds; step: seconds (default 60).
 /// </summary>
 internal sealed class StationApi(StationConfig config, StationService service, StationStore store, TimeProvider time, DateTimeOffset startedAt, IDtekWatcher? dtek = null, Action<string>? log = null,
-    Func<bool>? bluetoothEncrypted = null, Func<bool>? bluetoothStalled = null, Func<(string Guid, string Name)>? activePlan = null)
+    Func<bool>? bluetoothEncrypted = null, Func<bool>? bluetoothStalled = null, Func<(string Guid, string Name)>? activePlan = null, CloudAccount? cloud = null)
 {
     /// <summary>The page, read once; encoded once per coding on first use; a reload with its ETag is a 304.</summary>
     private static readonly Lazy<StaticAsset> Page = new(() =>
@@ -46,6 +46,7 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             if (RequestGuard.WriteRefusal(r, config.Port) is { } why) return HttpResponse.Text(403, "forbidden: " + why);
             return SetReturnPlan(r);
         }
+        if (await CloudRouteAsync(r, ct) is { } cloudAnswer) return cloudAnswer;
         if (r.Method != "GET") return HttpResponse.Text(405, "GET only");
         // /api/now?settle=1: answers once the saved page choice is applied, refused or failed (bounded under the server's 10 s).
         if (r.Path == "/api/now" && r.Query.TryGetValue("settle", out var settle) && settle == "1") await service.WaitModeSettledAsync(SettleWait, ct);
@@ -622,6 +623,72 @@ internal sealed class StationApi(StationConfig config, StationService service, S
         foreach (var s in values) w.WriteStringValue(s);
         w.WriteEndArray();
     }
+    /// <summary>
+    /// The reading source and the cloud account (design.md §4 Reading source, Cloud sign-in): GET /api/cloud; behind
+    /// <see cref="RequestGuard"/> POST /api/reading-source { "readingSource": "auto" | "bluetooth" | "cloud" },
+    /// POST /api/cloud/sign-in (answers the authorize address the page opens) and POST /api/cloud/sign-out.
+    /// Null = not one of these routes.
+    /// </summary>
+    private async Task<HttpResponse?> CloudRouteAsync(HttpRequest r, CancellationToken ct)
+    {
+        bool get = r.Path == "/api/cloud";
+        if (!get && r.Path is not ("/api/reading-source" or "/api/cloud/sign-in" or "/api/cloud/sign-out")) return null;
+        if (get != (r.Method == "GET")) return HttpResponse.Text(405, get ? "GET only" : "POST only");
+        if (cloud is null) return HttpResponse.Text(404, "not found");
+        if (get) return HttpResponse.Json(200, Write(w => CloudJson(w, null)));
+        if (RequestGuard.WriteRefusal(r, config.Port) is { } why) return HttpResponse.Text(403, "forbidden: " + why);
+        switch (r.Path)
+        {
+            case "/api/reading-source":
+                ReadingSource? source;
+                try
+                {
+                    using var doc = JsonDocument.Parse(r.Body);
+                    source = doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("readingSource", out var v) && v.ValueKind == JsonValueKind.String
+                        ? ReadingSourceFile.Parse(v.GetString()) : null;
+                }
+                catch (JsonException) { source = null; }
+                if (source is not { } s) return HttpResponse.Text(400, "body must be JSON { \"readingSource\": \"auto\" | \"bluetooth\" | \"cloud\" }");
+                var (status, error) = cloud.SetSource(s);
+                return status == 200 ? HttpResponse.Json(200, Write(w => CloudJson(w, null))) : HttpResponse.Text(status, error);
+            case "/api/cloud/sign-in":
+                var (url, failed) = await cloud.StartSignInAsync(ct);
+                // The address carries the login's one-time state: it goes to this page only, never to a log.
+                return url is null ? HttpResponse.Text(502, failed.Length > 0 ? failed : "the sign-in did not start") : HttpResponse.Json(202, Write(w => CloudJson(w, url)));
+            default:
+                var (outStatus, outError) = await cloud.SignOutAsync(ct);
+                return outStatus == 200 ? HttpResponse.Json(200, Write(w => CloudJson(w, null))) : HttpResponse.Text(outStatus, outError);
+        }
+    }
+
+    /// <summary>{ readingSource, readingSourceFrom, cloud: { state, detail, at }, signIn: { state, message, at }, authorizeUrl? }.</summary>
+    private void CloudJson(Utf8JsonWriter w, Uri? authorize)
+    {
+        w.WriteStartObject();
+        w.WriteString("readingSource", ReadingSourceFile.Name(config.Source));
+        w.WriteString("readingSourceFrom", config.PageSource is not null ? "page" : config.ReadingSource is not null || config.CloudEnabled == false ? "config" : "default");
+        CloudState(w);
+        var s = cloud!.SignIn;
+        w.WriteStartObject("signIn");
+        w.WriteString("state", s.State);
+        w.WriteString("message", s.Message);
+        if (s.At is { } at) w.WriteString("at", Iso(at)); else w.WriteNull("at");
+        w.WriteEndObject();
+        if (authorize is not null) w.WriteString("authorizeUrl", authorize.AbsoluteUri);
+        w.WriteEndObject();
+    }
+
+    /// <summary>"cloud": { state, detail, at } (<see cref="BluettiCloudReader.Status"/>); without the cloud account, from the config alone.</summary>
+    private void CloudState(Utf8JsonWriter w)
+    {
+        var c = cloud?.Status() ?? new CloudStatus(!config.CloudOn ? "off" : File.Exists(config.CloudTokenFile) ? "ok" : "signed-out", "", null);
+        w.WriteStartObject("cloud");
+        w.WriteString("state", c.State);
+        w.WriteString("detail", c.Detail);
+        if (c.At is { } at) w.WriteString("at", Iso(at)); else w.WriteNull("at");
+        w.WriteEndObject();
+    }
+
     private byte[] Health(DateTimeOffset now)
     {
         var s = service.State;
@@ -642,6 +709,8 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             w.WriteBoolean("bluetoothEncrypted", bluetoothEncrypted?.Invoke() ?? false);
             // Also information: a Bluetooth read abandoned at its hard bound is still alive (until it ends or is given up).
             w.WriteBoolean("bluetoothStalled", bluetoothStalled?.Invoke() ?? false);
+            w.WriteString("readingSource", ReadingSourceFile.Name(config.Source));
+            CloudState(w);
             w.WriteNumber("misses", s.Misses);
             w.WriteBoolean("silent", s.Silent);
             w.WriteNumber("rawRows", raw);

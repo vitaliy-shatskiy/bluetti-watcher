@@ -186,6 +186,12 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
   <div class="card"><h2 data-i18n="powerCuts"></h2><table><thead><tr><th data-i18n="colStart"></th><th data-i18n="colEnd"></th><th data-i18n="colLength"></th><th data-i18n="colBattery"></th><th data-i18n="colUsed"></th></tr></thead><tbody id="cuts"></tbody></table></div>
 </div>
 
+<!-- Reading source and cloud sign-in (GET /api/cloud): its own card, markup, style and script block -->
+<div class="card" id="srcCard" hidden><div class="bar"><h2 style="margin:0" data-i18n="srcTitle"></h2><span style="flex:1"></span><span class="chip" id="cloudChip"><i></i><span></span></span></div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px"><div class="seg" id="srcSeg" role="group" data-i18n-aria="srcAria"><button data-s="auto" data-i18n="srcAuto" data-i18n-title="srcAutoTip"></button><button data-s="bluetooth" data-i18n="srcBluetooth" data-i18n-title="srcBluetoothTip"></button><button data-s="cloud" data-i18n="srcCloud" data-i18n-title="srcCloudTip"></button></div>
+    <span style="flex:1"></span><div class="seg"><button id="cloudSignIn" data-i18n="cloudSignIn" data-i18n-title="cloudSignInTip"></button></div><div class="seg"><button id="cloudSignOut" data-i18n="cloudSignOut" data-i18n-title="cloudSignOutTip"></button></div></div>
+  <div class="note" id="cloudLine" role="status" aria-live="polite"></div><div class="note"><a id="cloudLink" target="_blank" rel="noopener noreferrer" hidden data-i18n="cloudOpenLink"></a></div></div>
+
 <div class="card"><details><summary data-i18n="lastReadings"></summary><table><thead><tr><th data-i18n="colTime"></th><th data-i18n="colBattery"></th><th data-i18n="colLoad"></th><th data-i18n="colInput"></th><th data-i18n="colGrid"></th><th data-i18n="colVolt"></th><th data-i18n="colHz"></th></tr></thead><tbody id="rows"></tbody></table></details></div>
 </main><div id="tip"></div>
 <script>
@@ -445,6 +451,35 @@ en: {
   v_yes: "yes",
   v_no: "no",
   v_unknown: "unknown",
+  v_bluetooth: "Bluetooth",
+  v_cloud: "cloud",
+  v_signed_out: "signed out",
+  v_sign_in_needed: "sign-in needed",
+  v_error: "error",
+  v_idle: "idle",
+  v_waiting: "waiting for the browser",
+  v_signed_in: "signed in",
+  srcTitle: "Reading source",
+  srcAria: "Reading source",
+  srcAuto: "Auto",
+  srcAutoTip: "Bluetooth first; the BLUETTI cloud when Bluetooth does not answer",
+  srcBluetooth: "Bluetooth",
+  srcBluetoothTip: "Bluetooth only: the cloud is never called",
+  srcCloud: "Cloud",
+  srcCloudTip: "The BLUETTI cloud only: Bluetooth is never opened",
+  cloudSignIn: "Sign in to BLUETTI cloud",
+  cloudSignInTip: "Opens the BLUETTI sign-in in a new tab; the token stays on this PC",
+  cloudSignOut: "Sign out",
+  cloudSignOutTip: "Deletes the cloud token from this PC",
+  cloudChipText: "cloud: {s}",
+  cloudFrom: "source set {f}",
+  cloudFromPage: "on this page",
+  cloudFromConfig: "in config.json",
+  cloudFromDefault: "by default",
+  cloudSignInLine: "sign-in: {s}",
+  cloudSaveFailed: "not saved: {e}",
+  cloudPopupBlocked: "the browser blocked the new tab: open the sign-in with the link below",
+  cloudOpenLink: "Open the BLUETTI sign-in",
   om_STOP: "output stopped",
   om_INVERTER_OUTPUT: "inverter output",
   om_BYPASS_OUTPUT_C: "bypass output (C)",
@@ -706,6 +741,35 @@ uk: {
   v_yes: "так",
   v_no: "ні",
   v_unknown: "невідомо",
+  v_bluetooth: "Bluetooth",
+  v_cloud: "хмара",
+  v_signed_out: "вхід не виконано",
+  v_sign_in_needed: "потрібен повторний вхід",
+  v_error: "помилка",
+  v_idle: "не запущено",
+  v_waiting: "чекаю на браузер",
+  v_signed_in: "вхід виконано",
+  srcTitle: "Джерело даних",
+  srcAria: "Джерело даних",
+  srcAuto: "Авто",
+  srcAutoTip: "Спершу Bluetooth; хмара BLUETTI, коли Bluetooth не відповідає",
+  srcBluetooth: "Bluetooth",
+  srcBluetoothTip: "Лише Bluetooth: до хмари жодного запиту",
+  srcCloud: "Хмара",
+  srcCloudTip: "Лише хмара BLUETTI: Bluetooth не відкривається",
+  cloudSignIn: "Увійти в хмару BLUETTI",
+  cloudSignInTip: "Відкриває вхід BLUETTI у новій вкладці; токен лишається на цьому ПК",
+  cloudSignOut: "Вийти",
+  cloudSignOutTip: "Видаляє токен хмари з цього ПК",
+  cloudChipText: "хмара: {s}",
+  cloudFrom: "джерело задано {f}",
+  cloudFromPage: "на цій сторінці",
+  cloudFromConfig: "у config.json",
+  cloudFromDefault: "за замовчуванням",
+  cloudSignInLine: "вхід: {s}",
+  cloudSaveFailed: "не збережено: {e}",
+  cloudPopupBlocked: "браузер заблокував нову вкладку: відкрийте вхід за посиланням нижче",
+  cloudOpenLink: "Відкрити вхід BLUETTI",
   om_STOP: "вихід вимкнено",
   om_INVERTER_OUTPUT: "від інвертора",
   om_BYPASS_OUTPUT_C: "байпас (C)",
@@ -1323,4 +1387,79 @@ let resizeTimer = null;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(show, 250); });
 applyStatic();
 load().then(() => { settle(); schedule(); });   // a choice still applying from before the reload is followed too
+
+// Reading source and cloud sign-in (GET /api/cloud): its own requests and timer, apart from /api/now. The card stays hidden
+// when the service has no cloud controls (404). A sign-in waiting for the browser is followed every 2 s, else once a minute.
+let cloudNow = null, cloudErr = '', cloudTimer = null, cloudBusy = false, cloudUrl = '';
+const CLOUD_CHIP = { ok: 'ok', 'signed-out': 'warn', 'sign-in-needed': 'bad', error: 'bad' };
+const SIGNIN_ORIGIN = 'https://sso.bluettipower.com/';
+function paintCloud() {
+  const c = cloudNow;
+  $('srcCard').hidden = !c;
+  if (!c) return;
+  document.querySelectorAll('#srcSeg button').forEach((b) => { b.setAttribute('aria-pressed', String(b.dataset.s === c.readingSource)); b.disabled = cloudBusy; });
+  const st = c.cloud.state, chip = $('cloudChip');
+  chip.className = 'chip' + (CLOUD_CHIP[st] ? ' ' + CLOUD_CHIP[st] : '');
+  chip.lastChild.textContent = t('cloudChipText', { s: val(st) });
+  chip.title = c.cloud.detail || '';
+  const waiting = c.signIn.state === 'waiting';
+  $('cloudSignIn').disabled = cloudBusy;
+  $('cloudSignOut').disabled = cloudBusy || st === 'signed-out';
+  const from = c.readingSourceFrom === 'page' ? t('cloudFromPage') : c.readingSourceFrom === 'config' ? t('cloudFromConfig') : t('cloudFromDefault');
+  const parts = [t('cloudFrom', { f: from })];
+  if (st === 'error' || st === 'sign-in-needed') parts.push(c.cloud.detail);
+  if (c.signIn.state !== 'idle') parts.push(t('cloudSignInLine', { s: val(c.signIn.state) }) + (c.signIn.message ? ` (${c.signIn.message})` : ''));
+  if (cloudErr) parts.push(cloudErr);
+  $('cloudLine').textContent = parts.filter(Boolean).join(' · ');
+  const link = $('cloudLink');
+  link.hidden = !(waiting && cloudUrl);
+  if (waiting && cloudUrl) link.href = cloudUrl; else link.removeAttribute('href');
+}
+function scheduleCloud() {
+  clearTimeout(cloudTimer);
+  cloudTimer = document.hidden ? null : setTimeout(loadCloud, cloudNow && cloudNow.signIn.state === 'waiting' ? 2000 : 60000);
+}
+async function loadCloud() {
+  try {
+    const r = await fetch('/api/cloud', { cache: 'no-store' });
+    if (r.ok) cloudNow = await r.json(); else if (r.status === 404) cloudNow = null;
+  } catch (e) { /* the main poll's stale chip names a service that does not answer */ }
+  if (cloudNow && cloudNow.signIn.state !== 'waiting') cloudUrl = '';
+  paintCloud(); scheduleCloud();
+}
+// One write at a time; the answer is the new state. A refusal shows the service's reason (English, as in service.log).
+async function cloudPost(path, body) {
+  cloudBusy = true; cloudErr = ''; paintCloud();
+  try {
+    const r = await fetch(path, { method: 'POST', headers: { 'X-Station': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    if (r.ok) { const j = await r.json(); cloudNow = j; return j; }
+    cloudErr = t('cloudSaveFailed', { e: (await r.text()) || `HTTP ${r.status}` });
+  } catch (e) {
+    cloudErr = t('cloudSaveFailed', { e: e.message });
+  } finally {
+    cloudBusy = false; paintCloud();
+  }
+  return null;
+}
+document.querySelectorAll('#srcSeg button').forEach((b) => { b.onclick = async () => {
+  if (!cloudBusy && await cloudPost('/api/reading-source', { readingSource: b.dataset.s })) load(true);
+}; });
+$('cloudSignIn').onclick = async () => {
+  if (cloudBusy) return;
+  // The tab is opened inside the click: one opened after an await is blocked as a pop-up.
+  const tab = window.open('', '_blank');
+  const j = await cloudPost('/api/cloud/sign-in');
+  const url = j && typeof j.authorizeUrl === 'string' && j.authorizeUrl.startsWith(SIGNIN_ORIGIN) ? j.authorizeUrl : '';
+  cloudUrl = url;
+  if (url && tab) { tab.opener = null; tab.location.href = url; }
+  else {
+    if (tab) tab.close();
+    if (url) cloudErr = t('cloudPopupBlocked');
+  }
+  paintCloud(); scheduleCloud();
+};
+$('cloudSignOut').onclick = async () => { if (!cloudBusy && await cloudPost('/api/cloud/sign-out')) { cloudUrl = ''; paintCloud(); scheduleCloud(); } };
+document.querySelectorAll('#langSeg button').forEach((b) => b.addEventListener('click', paintCloud));
+document.addEventListener('visibilitychange', () => { if (document.hidden) { clearTimeout(cloudTimer); cloudTimer = null; } else loadCloud(); });
+loadCloud();
 </script></body></html>

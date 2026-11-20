@@ -26,8 +26,24 @@ internal sealed class CloudLogin(StationConfig config, HttpMessageHandler handle
         $"{AuthorizeUrl}?response_type=code&client_id={Uri.EscapeDataString(BluettiCloudReader.ClientId)}"
         + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}&state={Uri.EscapeDataString(state)}");
 
-    /// <summary>0 = token saved · 1 = the login or the exchange failed · 2 = could not run.</summary>
-    public async Task<int> RunAsync(CancellationToken ct)
+    /// <summary>
+    /// Where the token goes; not set = the token file, written here. The service sets it to the cloud reader's
+    /// <see cref="BluettiCloudReader.ReplaceTokenAsync"/>, so the write never races a read.
+    /// </summary>
+    public Func<CloudToken, CancellationToken, Task>? Store { get; init; }
+
+    /// <summary>The command line's login: prints the address and opens the browser. 0 = token saved · 1 = the login or the exchange failed · 2 = could not run.</summary>
+    public Task<int> RunAsync(CancellationToken ct) => RunAsync(url =>
+    {
+        print($"Open this address to sign in to BLUETTI: {url}");
+        openBrowser(url);
+    }, ct);
+
+    /// <summary>
+    /// The login with the authorize address handed to <paramref name="onUrl"/> once the catcher listens (the page opens it).
+    /// The catcher takes a port the OS assigns: it never clashes with the dashboard's.
+    /// </summary>
+    internal async Task<int> RunAsync(Action<Uri> onUrl, CancellationToken ct)
     {
         string state = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
         var answer = new TaskCompletionSource<(string? Code, string Why)>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -57,16 +73,18 @@ internal sealed class CloudLogin(StationConfig config, HttpMessageHandler handle
         try
         {
             string redirect = string.Create(CultureInfo.InvariantCulture, $"http://127.0.0.1:{server.BoundPort}{CallbackPath}");
-            var url = BuildAuthorizeUrl(redirect, state);
-            print($"Open this address to sign in to BLUETTI: {url}");
-            openBrowser(url);
+            onUrl(BuildAuthorizeUrl(redirect, state));
             var (code, why) = await answer.Task.WaitAsync(Wait, time, ct);
             if (code is null) { print($"login failed: {why}"); return 1; }
             var (token, failed) = await ExchangeAsync(code, redirect, ct);
             if (token is null) { print($"login failed: {failed}"); return 1; }
             string path = config.CloudTokenFile;
-            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-            BluettiCloudReader.Save(path, token);
+            if (Store is { } store) await store(token, ct);
+            else
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+                BluettiCloudReader.Save(path, token);
+            }
             print($"token saved to {path}, expires {TimeZoneInfo.ConvertTime(token.ExpiresAt, time.LocalTimeZone).ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture)}");
             return 0;
         }
