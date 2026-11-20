@@ -126,6 +126,7 @@ config.json still loads, and `service.log` names them once at start.
 | `fastPollSec` | int | 60 | Seconds between readings on battery under `fastBelow`. |
 | `fastBelow` | number | 25 | Battery percent under which `fastPollSec` applies. |
 | `readerTimeoutSec` | int | 30 | Time limit of one Bluetooth read (connect, every request, disconnect); a Bluetooth call that does not return is given up 2 s after it. |
+| `stationTempHighC` | int | 60 | V2 stations: a station temperature (registers 1151-1153) above this writes a `station-hot` event and runs its action; re-armed 5 °C under it. |
 | `maxGapSec` | int | 600 | A gap between accepted readings over this resets the decision state. |
 | `socRatePerMin` | number | 5 | Largest plausible SOC change, points per minute. |
 | `socJumpFloor` | number | 3 | The allowed SOC change is never under this many points. |
@@ -169,7 +170,7 @@ config.json still loads, and `service.log` names them once at start.
 | `pwshPath` | string | `pwsh.exe` | PowerShell 7 used to run the wake-task commands and a configured `powerMode.script`. |
 | `powerModeTimeoutSec` | int | 60 | 1-600: time limit of each power-mode command and each wake-task command. A command over it is killed and counts as failed. |
 | `actionTimeoutSec` | int | 30 | 1-600: time limit of each action (only actions). |
-| `actions` | object | none | Commands run when the service enters a state: keys `eco`, `emergency`, `stop`, `hibernate-warn`, `normal`; and the alert `grid-voltage-high` (grid input above 253 V, again after it was under 250 V). See below. |
+| `actions` | object | none | Commands run when the service enters a state: keys `eco`, `emergency`, `stop`, `hibernate-warn`, `normal`; and the alert `grid-voltage-high` (grid input above 253 V, again after it was under 250 V); V2 stations also `station-warning`, `station-fault`, `station-alarm-cleared` and `station-hot`. See below. |
 | `dryRun` | bool | false | Log every power-mode command, action and hibernation instead of running it (also `--dry-run`). |
 
 An action is an executable followed by its arguments, started directly with no shell: a pipe, a redirect or a shell

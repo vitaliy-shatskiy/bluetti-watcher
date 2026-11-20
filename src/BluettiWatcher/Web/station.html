@@ -187,6 +187,8 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 </div>
 
 <div class="card"><details><summary data-i18n="lastReadings"></summary><table><thead><tr><th data-i18n="colTime"></th><th data-i18n="colBattery"></th><th data-i18n="colLoad"></th><th data-i18n="colInput"></th><th data-i18n="colGrid"></th><th data-i18n="colVolt"></th><th data-i18n="colHz"></th></tr></thead><tbody id="rows"></tbody></table></details></div>
+<!-- the station's own values (V2 stations only): hidden while the station reports none -->
+<div class="card" id="stationCard" hidden><details open><summary data-i18n="stationOwn"></summary><div id="stationBody"></div></details></div>
 </main><div id="tip"></div>
 <script>
 // Every visible text of the page, per language. A key used anywhere below must exist in both (a test checks).
@@ -264,6 +266,14 @@ en: {
   colBattery: "Battery",
   colUsed: "Used",
   lastReadings: "Last readings",
+  stationOwn: "Station's own values",
+  stPack: "Battery pack",
+  stTime: "Station's time to empty / full",
+  stTimeVal: "{e} / {f} min (ours: {o})",
+  stGap: "gap {g} h",
+  stAlarms: "Warnings and faults",
+  stNone: "none",
+  stTemps: "Temperatures (ambient, inverter, solar)",
   colTime: "Time",
   colLoad: "Load",
   colInput: "Input",
@@ -525,6 +535,14 @@ uk: {
   colBattery: "Батарея",
   colUsed: "Витрата",
   lastReadings: "Останні показання",
+  stationOwn: "Власні показники станції",
+  stPack: "Батарея",
+  stTime: "Час станції до розряду / заряду",
+  stTimeVal: "{e} / {f} хв (наш: {o})",
+  stGap: "різниця {g} год",
+  stAlarms: "Попередження та збої",
+  stNone: "немає",
+  stTemps: "Температури (довкілля, інвертор, сонячний)",
   colTime: "Час",
   colLoad: "Навантаження",
   colInput: "Вхід",
@@ -779,12 +797,30 @@ function longRows(hours) {
     }).catch(() => { longCache[hours] = { ...(c || {}), at: Date.now(), loading: false }; });
   }
   return c && c.rows ? c : null;
-}function render(D) {
+}
+// The station's own values (V2 stations); the card stays hidden for a station that reports none (a V1 one such as the AC200PL).
+function paintStation(D) {
+const s = D.last && D.last.station, card = $('stationCard');
+card.hidden = !s;
+if (!s) return;
+const v = (x, u) => x == null ? '–' : `${x} ${u}`;
+const esc = (x) => String(x).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+const row = (k, val) => `<div class="rowbar" style="grid-template-columns:1fr 1fr"><span>${t(k)}</span><span class="n" style="text-align:left">${val}</span></div>`;
+const codes = [...(s.faults || []), ...(s.warnings || [])];
+const ours = D.hoursLeft == null ? '–' : Math.round(D.hoursLeft * 60);
+document.getElementById('stationBody').innerHTML =
+  row('stPack', `${v(s.packVolt, 'V')} · ${v(s.packAmp, 'A')}`)
+  + row('stTime', t('stTimeVal', { e: s.minutesToEmpty ?? '–', f: s.minutesToFull ?? '–', o: ours }) + (s.emptyGapHours == null ? '' : ` · ${t('stGap', { g: s.emptyGapHours })}`))
+  + row('stAlarms', codes.length ? esc(codes.join(', ')) : t('stNone'))
+  + row('stTemps', [s.tempAmbient, s.tempInverter, s.tempPvDcDc].map((x) => v(x, '°C')).join(' · '));
+}
+function render(D) {
 clearInterval(ecoTimer); ecoTimer = null;
 // the plan the end of eco sets, shown with no readings too: a plan GUID put in the config by hand presses no button and says so
 document.querySelectorAll('#planSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.p === D.returnPlan)));
 $('planLabel').textContent = t(D.returnPlan === 'custom' ? 'afterEcoCustom' : 'afterEco');
 paintMode(D);
+paintStation(D);
 if (!D.rows.length) { $('title').textContent = `${t('appName')} · ${t('noReadings')}`; return; }
 const rows = D.rows.map(toRow);
 const now = rows[rows.length - 1];

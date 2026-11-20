@@ -45,7 +45,7 @@ The current state, for the page. `?settle=1` answers once a saved page choice (`
 | `ratePerHour` | Measured discharge, % per hour, whenever the readings yield one (with `runtimeSource` `rate` or `model`); else null. |
 | `learnedEfficiency` | The learned efficiency, or null. |
 | `thresholds` | `emergencyAt`, `stopAt`, `warnAt`, `hibernateAt`. |
-| `last` | The last accepted reading, or null: `at`, `soc`, `inAc`, `inDc`, `outAc`, `outDc`, `volt`, `hz`, `mains`; the grid input `gridVolt` (V) and `gridHz`, V1 registers 77 and 80 of the AC200PL over Bluetooth, else null. |
+| `last` | The last accepted reading, or null: `at`, `soc`, `inAc`, `inDc`, `outAc`, `outDc`, `volt`, `hz`, `mains`; the grid input `gridVolt` (V) and `gridHz`, V1 registers 77 and 80 of the AC200PL over Bluetooth, else null. `station`: a V2 station's own values, else null: `packVolt`, `packAmp`, `minutesToFull`, `minutesToEmpty`, `emptyGapHours` (the station's time to empty minus `hoursLeft`, hours), `warnings` and `faults` (code lists, null when that block was not read), `tempAmbient`, `tempInverter`, `tempPvDcDc` (°C). |
 | `wake` | The wake timer, or null: `everyMinutes`, `floorPercent`, `armed`, `wakeAt`, `disarmOwed`, `error`. |
 | `dtekWatcher` | The DTEK module (below). |
 
@@ -90,7 +90,7 @@ less returns each stored row (raw minutes, and 5-minute aggregates for older tim
 
 Stored events, same time defaults: `{ "events": [ { "at", "kind", "detail" } ] }`. Kinds include `eco-on`,
 `emergency-on`, `mains-back`, `stop`, `hibernate-warning`, `hibernate`, `hibernate-refused`, `hibernate-skipped`,
-`hibernate-delayed`, `mode-dropped`, `mode-refused`, `grid-voltage-high`, action failures, `wake-*` and `dtek-watcher-*`.
+`hibernate-delayed`, `mode-dropped`, `mode-refused`, `grid-voltage-high`, `station-warning`, `station-fault`, `station-alarm-cleared`, `station-hot`, action failures, `wake-*` and `dtek-watcher-*`.
 
 ## GET /api/health
 
@@ -105,6 +105,7 @@ Stored events, same time defaults: `{ "events": [ { "at", "kind", "detail" } ] }
 | `lastSource` | `bluetooth` or `cloud`: the source of the last accepted reading, or null. |
 | `bluetoothEncrypted` | true once the station opened the encrypted Bluetooth handshake: the built-in reader reads unencrypted stations only, so it is not connected to again until the service restarts and the cloud fallback answers. Information, not a problem: `ok` does not change. false otherwise. |
 | `bluetoothStalled` | true while a Bluetooth read abandoned at `readerTimeoutSec` plus 2 s (a Bluetooth call that ignored its timeout) is still running: no new Bluetooth read starts and the cloud fallback answers, until it ends or, after max(4 x that bound, 2 minutes), is given up. Information, not a problem: `ok` does not change. false otherwise. |
+| `stationBlocks` | The station's optional register blocks (`battery`, `stationTime`, `alarms`, `temperatures`) and whether it serves them: `supported`, `not supported: <why>` (until the service restarts), `not asked yet`, or `not on this protocol (V1)`. Information only. |
 | `misses` | Misses in a row. |
 | `silent` | true while the station does not answer. |
 | `rawRows`, `aggregateRows` | Rows in the database. |
