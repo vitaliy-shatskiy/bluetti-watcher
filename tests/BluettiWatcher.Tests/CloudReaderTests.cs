@@ -608,7 +608,7 @@ public sealed class CloudReaderTests : IDisposable
             ? """{"access_token":"NEW-ACCESS","token_type":"bearer","expires_in":2678400}"""
             : $$"""{"access_token":"NEW-ACCESS","refresh_token":"{{refresh}}","token_type":"bearer","expires_in":2678400}""");
 
-    private JsonElement TokenFile() => JsonDocument.Parse(File.ReadAllText(TokenPath)).RootElement;
+    private JsonElement TokenFile() => JsonElement.Parse(File.ReadAllText(TokenPath));
 
     // design.md §4 AC4: early refresh, written atomically, the new token used
     [Fact]

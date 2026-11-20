@@ -319,7 +319,7 @@ public sealed partial class PageI18nTests
             };
             console.log(JSON.stringify(out));
             """;
-        string Result(string zone, string field) => System.Text.Json.JsonDocument.Parse(RunScript(script, zone)).RootElement.GetProperty(field).ToString();
+        string Result(string zone, string field) => System.Text.Json.JsonElement.Parse(RunScript(script, zone)).GetProperty(field).ToString();
 
         Assert.True(Result("Asia/Tokyo", "zone") is "Europe/Kyiv" or "Europe/Kiev");
         Assert.Equal("Europe/Kiev", Result("Asia/Tokyo", "old"));   // the old name is the fallback

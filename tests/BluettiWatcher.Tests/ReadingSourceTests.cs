@@ -424,12 +424,12 @@ public sealed class ReadingSourceTests : IDisposable
 
         var (status, body) = await Send(w.Api, Req("POST", "/api/reading-source", """{"readingSource":"bluetooth"}"""));
         Assert.Equal(200, status);
-        var root = JsonDocument.Parse(body).RootElement;
+        var root = JsonElement.Parse(body);
         Assert.Equal(("bluetooth", "page", "off"), (root.GetProperty("readingSource").GetString(), root.GetProperty("readingSourceFrom").GetString(), root.GetProperty("cloud").GetProperty("state").GetString()));
         Assert.Equal(ReadingSource.Bluetooth, _cfg.Source);
         Assert.Equal(ReadingSource.Bluetooth, ReadingSourceFile.Read(_dir, Log));   // survives a restart
 
-        var health = JsonDocument.Parse((await Send(w.Api, Req("GET", "/api/health"))).Body).RootElement;
+        var health = JsonElement.Parse((await Send(w.Api, Req("GET", "/api/health"))).Body);
         Assert.Equal("bluetooth", health.GetProperty("readingSource").GetString());
         Assert.Equal("off", health.GetProperty("cloud").GetProperty("state").GetString());
     }
@@ -463,7 +463,7 @@ public sealed class ReadingSourceTests : IDisposable
 
         var (status, body) = await Send(w.Api, Req("POST", "/api/reading-source", """{"readingSource":"config"}"""));
         Assert.Equal(200, status);
-        var root = JsonDocument.Parse(body).RootElement;
+        var root = JsonElement.Parse(body);
         Assert.Equal(("cloud", "config"), (root.GetProperty("readingSource").GetString(), root.GetProperty("readingSourceFrom").GetString()));
         Assert.False(File.Exists(ReadingSourceFile.PathOf(_dir)));
         Assert.Equal(ReadingSource.Cloud, _cfg.Source);
@@ -479,7 +479,7 @@ public sealed class ReadingSourceTests : IDisposable
         var (status, body) = await Send(w.Api, Req("POST", "/api/cloud/sign-out"));
         Assert.Equal(200, status);
         Assert.False(File.Exists(TokenPath));
-        Assert.Equal("signed-out", JsonDocument.Parse(body).RootElement.GetProperty("cloud").GetProperty("state").GetString());
+        Assert.Equal("signed-out", JsonElement.Parse(body).GetProperty("cloud").GetProperty("state").GetString());
         Assert.DoesNotContain(Access, body, StringComparison.Ordinal);
     }
 
@@ -492,7 +492,7 @@ public sealed class ReadingSourceTests : IDisposable
 
         var (status, body) = await Send(w.Api, Req("POST", "/api/cloud/sign-in"));
         Assert.Equal(202, status);
-        var root = JsonDocument.Parse(body).RootElement;
+        var root = JsonElement.Parse(body);
         var url = new Uri(root.GetProperty("authorizeUrl").GetString()!);
         Assert.StartsWith("https://sso.bluettipower.com/oauth2/grant?", url.AbsoluteUri, StringComparison.Ordinal);
         Assert.Equal("waiting", root.GetProperty("signIn").GetProperty("state").GetString());
@@ -502,7 +502,7 @@ public sealed class ReadingSourceTests : IDisposable
         Assert.NotEqual(Port, redirect.Port);
 
         // A second press while it waits: the same address, no second catcher.
-        Assert.Equal(url.AbsoluteUri, JsonDocument.Parse((await Send(w.Api, Req("POST", "/api/cloud/sign-in"))).Body).RootElement.GetProperty("authorizeUrl").GetString());
+        Assert.Equal(url.AbsoluteUri, JsonElement.Parse((await Send(w.Api, Req("POST", "/api/cloud/sign-in"))).Body).GetProperty("authorizeUrl").GetString());
 
         using (var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) })
         {
@@ -525,7 +525,7 @@ public sealed class ReadingSourceTests : IDisposable
     public async Task Api_SignInRefusedInTheBrowser_IsFailedAndWritesNothing()
     {
         using var w = new World(this);
-        var url = new Uri(JsonDocument.Parse((await Send(w.Api, Req("POST", "/api/cloud/sign-in"))).Body).RootElement.GetProperty("authorizeUrl").GetString()!);
+        var url = new Uri(JsonElement.Parse((await Send(w.Api, Req("POST", "/api/cloud/sign-in"))).Body).GetProperty("authorizeUrl").GetString()!);
         var q = url.Query.TrimStart('?').Split('&').Select(kv => kv.Split('=')).ToDictionary(p => p[0], p => Uri.UnescapeDataString(p[1]));
         using (var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) })
         using (await client.GetAsync(new Uri($"{q["redirect_uri"]}?error=access_denied&state={q["state"]}"), TestContext.Current.CancellationToken)) { }
@@ -541,7 +541,7 @@ public sealed class ReadingSourceTests : IDisposable
     {
         for (int i = 0; i < 200; i++)
         {
-            var root = JsonDocument.Parse((await Send(api, Req("GET", "/api/cloud"))).Body).RootElement;
+            var root = JsonElement.Parse((await Send(api, Req("GET", "/api/cloud"))).Body);
             if (done(root.GetProperty("signIn").GetProperty("state").GetString()!)) return root;
             await Task.Delay(50, TestContext.Current.CancellationToken);
         }

@@ -2,7 +2,6 @@
   <PropertyGroup>
     <!-- The Windows TFM brings the WinRT projection the native Bluetooth reader uses (Windows.Devices.Bluetooth). -->
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
-    <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
