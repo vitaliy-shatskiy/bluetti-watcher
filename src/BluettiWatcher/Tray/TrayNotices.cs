@@ -22,7 +22,8 @@ internal static class TrayNotices
         {
             "eco-on" => Make(NotificationKind.ModeChanges, "Eco mode on", $"{battery}The PC runs on the battery: eco is on.", NoticeLevel.Info),
             "mains-back" => Make(NotificationKind.ModeChanges, "Modes lifted", "Mains is back: eco and the battery levels are lifted.", NoticeLevel.Info),
-            "mode-changed" => Make(NotificationKind.ModeChanges, "Power mode", detail, NoticeLevel.Info),
+            Modes.Broker.BrokerVersion.StaleEvent => Make(NotificationKind.Failures, "Admin broker out of date", Sentence(detail), NoticeLevel.Warning),
+            "mode-changed" =>Make(NotificationKind.ModeChanges, "Power mode", detail, NoticeLevel.Info),
             "mode-dropped" =>Make(NotificationKind.ModeChanges, "Mode choice dropped", detail, NoticeLevel.Info),
             "emergency-on" => Make(NotificationKind.LowBattery, "Battery emergency", $"{battery}Emergency mode is on.", NoticeLevel.Warning),
             "stop" => Make(NotificationKind.LowBattery, "Battery critical", Sentence(detail), NoticeLevel.Error),

@@ -19,7 +19,8 @@ namespace BluettiWatcher.Http;
 /// </summary>
 internal sealed class StationApi(StationConfig config, StationService service, StationStore store, TimeProvider time, DateTimeOffset startedAt, IDtekWatcher? dtek = null, Action<string>? log = null,
     Func<bool>? bluetoothEncrypted = null, Func<bool>? bluetoothStalled = null, Func<(string Guid, string Name)>? activePlan = null, CloudAccount? cloud = null,
-    Func<IReadOnlyList<KeyValuePair<string, string>>>? stationBlocks = null, ModesApi? modes = null, Tray.NotificationSettingsStore? notificationSettings = null)
+    Func<IReadOnlyList<KeyValuePair<string, string>>>? stationBlocks = null, ModesApi? modes = null, Tray.NotificationSettingsStore? notificationSettings = null,
+    Func<Modes.Broker.BrokerStatus>? broker = null)
 {
     /// <summary>The modes routes; under v2 also the old POST /api/mode. Null = not a modes request.</summary>
     private async Task<HttpResponse?> ModesRouteAsync(HttpRequest r, CancellationToken ct)
@@ -774,6 +775,15 @@ internal sealed class StationApi(StationConfig config, StationService service, S
             w.WriteStartObject("stationBlocks");
             foreach (var (name, support) in stationBlocks?.Invoke() ?? []) w.WriteString(name, support);
             w.WriteEndObject();
+            // The power modes' admin broker: missing, stale (older than this service: its elevated refresh is due) or current.
+            if (broker?.Invoke() is { } b)
+            {
+                w.WriteStartObject("broker");
+                w.WriteString("state", b.State);
+                if (b.Version is { } bv) w.WriteString("version", bv); else w.WriteNull("version");
+                if (b.Problem is { } bp) w.WriteString("problem", bp); else w.WriteNull("problem");
+                w.WriteEndObject();
+            }
             w.WriteEndObject();
         });
     }
