@@ -210,7 +210,8 @@ public partial class InstallScriptTests
     public void Install_registers_the_task_swap_defines()
     {
         string install = Text("install.ps1");
-        Assert.Contains("$def = New-WatcherTaskDefinition -Exe $exe -Port $Port", install, StringComparison.Ordinal);
+        // The windowless twin (tools/swap.ps1 New-WatcherServiceExe): BluettiWatcher.exe is a console program.
+        Assert.Contains("$def = New-WatcherTaskDefinition -Exe $serviceExe -Port $Port", install, StringComparison.Ordinal);
         Assert.Contains("-Action $def.Action -Trigger $def.Trigger -Principal $def.Principal -Settings $def.Settings", install, StringComparison.Ordinal);
         Assert.DoesNotContain("New-ScheduledTaskTrigger", install, StringComparison.Ordinal);
     }
