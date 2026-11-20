@@ -640,16 +640,18 @@ internal sealed class StationApi(StationConfig config, StationService service, S
         switch (r.Path)
         {
             case "/api/reading-source":
-                ReadingSource? source;
+                string? name;
                 try
                 {
                     using var doc = JsonDocument.Parse(r.Body);
-                    source = doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("readingSource", out var v) && v.ValueKind == JsonValueKind.String
-                        ? ReadingSourceFile.Parse(v.GetString()) : null;
+                    name = doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("readingSource", out var v) && v.ValueKind == JsonValueKind.String
+                        ? v.GetString() : null;
                 }
-                catch (JsonException) { source = null; }
-                if (source is not { } s) return HttpResponse.Text(400, "body must be JSON { \"readingSource\": \"auto\" | \"bluetooth\" | \"cloud\" }");
-                var (status, error) = cloud.SetSource(s);
+                catch (JsonException) { name = null; }
+                // "config" clears the page's choice: the config key applies again.
+                var source = ReadingSourceFile.Parse(name);
+                if (source is null && name != "config") return HttpResponse.Text(400, "body must be JSON { \"readingSource\": \"auto\" | \"bluetooth\" | \"cloud\" | \"config\" }");
+                var (status, error) = cloud.SetSource(source);
                 return status == 200 ? HttpResponse.Json(200, Write(w => CloudJson(w, null))) : HttpResponse.Text(status, error);
             case "/api/cloud/sign-in":
                 var (url, failed) = await cloud.StartSignInAsync(ct);

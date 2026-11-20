@@ -168,6 +168,53 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
             : new CloudStatus("ok", Invariant($"signed in, not read yet; the access token {(t.ExpiresAt > time.GetUtcNow() ? "is valid until" : "expired at")} {t.ExpiresAt:yyyy-MM-dd'T'HH:mm:ss'Z'}"), null);
     }
 
+    /// <summary>A token pair older than this is refreshed by <see cref="KeepAliveAsync"/> even when no read needs the cloud.</summary>
+    internal static readonly TimeSpan KeepAliveEvery = TimeSpan.FromDays(1);
+    private DateTimeOffset? _keepAliveFailedAt;
+
+    /// <summary>
+    /// design.md §4 AC11: under the auto source a healthy Bluetooth never calls the cloud, so without this the pair is never
+    /// refreshed and lapses unnoticed. When the source allows the cloud and a token exists, a pair issued
+    /// <see cref="KeepAliveEvery"/> ago (or expiring within <see cref="RefreshAhead"/>) is refreshed; a refused refresh
+    /// turns the state to sign-in-needed and is held as any refusal; another failure waits an hour.
+    /// </summary>
+    internal async Task KeepAliveAsync(CancellationToken ct)
+    {
+        if (!config.CloudOn) return;
+        await _gate.WaitAsync(ct);
+        try
+        {
+            var (token, _) = CurrentToken();
+            if (token is null || HeldRefusal(token) is not null) return;
+            var now = time.GetUtcNow();
+            bool due = token.ExpiresAt - now < RefreshAhead || now - DateTimeOffset.FromUnixTimeSeconds(token.CreatedAt) >= KeepAliveEvery;
+            if (!due || (_keepAliveFailedAt is { } failedAt && now - failedAt < EarlyRefreshHold)) return;
+            var (fresh, why) = await RefreshAsync(token, ct);
+            if (fresh is not null)
+            {
+                _keepAliveFailedAt = null;
+                log("cloud: the token was refreshed (daily keep-alive)");
+                return;
+            }
+            _keepAliveFailedAt = now;
+            _outcome = new Outcome(false, $"the daily token refresh failed - {why}", now);
+            log($"cloud: the daily token refresh failed - {why}");
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>Runs <see cref="KeepAliveAsync"/> once an hour until <paramref name="ct"/> ends; one failure never stops it.</summary>
+    internal async Task RunKeepAliveAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try { await KeepAliveAsync(ct); }
+            catch (Exception e) when (e is not OperationCanceledException) { log($"cloud: keep-alive failed: {e.GetType().Name}"); }
+            try { await Task.Delay(TimeSpan.FromHours(1), time, ct); }
+            catch (OperationCanceledException) { return; }
+        }
+    }
+
     /// <summary>
     /// A new sign-in (<paramref name="token"/>) or a sign-out (null): the token file is written or deleted under the reader's
     /// lock, so no read in flight writes an older refreshed pair over it; what the reader held for the old token is dropped.

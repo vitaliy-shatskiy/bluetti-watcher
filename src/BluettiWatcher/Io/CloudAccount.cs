@@ -84,13 +84,20 @@ internal sealed class CloudAccount(StationConfig config, BluettiCloudReader read
         return (200, "");
     }
 
-    /// <summary>Saves the page's reading source and applies it from the next poll · (200, "") · (500, why) not saved, nothing changed.</summary>
-    public (int Status, string Why) SetSource(ReadingSource source)
+    /// <summary>
+    /// Saves the page's reading source and applies it from the next poll; null = "use config": the saved choice is deleted
+    /// and the config key applies again · (200, "") · (500, why) not saved or not deleted, nothing changed.
+    /// </summary>
+    public (int Status, string Why) SetSource(ReadingSource? source)
     {
-        try { ReadingSourceFile.Write(config.DataDir, source); }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return (500, $"{ReadingSourceFile.FileName} could not be written ({e.GetType().Name})"); }
+        try
+        {
+            if (source is { } s) ReadingSourceFile.Write(config.DataDir, s);
+            else File.Delete(ReadingSourceFile.PathOf(config.DataDir));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return (500, $"{ReadingSourceFile.FileName} could not be {(source is null ? "deleted" : "written")} ({e.GetType().Name})"); }
         config.PageSource = source;
-        log($"reading source set on the page: {ReadingSourceFile.Name(source)}");
+        log(source is { } chosen ? $"reading source set on the page: {ReadingSourceFile.Name(chosen)}" : $"reading source: the page's choice is cleared, the config applies ({ReadingSourceFile.Name(config.Source)})");
         return (200, "");
     }
 

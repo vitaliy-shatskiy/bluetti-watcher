@@ -136,7 +136,7 @@ the same object:
 | `signIn` | The page's sign-in: `idle`, `waiting` (for the browser, at most 5 minutes), `signed-in`, `failed`; `message` the last line in English (never a token). |
 | `authorizeUrl` | Only in the answer of `POST /api/cloud/sign-in`: the BLUETTI sign-in address for the page to open. |
 
-- `POST /api/reading-source` body `{"readingSource": "auto" | "bluetooth" | "cloud"}`: saved and in force from the next poll, no restart. 200 · 400 another body · 500 not written (nothing changed).
+- `POST /api/reading-source` body `{"readingSource": "auto" | "bluetooth" | "cloud" | "config"}`: saved and in force from the next poll, no restart; `config` deletes the page's choice so the config applies again. 200 · 400 another body · 500 not written or not deleted (nothing changed).
 - `POST /api/cloud/sign-in`: starts the `--cloud-login` flow inside the service, its catcher on `127.0.0.1` at a port the OS assigns. 202 with `authorizeUrl`; a second call while one waits answers the same address · 502 it could not start.
 - `POST /api/cloud/sign-out`: stops a waiting sign-in and deletes the token file. 200 · 503 a cloud read holds the reader past 5 s (try again) · 500 the file could not be deleted.
 

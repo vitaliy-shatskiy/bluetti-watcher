@@ -96,6 +96,8 @@ Log($"Bluetti Watcher started: http://127.0.0.1:{config.Port}/ · source {Readin
 var serving = http.RunAsync(stop.Token);
 var scheduleReads = dtek.RunAsync(stop.Token);
 var historyRuns = backfill.RunAsync(stop.Token);
+// The token is refreshed once a day while the source allows the cloud, even when Bluetooth answers (design.md §4 AC11).
+var keepAlive = cloud.RunKeepAliveAsync(stop.Token);
 // A page choice applies when it is saved, never after a station read that is still running.
 var presses = service.RunPressesAsync(stop.Token);
 long lastCompact = time.GetTimestamp();
@@ -140,6 +142,7 @@ catch (OperationCanceledException)
 await serving;
 await scheduleReads;
 await historyRuns;
+await keepAlive;
 try { await presses; }
 catch (OperationCanceledException) { /* the press loop ends with the stop */ }
 Log("stopped");

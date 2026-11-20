@@ -188,7 +188,7 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 
 <!-- Reading source and cloud sign-in (GET /api/cloud): its own card, markup, style and script block -->
 <div class="card" id="srcCard" hidden><div class="bar"><h2 style="margin:0" data-i18n="srcTitle"></h2><span style="flex:1"></span><span class="chip" id="cloudChip"><i></i><span></span></span></div>
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px"><div class="seg" id="srcSeg" role="group" data-i18n-aria="srcAria"><button data-s="auto" data-i18n="srcAuto" data-i18n-title="srcAutoTip"></button><button data-s="bluetooth" data-i18n="srcBluetooth" data-i18n-title="srcBluetoothTip"></button><button data-s="cloud" data-i18n="srcCloud" data-i18n-title="srcCloudTip"></button></div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px"><div class="seg" id="srcSeg" role="group" data-i18n-aria="srcAria"><button data-s="auto" data-i18n="srcAuto" data-i18n-title="srcAutoTip"></button><button data-s="bluetooth" data-i18n="srcBluetooth" data-i18n-title="srcBluetoothTip"></button><button data-s="cloud" data-i18n="srcCloud" data-i18n-title="srcCloudTip"></button></div><div class="seg" id="srcResetBox" hidden><button id="srcReset" data-i18n="srcUseConfig" data-i18n-title="srcUseConfigTip"></button></div>
     <span style="flex:1"></span><div class="seg"><button id="cloudSignIn" data-i18n="cloudSignIn" data-i18n-title="cloudSignInTip"></button></div><div class="seg"><button id="cloudSignOut" data-i18n="cloudSignOut" data-i18n-title="cloudSignOutTip"></button></div></div>
   <div class="note" id="cloudLine" role="status" aria-live="polite"></div><div class="note"><a id="cloudLink" target="_blank" rel="noopener noreferrer" hidden data-i18n="cloudOpenLink"></a></div></div>
 
@@ -467,6 +467,8 @@ en: {
   srcBluetoothTip: "Bluetooth only: the cloud is never called",
   srcCloud: "Cloud",
   srcCloudTip: "The BLUETTI cloud only: Bluetooth is never opened",
+  srcUseConfig: "Use config",
+  srcUseConfigTip: "Forgets the choice made on this page: readingSource in config.json applies again",
   cloudSignIn: "Sign in to BLUETTI cloud",
   cloudSignInTip: "Opens the BLUETTI sign-in in a new tab; the token stays on this PC",
   cloudSignOut: "Sign out",
@@ -757,6 +759,8 @@ uk: {
   srcBluetoothTip: "Лише Bluetooth: до хмари жодного запиту",
   srcCloud: "Хмара",
   srcCloudTip: "Лише хмара BLUETTI: Bluetooth не відкривається",
+  srcUseConfig: "Як у config",
+  srcUseConfigTip: "Забуває вибір, зроблений на цій сторінці: знову діє readingSource з config.json",
   cloudSignIn: "Увійти в хмару BLUETTI",
   cloudSignInTip: "Відкриває вхід BLUETTI у новій вкладці; токен лишається на цьому ПК",
   cloudSignOut: "Вийти",
@@ -1402,6 +1406,8 @@ function paintCloud() {
   chip.className = 'chip' + (CLOUD_CHIP[st] ? ' ' + CLOUD_CHIP[st] : '');
   chip.lastChild.textContent = t('cloudChipText', { s: val(st) });
   chip.title = c.cloud.detail || '';
+  $('srcResetBox').hidden = c.readingSourceFrom !== 'page';
+  $('srcReset').disabled = cloudBusy;
   const waiting = c.signIn.state === 'waiting';
   $('cloudSignIn').disabled = cloudBusy;
   $('cloudSignOut').disabled = cloudBusy || st === 'signed-out';
@@ -1444,6 +1450,7 @@ async function cloudPost(path, body) {
 document.querySelectorAll('#srcSeg button').forEach((b) => { b.onclick = async () => {
   if (!cloudBusy && await cloudPost('/api/reading-source', { readingSource: b.dataset.s })) load(true);
 }; });
+$('srcReset').onclick = async () => { if (!cloudBusy && await cloudPost('/api/reading-source', { readingSource: 'config' })) load(true); };
 $('cloudSignIn').onclick = async () => {
   if (cloudBusy) return;
   // The tab is opened inside the click: one opened after an await is blocked as a pop-up.

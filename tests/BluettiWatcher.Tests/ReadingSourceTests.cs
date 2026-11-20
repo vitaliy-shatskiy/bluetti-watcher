@@ -271,6 +271,54 @@ public sealed class ReadingSourceTests : IDisposable
         Assert.Equal("ok", Cloud.Status().State);
     }
 
+    // --- the keep-alive: a token never lapses while Bluetooth answers ---------------------------------------------------
+
+    private void Refreshed() =>
+        _http.Json($$"""{"access_token":"{{NewAccess}}","refresh_token":"{{NewRefresh}}","token_type":"bearer","expires_in":2678400}""");
+
+    [Fact]
+    public async Task KeepAlive_BluetoothHealthyForDays_RefreshesTheTokenOnceADay()
+    {
+        Token();   // 31 days, created at T0; the auto source with Bluetooth answering never reads the cloud
+        await Cloud.KeepAliveAsync(CancellationToken.None);
+        Assert.Empty(_http.Calls);   // fresh: nothing to do
+
+        _clock.Now = T0.AddDays(1).AddMinutes(1);
+        Refreshed();
+        await Cloud.KeepAliveAsync(CancellationToken.None);
+        Assert.Equal(HttpMethod.Post, Assert.Single(_http.Calls).Method);
+        using (var doc = JsonDocument.Parse(await File.ReadAllTextAsync(TokenPath, TestContext.Current.CancellationToken)))
+            Assert.Equal(NewRefresh, doc.RootElement.GetProperty("refresh_token").GetString());
+
+        _clock.Now = T0.AddDays(1).AddHours(5);
+        await Cloud.KeepAliveAsync(CancellationToken.None);
+        Assert.Single(_http.Calls);   // the new pair is fresh again: no second refresh that day
+    }
+
+    [Fact]
+    public async Task KeepAlive_RefusedRefresh_TurnsSignInNeededAndIsNotRepeated()
+    {
+        Token();
+        _clock.Now = T0.AddDays(2);
+        _http.Json("""{"error":"invalid_grant"}""", HttpStatusCode.BadRequest);
+        await Cloud.KeepAliveAsync(CancellationToken.None);
+        Assert.Equal("sign-in-needed", Cloud.Status().State);
+        _clock.Now = T0.AddDays(2).AddHours(1);
+        await Cloud.KeepAliveAsync(CancellationToken.None);
+        Assert.Single(_http.Calls);
+    }
+
+    [Fact]
+    public async Task KeepAlive_SourceBluetoothOrNoToken_CallsNothing()
+    {
+        _clock.Now = T0.AddDays(5);
+        await Cloud.KeepAliveAsync(CancellationToken.None);   // no token file
+        Token();
+        _cfg.PageSource = ReadingSource.Bluetooth;
+        await Cloud.KeepAliveAsync(CancellationToken.None);
+        Assert.Empty(_http.Calls);
+    }
+
     // --- task: the cloud answer rejected as "incomplete (no valid output mode)" -----------------------------------------
 
     /// <summary>
@@ -354,6 +402,23 @@ public sealed class ReadingSourceTests : IDisposable
         var health = JsonDocument.Parse((await Send(w.Api, Req("GET", "/api/health"))).Body).RootElement;
         Assert.Equal("bluetooth", health.GetProperty("readingSource").GetString());
         Assert.Equal("off", health.GetProperty("cloud").GetProperty("state").GetString());
+    }
+
+    [Fact]
+    public async Task Api_UseConfig_DeletesThePageChoiceAndTheConfigKeyApplies()
+    {
+        _cfg.ReadingSource = ReadingSource.Cloud;
+        using var w = new World(this);
+        Assert.Equal(200, (await Send(w.Api, Req("POST", "/api/reading-source", """{"readingSource":"bluetooth"}"""))).Status);
+        Assert.Equal(403, (await Send(w.Api, Req("POST", "/api/reading-source", """{"readingSource":"config"}""", guarded: false))).Status);
+        Assert.True(File.Exists(ReadingSourceFile.PathOf(_dir)));
+
+        var (status, body) = await Send(w.Api, Req("POST", "/api/reading-source", """{"readingSource":"config"}"""));
+        Assert.Equal(200, status);
+        var root = JsonDocument.Parse(body).RootElement;
+        Assert.Equal(("cloud", "config"), (root.GetProperty("readingSource").GetString(), root.GetProperty("readingSourceFrom").GetString()));
+        Assert.False(File.Exists(ReadingSourceFile.PathOf(_dir)));
+        Assert.Equal(ReadingSource.Cloud, _cfg.Source);
     }
 
     [Fact]

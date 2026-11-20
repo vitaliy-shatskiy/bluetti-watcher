@@ -135,7 +135,8 @@ integration) with the token in `cloud-token.json` (`cloudTokenPath`, default the
 
 Not set = `auto`, or `bluetooth` when `cloudEnabled` is `false` (the key that switched the cloud off before
 `readingSource` existed). The page's choice is saved in `reading-source.json` in the data directory and wins over the
-key from the next poll on, no restart; deleting that file returns to the key. The source in force is read at each
+key from the next poll on, no restart. The page says when the source was set there and offers "Use config", which
+deletes that file so the key applies again. The source in force is read at each
 poll, by the reader and by the history back-fill alike.
 
 ### Cloud sign-in
@@ -163,6 +164,10 @@ file) · `ok` (the last read answered, or signed in and not read yet; the detail
   no device-list call goes out either: each poll's miss names "sign-in needed" without a request. A new token (the
   page's sign-in, or `--cloud-login` writing the file) ends the hold at once. Any other failed refresh (429, 5xx, no
   answer) is retried as before.
+- AC11: under the auto source a healthy Bluetooth never calls the cloud, so a token used only by reads would lapse
+  unnoticed. Once an hour the service checks the token while the source allows the cloud and a token file exists: a
+  pair issued a day ago or more, or expiring within 3 days, is refreshed (logged, never the token). A refused refresh
+  turns the state to `sign-in-needed` (AC10); another failure shows as `error` and waits an hour.
 
 - AC1: when Bluetooth returns a reading, the cloud is not called.
 - AC2: when Bluetooth returns nothing and the cloud returns the station (model starting with `type`, `online` "1",
