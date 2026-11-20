@@ -86,10 +86,13 @@ internal sealed class CloudAccount(StationConfig config, BluettiCloudReader read
 
     /// <summary>
     /// Saves the page's reading source and applies it from the next poll; null = "use config": the saved choice is deleted
-    /// and the config key applies again · (200, "") · (500, why) not saved or not deleted, nothing changed.
+    /// and the config key applies again · (200, "") · (409, why) with it nothing would be polled (no readings, no battery
+    /// protection), nothing changed · (500, why) not saved or not deleted, nothing changed.
     /// </summary>
     public (int Status, string Why) SetSource(ReadingSource? source)
     {
+        if (config.PollProblemWith(source) is { } nothingPolled)
+            return (409, $"refused: with this reading source nothing would be polled ({nothingPolled}); the source stays {ReadingSourceFile.Name(config.Source)}");
         try
         {
             if (source is { } s) ReadingSourceFile.Write(config.DataDir, s);

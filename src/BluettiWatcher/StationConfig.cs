@@ -213,6 +213,14 @@ internal sealed class StationConfig
     [JsonIgnore]
     public string? PollProblem => CloudOnly ? null : MacProblem ?? BluetoothProblem;
 
+    /// <summary>What <see cref="PollProblem"/> would say with <paramref name="pageSource"/> as the page's choice; this config is not changed (the poll loop reads it).</summary>
+    public string? PollProblemWith(ReadingSource? pageSource)
+    {
+        var c = (StationConfig)MemberwiseClone();
+        c.PageSource = pageSource;
+        return c.PollProblem;
+    }
+
     /// <summary>The model is not one Bluetooth reads, and the cloud fallback is on: the cloud alone reads the station.</summary>
     [JsonIgnore]
     public bool CloudOnly => Source == BluettiWatcher.ReadingSource.Cloud || (CloudOn && !BleModels.TryGet(Type, out _));

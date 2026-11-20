@@ -404,6 +404,24 @@ public sealed class ReadingSourceTests : IDisposable
         Assert.Equal("off", health.GetProperty("cloud").GetProperty("state").GetString());
     }
 
+    // Bluetooth on a model it cannot read would leave nothing polled (no readings, no battery protection): refused.
+    [Fact]
+    public async Task Api_SourceThatLeavesNothingToPoll_IsRefusedAndTheSourceStays()
+    {
+        _cfg.Type = "NOT-A-BLE-MODEL";
+        Token();
+        using var w = new World(this);
+        Assert.Null(_cfg.PollProblem);   // auto with a token: the cloud alone reads it
+
+        var (status, body) = await Send(w.Api, Req("POST", "/api/reading-source", """{"readingSource":"bluetooth"}"""));
+        Assert.Equal(409, status);
+        Assert.Contains("NOT-A-BLE-MODEL", body, StringComparison.Ordinal);
+        Assert.Equal(ReadingSource.Auto, _cfg.Source);
+        Assert.Null(_cfg.PageSource);
+        Assert.False(File.Exists(ReadingSourceFile.PathOf(_dir)));
+        Assert.Null(_cfg.PollProblem);
+    }
+
     [Fact]
     public async Task Api_UseConfig_DeletesThePageChoiceAndTheConfigKeyApplies()
     {
