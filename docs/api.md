@@ -166,13 +166,13 @@ User-defined modes, the Auto rules and per-action status ([design.md](design.md)
 engine at `legacy` every route below answers 409; under `v2`, `POST /api/mode` selects the built-in `eco` / `max` or
 `auto` and answers like `GET /api/modes`. Writes (POST, PUT, DELETE) take the guard above (`X-Station: 1`, own or no
 `Origin`); bodies on these routes are at most 64 KB (413 above; every other route keeps 4 KB). A mode id `auto` is
-refused (400): it is the selection value of the rules. A change is saved to `modes.json`, reconciled at once, and answered with the whole view (200); a refusal
+refused (400): it is the selection value of the rules. A change is saved to `modes.json`, reconciled at once, and answered with the whole view (200). A transition whose actions take longer than 5 s answers 202 with the view as it stands (`pending` true, `switching` = the mode being entered) and runs on to its end: it is never cut short by the request, only by the service stopping; `GET /api/modes` shows it done once `pending` is false. A refusal
 is text: 400 a bad body or setting (each problem names its field, `actions[0].settings.plan: required`), 404 no such
 mode, 409 a conflict (a built-in deleted, a mode a rule still chooses, an id taken, `modes.json` not writable).
 
 | Route | Body / query | Does |
 |---|---|---|
-| `GET /api/modes` | | `{ engine, activeModeId, reason, emergency, actions[], restores[], problems[], settings }` |
+| `GET /api/modes` | | `{ engine, activeModeId, reason, switching, pending, emergency, actions[], restores[], problems[], settings }` |
 | `POST /api/modes` | a mode | Adds it. |
 | `PUT /api/modes/{id}` | a mode, same `id` | Replaces it; a built-in stays built in. |
 | `DELETE /api/modes/{id}` | | Removes it; built-ins (`normal`, `eco`, `max`) are not deletable. |

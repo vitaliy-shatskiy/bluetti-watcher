@@ -14,6 +14,8 @@ internal sealed class FakeMachine
     /// <summary>The next write to this key changes the value, then stops the process before Applied is journaled.</summary>
     public HashSet<string> StopAfterWrite { get; } = new(StringComparer.Ordinal);
     public List<string> Writes { get; } = [];
+    /// <summary>Awaited before a write to this key, with the token the module was given: a slow or blocking action.</summary>
+    public Dictionary<string, Func<CancellationToken, Task>> Hold { get; } = new(StringComparer.Ordinal);
 
     public string? Text(string key) => Values.TryGetValue(key, out var v) ? v?.ToJsonString() : null;
 }
@@ -54,19 +56,22 @@ internal sealed class FakeModule(string typeId, FakeMachine machine, Restoration
     public IReadOnlyList<ResourceIntent> Expand(JsonObject settings) =>
         [new ResourceIntent(settings["key"]?.GetValue<string>() ?? "plan", (settings["value"] ?? settings["plan"])?.DeepClone())];
 
-    public Task<ResourceRead> ReadAsync(string resourceKey, CancellationToken ct) => Task.FromResult(
+    public Task<ResourceRead> ReadAsync(string resourceKey, CancellationToken ct) => ct.IsCancellationRequested ? Task.FromCanceled<ResourceRead>(ct) : Task.FromResult(
         machine.FailRead.Contains(resourceKey) ? ResourceRead.Failed("read failed (fake)")
         : ResourceRead.Of(machine.Values.TryGetValue(resourceKey, out var v) ? v?.DeepClone() : null));
 
     public bool Equivalent(string resourceKey, JsonNode? a, JsonNode? b) => JsonNode.DeepEquals(a, b);
 
-    public Task<ApplyResult> ApplyAsync(ResourceIntent intent, CancellationToken ct)
+    public async Task<ApplyResult> ApplyAsync(ResourceIntent intent, CancellationToken ct)
     {
+        if (machine.Hold.TryGetValue(intent.Key, out var hold)) await hold(ct);
+        // A real module stops at a cancelled token: the fake does too.
+        ct.ThrowIfCancellationRequested();
         machine.Writes.Add(intent.Key);
         if (machine.StopBeforeWrite.Remove(intent.Key)) throw new OperationCanceledException("stopped before the write");
-        if (machine.FailWrite.Contains(intent.Key)) return Task.FromResult(ApplyResult.Failed("write failed (fake)"));
+        if (machine.FailWrite.Contains(intent.Key)) return ApplyResult.Failed("write failed (fake)");
         machine.Values[intent.Key] = intent.Target?.DeepClone();
         if (machine.StopAfterWrite.Remove(intent.Key)) throw new OperationCanceledException("stopped after the write");
-        return Task.FromResult(ApplyResult.Written(intent.Target?.DeepClone()));
+        return ApplyResult.Written(intent.Target?.DeepClone());
     }
 }

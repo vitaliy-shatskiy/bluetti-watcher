@@ -12,7 +12,11 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
     TimeProvider time, Action<string> log, Action<string, string>? onEvent = null) : IDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
+    /// <summary>The engine's own lifetime: a change runs on it, so only the service's shutdown stops one half-way.</summary>
+    private readonly CancellationTokenSource _lifetime = new();
     private readonly ModeReconciler _reconciler = new(registry, journal, time, onEvent);
+    private Task _pending = Task.CompletedTask;
+    private volatile string? _switching;
     private ModesSettings _settings = new();
     private SelectorInput? _input;
     private string _reason = "";
@@ -29,8 +33,25 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
     /// <summary>Start problems (settings or journal), shown by the API until the next start.</summary>
     public IReadOnlyList<string> Problems => [.. _problems];
     public bool AutoHibernate => _settings.AutoHibernate;
+    /// <summary>The mode being entered while its actions run; null when no transition is under way.</summary>
+    public string? Switching => _switching;
+    /// <summary>The last change asked for (API or tray): done or not, it is not cut short by the caller that asked.</summary>
+    public Task Pending => Volatile.Read(ref _pending);
+    /// <summary>A change is queued or running.</summary>
+    public bool Busy => !Pending.IsCompleted;
 
-    public void Dispose() => _gate.Dispose();
+    /// <summary>The service stops: a transition under way stops at its next action.</summary>
+    public void Shutdown()
+    {
+        if (!_lifetime.IsCancellationRequested) _lifetime.Cancel();
+    }
+
+    public void Dispose()
+    {
+        Shutdown();
+        _lifetime.Dispose();
+        _gate.Dispose();
+    }
 
     /// <summary>
     /// Loads the settings and replays the journal before any write. An untrusted journal is moved aside and the start is
@@ -125,7 +146,10 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
             onEvent?.Invoke("mode-changed", $"{mode.Id} ({d.Reason})");
         }
         _reason = d.Reason;
-        await _reconciler.ReconcileAsync(mode, ct);
+        bool entering = !string.Equals(_reconciler.Snapshot.ModeId, mode.Id, StringComparison.Ordinal);
+        if (entering) _switching = mode.Id;
+        try { await _reconciler.ReconcileAsync(mode, ct); }
+        finally { if (entering) _switching = null; }
         if (journal.Count > ModeJournal.CompactAbove) CompactJournal();
         if (_emergency || _flagWritten == mode.FlagWord) return;
         string why = await flag.WriteAsync(mode.FlagWord, ct);
@@ -192,7 +216,19 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
     /// Applies <paramref name="change"/> (its error "status:text" refuses it), saves, and reconciles at once so the API
     /// answers with the new statuses.
     /// </summary>
-    private async Task<(int Status, string Error)> ChangeAsync(Func<ModesSettings, (ModesSettings Next, string Error)> change, CancellationToken ct)
+    /// <remarks>
+    /// The change runs on the engine's lifetime, never on <paramref name="ct"/>: a transition stopped half-way leaves the
+    /// machine in the new mode's state while the view still names the old one. <paramref name="ct"/> only ends the
+    /// caller's wait (an HTTP request's limit, a client gone).
+    /// </remarks>
+    private Task<(int Status, string Error)> ChangeAsync(Func<ModesSettings, (ModesSettings Next, string Error)> change, CancellationToken ct)
+    {
+        var run = RunChangeAsync(change, _lifetime.Token);
+        Volatile.Write(ref _pending, run);
+        return run.WaitAsync(ct);
+    }
+
+    private async Task<(int Status, string Error)> RunChangeAsync(Func<ModesSettings, (ModesSettings Next, string Error)> change, CancellationToken ct)
     {
         await _gate.WaitAsync(ct);
         try
@@ -209,6 +245,12 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
             _settings = next;
             await ReconcileAsync(ct);
             return (0, "");
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // The caller may have stopped waiting (202): the failure is said here, not lost with the task.
+            log($"modes: change failed: {e.GetType().Name}: {e.Message}");
+            throw;
         }
         finally { _gate.Release(); }
     }

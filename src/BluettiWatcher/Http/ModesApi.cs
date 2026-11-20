@@ -10,8 +10,16 @@ namespace BluettiWatcher.Http;
 /// PUT /api/settings/hibernate { "autoHibernate": bool }. Every write is behind <see cref="RequestGuard.WriteRefusal"/>
 /// (the caller checked the Host). A change answers with the whole view, reconciled.
 /// </summary>
-internal sealed class ModesApi(StationConfig config, ModesEngine engine)
+internal sealed class ModesApi(StationConfig config, ModesEngine engine, TimeSpan? changeWait = null)
 {
+    /// <summary>
+    /// The longest a write waits for its transition: well inside the server's request limit, so a slow action answers 202
+    /// (switching) instead of a dropped connection. The transition itself runs on to its end.
+    /// </summary>
+    internal static readonly TimeSpan ChangeWait = MiniHttpServer.RequestLimit / 2;
+
+    private readonly TimeSpan _changeWait = changeWait ?? ChangeWait;
+
     /// <summary>The longest one module's availability and discovery may take for the catalogue.</summary>
     internal static readonly TimeSpan DiscoverWait = TimeSpan.FromSeconds(3);
 
@@ -26,15 +34,15 @@ internal sealed class ModesApi(StationConfig config, ModesEngine engine)
         {
             return (r.Method, r.Path) switch
             {
-                ("GET", "/api/modes") => View(),
+                ("GET", "/api/modes") => View(200),
                 ("GET", "/api/modes/catalogue") => await CatalogueAsync(ct),
                 ("GET", "/api/modes/journal") => Journal(r),
-                ("POST", "/api/modes") => Answer(await engine.PutModeAsync(Body(r, ModesJson.Default.Mode), create: true, ct)),
-                ("PUT", "/api/modes/rules") => Answer(await engine.PutRulesAsync(Body(r, ModesJson.Default.ListRule), ct)),
-                ("POST", "/api/modes/select") => Answer(await engine.SelectAsync(Field(r, "mode"), ct)),
-                ("PUT", "/api/settings/hibernate") => Answer(await engine.SetAutoHibernateAsync(Flag(r, "autoHibernate"), ct)),
+                ("POST", "/api/modes") => await AnswerAsync(engine.PutModeAsync(Body(r, ModesJson.Default.Mode), create: true, ct), ct),
+                ("PUT", "/api/modes/rules") => await AnswerAsync(engine.PutRulesAsync(Body(r, ModesJson.Default.ListRule), ct), ct),
+                ("POST", "/api/modes/select") => await AnswerAsync(engine.SelectAsync(Field(r, "mode"), ct), ct),
+                ("PUT", "/api/settings/hibernate") => await AnswerAsync(engine.SetAutoHibernateAsync(Flag(r, "autoHibernate"), ct), ct),
                 ("PUT", var p) when ModeId(p) is { } id => await PutAsync(r, id, ct),
-                ("DELETE", var p) when ModeId(p) is { } id => Answer(await engine.DeleteModeAsync(id, ct)),
+                ("DELETE", var p) when ModeId(p) is { } id => await AnswerAsync(engine.DeleteModeAsync(id, ct), ct),
                 (_, "/api/modes/catalogue" or "/api/modes/journal") => HttpResponse.Text(405, "GET only"),
                 _ => HttpResponse.Text(404, "not found"),
             };
@@ -50,14 +58,14 @@ internal sealed class ModesApi(StationConfig config, ModesEngine engine)
         try { mode = Field(r, "mode"); }
         catch (JsonException) { return HttpResponse.Text(400, "body must be JSON { \"mode\": \"auto\" | \"eco\" | \"max\" }"); }
         if (mode is not ("auto" or BuiltInModes.Eco or BuiltInModes.Max)) return HttpResponse.Text(400, "mode must be auto, eco or max");
-        return Answer(await engine.SelectAsync(mode, ct));
+        return await AnswerAsync(engine.SelectAsync(mode, ct), ct);
     }
 
     private async Task<HttpResponse> PutAsync(HttpRequest r, string id, CancellationToken ct)
     {
         var mode = Body(r, ModesJson.Default.Mode);
         if (!string.Equals(mode.Id, id, StringComparison.Ordinal)) return HttpResponse.Text(400, $"body id {mode.Id} is not the path's {id}");
-        return Answer(await engine.PutModeAsync(mode, create: false, ct));
+        return await AnswerAsync(engine.PutModeAsync(mode, create: false, ct), ct);
     }
 
     /// <summary>The id of /api/modes/{id}; null for the fixed sub-routes or an id that cannot be one.</summary>
@@ -69,19 +77,33 @@ internal sealed class ModesApi(StationConfig config, ModesEngine engine)
         return ModesValidation.ReservedIds.Contains(id) || !ModesValidation.ValidId(id) ? null : id;
     }
 
-    private HttpResponse Answer((int Status, string Error) res) =>
-        res.Status == 0 ? View() : HttpResponse.Text(res.Status, res.Error);
+    /// <summary>
+    /// Waits for a change at most <see cref="ChangeWait"/>: past it the answer is 202 with the view as it stands (pending,
+    /// switching) and the change runs on in the engine; the page follows it with GET /api/modes.
+    /// </summary>
+    private async Task<HttpResponse> AnswerAsync(Task<(int Status, string Error)> change, CancellationToken ct)
+    {
+        (int Status, string Error) res;
+        try { res = await change.WaitAsync(_changeWait, ct); }
+        catch (TimeoutException) { return View(202); }
+        return Answer(res);
+    }
 
-    private HttpResponse View()
+    private HttpResponse Answer((int Status, string Error) res) =>
+        res.Status == 0 ? View(200) : HttpResponse.Text(res.Status, res.Error);
+
+    private HttpResponse View(int status)
     {
         var s = engine.Settings;
         var snap = engine.Snapshot;
-        return HttpResponse.Json(200, Write(w =>
+        return HttpResponse.Json(status, Write(w =>
         {
             w.WriteStartObject();
             w.WriteString("engine", ModesConfig.V2);
             w.WriteString("activeModeId", snap.ModeId);
             w.WriteString("reason", engine.Reason);
+            w.WriteString("switching", engine.Switching);
+            w.WriteBoolean("pending", engine.Busy);
             w.WriteBoolean("emergency", engine.Emergency);
             w.WriteStartArray("actions");
             foreach (var a in snap.Actions) JsonSerializer.Serialize(w, a, ModesJson.Default.ActionReport);

@@ -92,6 +92,8 @@ using var dtek = DtekWatcherGuard.Create(config, store, time, Log);
 // The Auto rules' cutWithin reads the schedule's next planned outage (the guard never throws; off = no outage known).
 service.NextCut = () => dtek.View(service.State.Cut, null).NextStart;
 using var stop = new CancellationTokenSource();
+// A mode change runs on the engine's lifetime, never a request's: the service's stop is what ends one half-way.
+using var stopModes = stop.Token.Register(() => modes?.Shutdown());
 // The page's sign-in: the --cloud-login flow inside the service, its catcher on a port the OS assigns; the token is written through the reader's lock.
 using var signInHttp = new SocketsHttpHandler();
 using var account = new CloudAccount(config, cloud, signInHttp, time, Log, stop.Token);
