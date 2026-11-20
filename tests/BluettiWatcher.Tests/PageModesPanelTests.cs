@@ -27,7 +27,7 @@ public sealed partial class PageI18nTests
           get() { return this.children.map((c) => (c.text !== undefined ? c.text : c.textContent)).join(''); },
           set(v) { this.children = [{ text: String(v) }]; } });
         const __ids = {};
-        var document = { hidden: false, createElement: (t) => new El(t), getElementById: (id) => __ids[id] || (__ids[id] = new El('div')) };
+        var document = { hidden: false, createElement: (t) => new El(t), createElementNS: (ns, t) => new El(t), getElementById: (id) => __ids[id] || (__ids[id] = new El('div')) };
         function $(id) { return document.getElementById(id); }
         function walk(e, f, out = []) { if (e && e.tagName) { if (f(e)) out.push(e); e.children.forEach((c) => walk(c, f, out)); } return out; }
         const F = (root, key) => walk(root, (e) => e.attrs['data-f'] === key)[0];
@@ -280,16 +280,17 @@ public sealed partial class PageI18nTests
             (async () => {
               mpPaintList();
               const list = $('modesList'), has = ['normal', 'eco', 'quiet'].map((id) => !!A(list, 'delete', id));
-              const tags = walk(list, (x) => x.className === 'tag').map((x) => x.textContent);
+              const tags = walk(list, (x) => x.className === 'tag').length, act = walk(list, (x) => x.className === 'act').map((x) => x.textContent);
               confirmAnswer = false; await A(list, 'delete', 'quiet').onclick();
               const afterNo = fetches.length;
               confirmAnswer = true; answers = [{ status: 409, body: 'a rule chooses quiet: change the rules first' }];
               await A($('modesList'), 'delete', 'quiet').onclick();
-              console.log(JSON.stringify({ has, tags, afterNo, asks, req: fetches[0], msg: mpMsg }));
+              console.log(JSON.stringify({ has, tags, act, afterNo, asks, req: fetches[0], msg: mpMsg }));
             })();
             """);
         Assert.Equal("[false,false,true]", r.GetProperty("has").GetRawText());
-        Assert.Equal("""["modesBuiltIn","modesBuiltIn"]""", r.GetProperty("tags").GetRawText());
+        Assert.Equal(0, r.GetProperty("tags").GetInt32());   // no "built in" pills
+        Assert.Equal("""["modesActive"]""", r.GetProperty("act").GetRawText());   // the active mode as a status word
         Assert.Equal(0, r.GetProperty("afterNo").GetInt32());
         Assert.Equal("""["modesDeleteAsk{\"n\":\"Quiet\"}","modesDeleteAsk{\"n\":\"Quiet\"}"]""", r.GetProperty("asks").GetRawText());
         var req = r.GetProperty("req");
@@ -337,6 +338,28 @@ public sealed partial class PageI18nTests
     }
 
     [Fact]
+    public void A_mains_rule_is_shown_and_stepped_in_minutes_and_saved_in_seconds()
+    {
+        var r = RunPanel("""
+            (async () => {
+              mpPaintRules();
+              const row = F($('modesRules'), 'r0'), s = F(row, 'r0.seconds');
+              const shown = [s.type, s.value], more = walk(row, (x) => x.attrs['aria-label'] === 'modesMoreN')[0];
+              more.onclick(); more.onclick();
+              const typed = F($('modesRules'), 'r1.seconds'); typed.value = '1,5'; typed.oninput();
+              await mpSaveRules();
+              const body = JSON.parse(fetches[0].body);
+              console.log(JSON.stringify({ shown, after: s.value, seconds: body.map((x) => x.condition.seconds), text: row.textContent }));
+            })();
+            """);
+        Assert.Equal("""["text","3"]""", r.GetProperty("shown").GetRawText());   // 180 s as 3 min, no spinner
+        Assert.Equal("5", r.GetProperty("after").GetString());
+        Assert.Equal("[300,90]", r.GetProperty("seconds").GetRawText());
+        Assert.StartsWith("modesIf", r.GetProperty("text").GetString(), StringComparison.Ordinal);   // the row reads as a sentence
+        Assert.Contains("uMin", r.GetProperty("text").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void An_emptied_rule_value_is_refused_before_anything_is_sent()
     {
         var r = RunPanel("""
@@ -356,15 +379,19 @@ public sealed partial class PageI18nTests
     {
         var r = RunPanel("""
             mpPaintTop();
-            const first = walk($('modesStatus'), (x) => x.attrs['data-st']).map((c) => [c.attrs['data-st'], c.className, c.children[1].textContent]);
+            const first = walk($('modesStatus'), (x) => x.attrs['data-st']).map((c) => [c.attrs['data-st'], c.className, c.children[1].textContent, c.children[2].textContent]);
             const problems = walk($('modesStatus'), (x) => x.className === 'bad').map((x) => x.textContent);
             mpView.emergency = true; mpView.actions = []; mpView.restores = []; mpPaintTop();
-            console.log(JSON.stringify({ first, problems, second: $('modesStatus').textContent }));
+            const why = mpWhy('the broker refused: the request folder C:\\x cannot be written; next try at 22:34 UTC');
+            console.log(JSON.stringify({ first, problems, second: $('modesStatus').textContent, why }));
             """);
-        Assert.Equal("""[["applied","chip ok","modesChip{\"a\":\"Plan\",\"s\":\"st_applied\"}"],["failed","chip bad","modesChipWhy{\"a\":\"Everything\",\"s\":\"st_failed\",\"r\":\"access denied\"}"],["relinquished","chip warn","modesChip{\"a\":\"Plan\",\"s\":\"st_relinquished\"}"],["unsupported","chip","modesChipWhy{\"a\":\"x.gone\",\"s\":\"st_unsupported\",\"r\":\"not registered\"}"],["satisfied","chip ok","modesChip{\"a\":\"Plan\",\"s\":\"st_satisfied\"}"],["restore-failed","chip bad","modesChipWhy{\"a\":\"Everything (gpu/0/powerLimit)\",\"s\":\"st_restore_failed\",\"r\":\"3 tries\"}"]]""",
+        Assert.Equal("""[["applied","chip ok","Plan","st_applied"],["failed","chip bad","Everything","modesChipWhy{\"s\":\"st_failed\",\"r\":\"whyLog\"}"],["relinquished","chip warn","Plan","st_relinquished"],["unsupported","chip","x.gone","modesChipWhy{\"s\":\"st_unsupported\",\"r\":\"whyLog\"}"],["satisfied","chip ok","Plan","st_satisfied"],["restore-failed","chip bad","Everything (gpu/0/powerLimit)","modesChipWhy{\"s\":\"st_restore_failed\",\"r\":\"whyLog\"}"]]""",
             r.GetProperty("first").GetRawText());
-        Assert.Equal("""["journal unreadable: moved aside"]""", r.GetProperty("problems").GetRawText());
-        Assert.Equal("modesEmergencymodesNoActionsjournal unreadable: moved aside", r.GetProperty("second").GetString());
+        Assert.Equal("""["modesProblem"]""", r.GetProperty("problems").GetRawText());   // the server's English stays in its log
+        Assert.StartsWith("whyBroker; whyRetry{", r.GetProperty("why").GetString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("UTC", r.GetProperty("why").GetString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("C:", r.GetProperty("why").GetString(), StringComparison.Ordinal);
+        Assert.Equal("modesEmergencymodesNoActionsmodesProblem", r.GetProperty("second").GetString());
     }
 
     [Fact]
@@ -387,9 +414,9 @@ public sealed partial class PageI18nTests
             """);
         var auto = r.GetProperty("auto");
         Assert.Equal("""["auto","normal","eco","quiet"]""", auto.GetProperty("ms").GetRawText());
-        Assert.Equal("""["modeAuto","Normal","Eco","Quiet"]""", auto.GetProperty("texts").GetRawText());
+        Assert.Equal("""["modeAuto","modeNormal","modeEco","Quiet"]""", auto.GetProperty("texts").GetRawText());
         Assert.Equal("""["true","false","false","false"]""", auto.GetProperty("pressed").GetRawText());
-        Assert.Equal("""modesNowAuto{"m":"Eco","n":1,"c":"rdMainsOff{\"n\":\"180\"}"}""", auto.GetProperty("line").GetString());
+        Assert.Equal("""modesNowAuto{"m":"modeEco","n":1,"c":"rdMainsOff{\"n\":\"3\"}"}""", auto.GetProperty("line").GetString());
         Assert.Equal("[false,false,false,true]", r.GetProperty("during").GetProperty("pending").GetRawText());
         Assert.Equal("[true,true,true,true]", r.GetProperty("during").GetProperty("disabled").GetRawText());
         Assert.Equal("""[["/api/modes/select","POST","1","{\"mode\":\"quiet\"}"]]""", r.GetProperty("sent").GetRawText());   // a second press while one is out sends nothing
@@ -452,7 +479,7 @@ public sealed partial class PageI18nTests
         Assert.DoesNotContain("plans", panel, StringComparison.Ordinal);
         var (en, uk) = Dictionaries(page);
         // keys the panel picks through a map or a variable (literal t('...') calls are covered by the whole-page test)
-        string[] keys = ["fwNormal", "fwEco", "fwEmergency", "modesHyst", "modesFrom", "modesTo", "rdMainsOff", "rdMainsOn", "rdSoc", "rdCut", "rdTime", "uSec", "uPct", "uMin"];
+        string[] keys = ["fwNormal", "fwEco", "fwEmergency", "modesHyst", "modesFrom", "modesTo", "rdMainsOff", "rdMainsOn", "rdSoc", "rdCut", "rdTime", "uPct", "uMin"];
         Assert.DoesNotContain(keys, k => !en.Contains(k) || !uk.Contains(k));
     }
 

@@ -429,7 +429,7 @@ public sealed partial class PageI18nTests
     {
         string page = Page();
         Assert.Contains("const qd = (q) => String(q ?? '').split('+').map((x) => x.replace(/^GPV(?=\\d)/, '')).join(' + ');", page, StringComparison.Ordinal);
-        foreach (string use in new[] { "esc(qd(w.queue))", "w.queues.map(qd)", "esc(qd(w.nextQueue))", "(set ? day : `${qd(q.queue)} · ${day}`)", "row(label(w.today)", "row(label(w.tomorrow)", "val(qd(a))", "qd(i.queues.join('+'))" })
+        foreach (string use in new[] { "esc(qd(w.queue))", "w.queues.map(qd)", "esc(qd(w.nextQueue))", "(set ? day : `${qd(q.queue)}, ${day}`)", "row(label(w.today)", "row(label(w.tomorrow)", "val(qd(a))", "qd(i.queues.join('+'))" })
             Assert.Contains(use, page, StringComparison.Ordinal);
         Assert.DoesNotContain("esc(w.queue)", page, StringComparison.Ordinal);
     }
@@ -452,8 +452,8 @@ public sealed partial class PageI18nTests
 
     // The rows a queue or a set of queues adds (150 px column), built by the page's own code. A set's rows carry the day alone.
     [Theory]
-    [InlineData("GPV6.2", "6.2 · 08.10.2026")]
-    [InlineData("GPV12.12", "12.12 · 08.10.2026")]
+    [InlineData("GPV6.2", "6.2, 08.10.2026")]
+    [InlineData("GPV12.12", "12.12, 08.10.2026")]
     [InlineData("GPV4.1+GPV6.2", "08.10.2026")]
     [InlineData("GPV12.12+GPV12.12+GPV12.12+GPV12.12", "08.10.2026")]
     public void Window_row_labels_of_a_queue_or_a_set_fit_their_column(string queue, string label)

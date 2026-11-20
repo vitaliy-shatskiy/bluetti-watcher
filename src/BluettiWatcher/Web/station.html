@@ -16,6 +16,8 @@ h2{font-size:11px;line-height:16px;margin:0 0 12px;font-weight:600;color:var(--d
 .brand{display:flex;align-items:center;gap:12px}
 .brand svg{width:34px;height:34px;flex:none}
 .brand .sub{color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums}
+.brand .sub span+span{margin-left:10px}
+#title .model{margin-left:10px;font-weight:400;color:var(--dim)}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 /* the power controls: one grid, a label column and a control column; both groups the same height, segment width and right edge */
 .modebox{display:grid;grid-template-columns:auto auto;align-items:center;gap:8px 12px}
@@ -106,6 +108,8 @@ details summary{cursor:pointer;color:var(--dim);font-size:12px}
 .slegend b{display:inline-block;width:18px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:6px}
 .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
 .kpi{background:var(--frame);border:1px solid var(--edge);border-radius:10px;padding:12px 14px;min-width:0}
+/* label, value and note rows shared across a row of tiles: a label that wraps moves every value of the row together */
+.kpi{display:grid;grid-row:span 3;grid-template-rows:subgrid;row-gap:0;align-content:start}.kpi .k{align-self:start}
 .kpi .v{font-size:24px;line-height:30px}
 .kpi .s{min-height:0}
 @media(max-width:1200px){.kpis{grid-template-columns:repeat(3,1fr)}}
@@ -143,8 +147,17 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 #modesSel button[data-pending]{outline:1px dashed var(--accent);outline-offset:-1px;color:var(--text)}
 .mp .item{display:flex;align-items:center;gap:10px;padding:7px 4px;border-top:1px solid var(--line)}
 .mp .item .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mp .tag{font-size:11px;color:var(--dim);background:var(--raised);border-radius:6px;padding:1px 6px;margin-left:8px}
-.mp .tag.on{color:var(--text);font-weight:600}
+.mp .item .act{color:var(--ok);font-weight:600;font-size:12px}
+.mp .chip .st{color:var(--dim)}.mp .chip.ok .st{color:#9bd59f}.mp .chip.warn .st{color:#efc36f}.mp .chip.bad .st{color:#ef9191}.mp .chip>span:first-of-type{color:var(--text)}
+#modesHib{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin:10px 0}
+/* a number in the rules: typed or stepped with − and +, never the browser's spinner */
+.mp input[type=number]{appearance:textfield;-moz-appearance:textfield}.mp input[type=number]::-webkit-inner-spin-button,.mp input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.mp .step{display:inline-flex;align-items:center;background:var(--frame);border:1px solid var(--edge);border-radius:6px}
+.mp .rules .step input[type=text]{border:0;background:none;width:48px;text-align:center}
+.mp .step button{all:unset;cursor:pointer;width:24px;height:26px;line-height:26px;text-align:center;color:var(--dim);font-size:15px}
+.mp .step button:hover{color:var(--text)}.mp .step button:focus-visible{outline:1px solid var(--accent)}
+.mp .rules .cm{margin-left:-8px}
+.mp button.b svg{width:12px;height:12px;vertical-align:-1px}
 .mp button.b{all:unset;cursor:pointer;padding:4px 10px;border-radius:6px;background:var(--raised);font-size:12px;line-height:18px;white-space:nowrap}
 .mp button.b:hover:not(:disabled){background:#30333a}
 .mp button.b:focus-visible{outline:1px solid var(--accent)}
@@ -257,7 +270,7 @@ en: {
   modeMax: "Max",
   modeMaxTip: "Full performance until mains changes",
   powerLabel: "Power",
-  planChip: "Plan: {p}",
+  planTip: "Windows power plan",
   afterEco: "After eco",
   afterEcoCustom: "After eco: a plan from the config file",
   afterEcoAria: "Power plan after eco",
@@ -267,11 +280,11 @@ en: {
   planHighTip: "High performance plan",
   planPrevious: "As before",
   planNotSaved: "After eco «{p}» was not saved",
-  planDown: "After eco «{p}» was not saved, the service is not answering ({e})",
+  planDown: "After eco «{p}» was not saved, the service is not answering",
   planPreviousTip: "The plan that was on before eco (High performance when unknown)",
   modeApplying: "Applying {m}…",
   modeNow: "Now: {m}",
-  modeNowPlan: "Now: {m} · {p} plan",
+  modeNowPlan: "Now: {m}, {p} plan",
   pmNormal: "normal mode",
   pmEco: "eco",
   pmEmergency: "emergency",
@@ -291,7 +304,7 @@ en: {
   range: "Range",
   hoursN: "{n} h",
   daysN: "{n} d",
-  battTitle: "Battery, last {n} d",
+  battTitle: "Battery, last {n} {d}",
   kCuts: "Power cuts",
   kOnBattery: "{d} on battery",
   kLongest: "Longest cut",
@@ -308,7 +321,7 @@ en: {
   legendNoData: "no data",
   noDataTip: "no data {a}–{b} ({d})",
   energyPerHour: "Energy per hour",
-  cyclesTitle: "What cycles on top of the base",
+  cyclesTitle: "What switches on above the idle load",
   loadRangeTitle: "Load, selected range",
   powerCuts: "Power cuts",
   colStart: "Start",
@@ -327,24 +340,39 @@ en: {
   stTemps: "Temperatures (ambient, inverter, solar)",
   modesTitle: "Power modes",
   modesChoose: "Power mode",
-  modesNowAuto: "In force: {m} · Auto, rule {n}: {c}",
-  modesNowKept: "In force: {m} · Auto: no rule matches, the mode stays",
-  modesNowManual: "In force: {m} · held until Auto",
+  modesNowAuto: "{m} picked by Auto rule {n}: {c}",
+  modesNowKept: "{m} stays: no Auto rule matches",
+  modesNowManual: "{m} held until you pick Auto",
   modesSwitching: "Switching to {m}: its actions are running…",
   modesEmergency: "battery emergency: the station's protection comes first",
-  modesChip: "{a}: {s}",
-  modesChipWhy: "{a}: {s} ({r})",
+  modesChipWhy: "{s} ({r})",
+  whyBroker: "the admin broker did not take the change: reinstall it from an elevated PowerShell",
+  whyRetry: "next try at {at}",
+  whyLog: "details in the service log",
+  modesProblem: "The modes settings have a problem: details in the service log",
+  at_windows_powerPlan: "Windows power plan",
+  at_windows_cpuPolicy: "Processor policy",
+  at_display_offTimeout: "Display off timeout",
+  at_gpu_powerLimit: "GPU power limit",
+  at_service_state: "Windows services",
+  at_process_close: "Close apps",
+  at_command_pair: "Command on enter and on leave",
+  at_windows_phoneLink: "Phone Link in the background",
+  at_scheduledTask_state: "Scheduled tasks",
+  at_display_refreshRate: "Monitor refresh rate",
+  at_display_brightness: "Monitor brightness",
+  at_nvidia_profile: "NVIDIA driver profile",
+  at_gpu_idleWatcher: "GPU idle watcher",
+  at_rgb_lighting: "RGB lighting off",
   modesNoActions: "this mode changes nothing",
   modesHibernate: "Hibernate the PC when the battery reaches the hibernate level",
   modesHibOn: "Hibernation on",
   modesHibOff: "Hibernation off",
   modesTestNotice: "Send a test notification",
   modesTestSent: "Test notification sent: it shows for a few seconds at the bottom right of the main screen",
-  modesTestNotSent: "Not sent: {e}",
+  modesTestNotSent: "Not sent: check that the service is running and try again",
   modesList: "Modes",
-  modesBuiltIn: "built in",
-  modesActiveTag: "in force",
-  modesFlagIs: "flag: {f}",
+  modesActive: "Active",
   fwNormal: "normal",
   fwEco: "eco",
   fwEmergency: "emergency",
@@ -382,7 +410,7 @@ en: {
   brokerKind_service: "Service",
   brokerKind_task: "Task",
   brokerKind_profile: "Profile",
-  modesNotSaved: "Not saved: {e}",
+  modesNotSaved: "Not saved: the service refused the change",
   modesFix: "Not saved: see the marked fields",
   modesNeedValue: "a value is needed",
   modesRules: "Auto rules: the first that matches wins",
@@ -392,13 +420,16 @@ en: {
   modesHyst: "hysteresis",
   modesFrom: "from",
   modesTo: "to",
+  modesIf: "If",
+  modesThen: "switch to",
+  modesLess: "Less",
+  modesMoreN: "More",
   modesUp: "Move up",
   modesDown: "Move down",
   modesAddRule: "Add rule",
-  uSec: "s",
   uPct: "%",
-  rdMainsOff: "mains off for {n} s",
-  rdMainsOn: "mains on for {n} s",
+  rdMainsOff: "mains off for {n} min",
+  rdMainsOn: "mains on for {n} min",
   rdSoc: "battery under {n} %",
   rdCut: "outage within {n} min",
   rdTime: "{a}–{b}",
@@ -406,7 +437,7 @@ en: {
   ck_mainsOnFor: "mains on for",
   ck_socBelow: "battery under",
   ck_cutWithin: "outage within",
-  ck_timeWindow: "time between",
+  ck_timeWindow: "the time is",
   st_unknown: "not checked yet",
   st_satisfied: "already so",
   st_applied: "applied",
@@ -427,18 +458,19 @@ en: {
   uV: "V",
   uHz: "Hz",
   noReadings: "no readings yet",
-  gridOn: "Grid on · charging {w}",
-  gridOff: "Grid off · on battery",
+  gridOn: "Grid on",
+  gridCharging: "Charging {w}",
+  gridOff: "On battery",
   readAt: "read {at}",
   noReadingFor: "no reading for {d}",
-  tabTitle: "{soc}% · {state} · Bluetti Watcher",
+  tabTitle: "{soc}%, {state}",
   tabGridOn: "grid on",
   tabOnBattery: "on battery",
   whAbout: "about {now} of {cap}",
   charging: "charging",
   discharging: "discharging",
   perHour: "−{r} % per hour",
-  lastHourLoad: "last hour {mn}–{mx} · avg {avg}",
+  lastHourLoad: "last hour {mn}–{mx}, average {avg}",
   input: "input {w}",
   emptyAbout: "empty about {at}",
   emptyBetween: "empty {a}–{b}",
@@ -446,7 +478,13 @@ en: {
   fromMeasured: "By the measured drop",
   fromModel: "By this station's fitted discharge model",
   byCapacity: "By capacity, no measured drop yet",
-  recordedSince: "recorded since {at} · {from}% → {to}%",
+  recordedSince: "since {at}, from {from}% to {to}%",
+  pctFromTo: "from {from}% to {to}%",
+  pctFromToX: "from {from}% to {to}%, {x}",
+  day_one: "day",
+  day_few: "days",
+  day_many: "days",
+  day_other: "days",
   usedSockets: "{e} used",
   noneRecorded: "none recorded",
   noneRecordedYet: "none recorded yet",
@@ -455,34 +493,33 @@ en: {
   levelsRaised: "levels raised for a drain of {r} %/h: hibernate warning at {w} %",
   todayOnBattery: "on battery, cuts: {n}",
   todayEnergy: "{e} used",
-  nowForecast: "now · forecast",
-  tipGrid: "grid {s}",
+  nowForecast: "forecast",
   on: "on",
   off: "off",
   readingsCount: "{n} readings",
-  cycBase: "Base load",
+  cycBase: "Idle load",
   cycCount: "Cycles in range",
   noneYet: "none yet",
   cycAvgLen: "Average length",
   cycAvgExtra: "Average extra",
   cycShare: "Share of time",
   cycNow: "Right now",
-  aboveBase: "above the base for {d}",
-  aboveBaseNow: "above the base",
-  atBase: "at the base",
+  aboveBase: "above the idle load for {d}",
+  aboveBaseNow: "above the idle load",
+  atBase: "idle load only",
   statBase: "Base (quietest 15%)",
   statTypical: "Typical (median)",
   statAvg: "Average",
   statPeak: "Peak",
-  statOnTop: "On top of base",
+  statOnTop: "Above the idle load",
   upTo: "up to {w}",
   statEnergy: "Energy",
   cutNow: "now",
   unknown: "unknown",
-  maxChip: "Max · about {h} of battery at the current load",
+  maxChip: "About {h} of battery at the current load",
   dryRun: "dry run",
-  serviceDown: "service not answering ({e})",
-  ecoIn: "Eco in {m}:{s} · at {at}",
+  serviceDown: "service not answering",
+  ecoIn: "Eco at {at}, in {m}:{s}",
   ecoNext: "Eco at the next reading",
   dtekOk: "schedule received",
   dtekStale: "stale schedule",
@@ -495,18 +532,18 @@ en: {
   queue: "Queue",
   notFixed: "not fixed yet",
   schedule: "Schedule",
-  scheduleLine: "DTEK update {u} · collected {c} · source {s}",
+  scheduleLine: "DTEK update {u}, collected {c}, source {s}",
   none: "none",
   sources: "Sources",
-  sourcesLine: "dataset {d} · site {s}",
+  sourcesLine: "dataset {d}, site {s}",
   nextOutage: "Next planned outage",
   untilAt: "until {at}",
   noneInSchedule: "none in the schedule",
-  batteryLasts: "battery lasts",
-  yes: "yes",
-  no: "no",
+  lastsYes: "Battery lasts",
+  lastsNo: "Battery does not last",
+  lastsUnknown: "Not known if the battery lasts",
   plannedReturn: "Planned return",
-  overdueBy: "passed · overdue {n} min",
+  overdueBy: "overdue {n} min",
   againstLastPlan: "against the last known plan",
   battery: "Battery",
   batteryUntil: "until {at} on battery",
@@ -524,7 +561,7 @@ en: {
   fromX: "from {x}",
   noData: "no data",
   kyivTime: "Kyiv time",
-  cyclesTip: "Cycle: 35 W or more above base for 2–45 min",
+  cyclesTip: "Cycle: 35 W or more above the idle load for 2–45 min",
   loadTip: "Base: the quietest 15 % of the period",
   hoursTip: "The current hour is paler",
   ringOk: "{a}–100 %: normal",
@@ -623,8 +660,8 @@ en: {
   srcBluetoothTip: "Bluetooth only: the cloud is never called",
   srcCloud: "Cloud",
   srcCloudTip: "The BLUETTI cloud only: Bluetooth is never opened",
-  srcUseConfig: "Use config",
-  srcUseConfigTip: "Forgets the choice made on this page: readingSource in config.json applies again",
+  srcUseConfig: "As in the settings file",
+  srcUseConfigTip: "Forgets the choice made on this page: the source from the settings file applies again",
   cloudSignIn: "Sign in to BLUETTI cloud",
   cloudSignInTip: "Opens the BLUETTI sign-in in a new tab; the token stays on this PC",
   cloudSignOut: "Sign out",
@@ -665,7 +702,7 @@ uk: {
   modeMax: "Макс",
   modeMaxTip: "Повна продуктивність до зміни мережі",
   powerLabel: "Живлення",
-  planChip: "Схема: {p}",
+  planTip: "Схема живлення Windows",
   afterEco: "Після еко",
   afterEcoCustom: "Після еко: схема з файлу налаштувань",
   afterEcoAria: "Схема живлення після еко",
@@ -675,11 +712,11 @@ uk: {
   planHighTip: "Схема «Висока продуктивність»",
   planPrevious: "Як було",
   planNotSaved: "Після еко «{p}» не збережено",
-  planDown: "Після еко «{p}» не збережено, сервіс не відповідає ({e})",
+  planDown: "Після еко «{p}» не збережено, сервіс не відповідає",
   planPreviousTip: "Схема, що була до еко (висока продуктивність, коли невідомо)",
   modeApplying: "Застосовую: {m}…",
   modeNow: "Зараз: {m}",
-  modeNowPlan: "Зараз: {m} · схема {p}",
+  modeNowPlan: "Зараз: {m}, схема {p}",
   pmNormal: "звичайний режим",
   pmEco: "еко",
   pmEmergency: "аварійний режим",
@@ -699,7 +736,7 @@ uk: {
   range: "Період",
   hoursN: "{n} год",
   daysN: "{n} дн",
-  battTitle: "Батарея за {n} дн.",
+  battTitle: "Батарея за {n} {d}",
   kCuts: "Відключення",
   kOnBattery: "{d} від батареї",
   kLongest: "Найдовше відключення",
@@ -716,7 +753,7 @@ uk: {
   legendNoData: "немає даних",
   noDataTip: "немає даних {a}–{b} ({d})",
   energyPerHour: "Енергія по годинах",
-  cyclesTitle: "Що вмикається понад базу",
+  cyclesTitle: "Що вмикається понад постійне навантаження",
   loadRangeTitle: "Навантаження за період",
   powerCuts: "Відключення",
   colStart: "Початок",
@@ -735,24 +772,39 @@ uk: {
   stTemps: "Температури (довкілля, інвертор, сонячний)",
   modesTitle: "Режими живлення",
   modesChoose: "Режим живлення",
-  modesNowAuto: "Діє: {m} · Авто, правило {n}: {c}",
-  modesNowKept: "Діє: {m} · Авто: жодне правило не підходить, режим лишається",
-  modesNowManual: "Діє: {m} · утримується до Авто",
+  modesNowAuto: "{m} обрано правилом Авто {n}: {c}",
+  modesNowKept: "{m} лишається: жодне правило Авто не підходить",
+  modesNowManual: "{m} утримується, доки не оберете Авто",
   modesSwitching: "Перемикання на {m}: дії режиму виконуються…",
   modesEmergency: "аварійний заряд: спершу захист станції",
-  modesChip: "{a}: {s}",
-  modesChipWhy: "{a}: {s} ({r})",
+  modesChipWhy: "{s} ({r})",
+  whyBroker: "адмін-брокер не прийняв зміну: перевстановіть його в PowerShell від імені адміністратора",
+  whyRetry: "наступна спроба о {at}",
+  whyLog: "подробиці в журналі сервісу",
+  modesProblem: "У налаштуваннях режимів є проблема: подробиці в журналі сервісу",
+  at_windows_powerPlan: "Схема живлення Windows",
+  at_windows_cpuPolicy: "Політика процесора",
+  at_display_offTimeout: "Вимкнення дисплея",
+  at_gpu_powerLimit: "Ліміт потужності GPU",
+  at_service_state: "Служби Windows",
+  at_process_close: "Закриття програм",
+  at_command_pair: "Команда на вході й виході",
+  at_windows_phoneLink: "Phone Link у фоні",
+  at_scheduledTask_state: "Завдання планувальника",
+  at_display_refreshRate: "Частота оновлення монітора",
+  at_display_brightness: "Яскравість монітора",
+  at_nvidia_profile: "Профіль драйвера NVIDIA",
+  at_gpu_idleWatcher: "Нагляд за простоєм GPU",
+  at_rgb_lighting: "Вимкнення RGB-підсвітки",
   modesNoActions: "цей режим нічого не змінює",
   modesHibernate: "Переводити ПК у гібернацію, коли батарея сягає рівня гібернації",
   modesHibOn: "Гібернацію увімкнено",
   modesHibOff: "Гібернацію вимкнено",
   modesTestNotice: "Надіслати тестове сповіщення",
   modesTestSent: "Тестове сповіщення надіслано: воно видно кілька секунд унизу праворуч на головному екрані",
-  modesTestNotSent: "Не надіслано: {e}",
+  modesTestNotSent: "Не надіслано: перевірте, що сервіс працює, і спробуйте знову",
   modesList: "Режими",
-  modesBuiltIn: "вбудований",
-  modesActiveTag: "діє",
-  modesFlagIs: "прапорець: {f}",
+  modesActive: "Активний",
   fwNormal: "звичайний",
   fwEco: "еко",
   fwEmergency: "аварійний",
@@ -790,7 +842,7 @@ uk: {
   brokerKind_service: "Служба",
   brokerKind_task: "Завдання",
   brokerKind_profile: "Профіль",
-  modesNotSaved: "Не збережено: {e}",
+  modesNotSaved: "Не збережено: сервіс відхилив зміну",
   modesFix: "Не збережено: перегляньте позначені поля",
   modesNeedValue: "потрібне значення",
   modesRules: "Правила Авто: діє перше, що підходить",
@@ -800,13 +852,16 @@ uk: {
   modesHyst: "гістерезис",
   modesFrom: "з",
   modesTo: "до",
+  modesIf: "Якщо",
+  modesThen: "увімкнути",
+  modesLess: "Менше",
+  modesMoreN: "Більше",
   modesUp: "Вище",
   modesDown: "Нижче",
   modesAddRule: "Додати правило",
-  uSec: "с",
   uPct: "%",
-  rdMainsOff: "мережі немає {n} с",
-  rdMainsOn: "мережа є {n} с",
+  rdMainsOff: "мережі немає {n} хв",
+  rdMainsOn: "мережа є {n} хв",
   rdSoc: "заряд нижче {n} %",
   rdCut: "відключення протягом {n} хв",
   rdTime: "{a}–{b}",
@@ -814,7 +869,7 @@ uk: {
   ck_mainsOnFor: "мережа є",
   ck_socBelow: "заряд нижче",
   ck_cutWithin: "відключення протягом",
-  ck_timeWindow: "час між",
+  ck_timeWindow: "час",
   st_unknown: "ще не перевірено",
   st_satisfied: "вже так",
   st_applied: "застосовано",
@@ -835,18 +890,19 @@ uk: {
   uV: "В",
   uHz: "Гц",
   noReadings: "показань ще немає",
-  gridOn: "Мережа є · заряджання {w}",
-  gridOff: "Мережі немає · від батареї",
+  gridOn: "Мережа є",
+  gridCharging: "Заряджання {w}",
+  gridOff: "Від батареї",
   readAt: "зчитано {at}",
   noReadingFor: "немає показань уже {d}",
-  tabTitle: "{soc}% · {state} · Bluetti Watcher",
+  tabTitle: "{soc}%, {state}",
   tabGridOn: "мережа є",
   tabOnBattery: "від батареї",
   whAbout: "близько {now} з {cap}",
   charging: "заряджається",
   discharging: "розряджається",
   perHour: "−{r} % за годину",
-  lastHourLoad: "за годину {mn}–{mx} · у середньому {avg}",
+  lastHourLoad: "за годину {mn}–{mx}, у середньому {avg}",
   input: "вхід {w}",
   emptyAbout: "розрядиться близько {at}",
   emptyBetween: "розрядиться {a}–{b}",
@@ -854,7 +910,13 @@ uk: {
   fromMeasured: "За виміряним розрядом",
   fromModel: "За моделлю розряду цієї станції",
   byCapacity: "За ємністю, розряд ще не виміряно",
-  recordedSince: "з {at} · {from}% → {to}%",
+  recordedSince: "від {at}, заряд з {from}% до {to}%",
+  pctFromTo: "з {from}% до {to}%",
+  pctFromToX: "з {from}% до {to}%, {x}",
+  day_one: "день",
+  day_few: "дні",
+  day_many: "днів",
+  day_other: "дня",
   usedSockets: "витрачено {e}",
   noneRecorded: "не було",
   noneRecordedYet: "ще не було",
@@ -863,34 +925,33 @@ uk: {
   levelsRaised: "рівні підняті через розряд {r} %/год: попередження про гібернацію на {w} %",
   todayOnBattery: "від батареї, відключень: {n}",
   todayEnergy: "витрачено {e}",
-  nowForecast: "зараз · прогноз",
-  tipGrid: "мережа: {s}",
+  nowForecast: "прогноз",
   on: "є",
   off: "немає",
   readingsCount: "показань: {n}",
-  cycBase: "Базове навантаження",
+  cycBase: "Постійне навантаження",
   cycCount: "Циклів за період",
   noneYet: "ще немає",
   cycAvgLen: "Середня тривалість",
   cycAvgExtra: "Середній надлишок",
   cycShare: "Частка часу",
   cycNow: "Зараз",
-  aboveBase: "понад базу вже {d}",
-  aboveBaseNow: "понад базу",
-  atBase: "на базі",
+  aboveBase: "понад постійне навантаження вже {d}",
+  aboveBaseNow: "понад постійне навантаження",
+  atBase: "лише постійне навантаження",
   statBase: "База (тихі 15 %)",
   statTypical: "Медіана",
   statAvg: "Середнє",
   statPeak: "Пік",
-  statOnTop: "Понад базу",
+  statOnTop: "Понад постійне",
   upTo: "до {w}",
   statEnergy: "Енергія",
   cutNow: "зараз",
   unknown: "невідомо",
-  maxChip: "Макс · приблизно {h} від батареї за поточного навантаження",
+  maxChip: "Приблизно {h} від батареї за поточного навантаження",
   dryRun: "пробний режим",
-  serviceDown: "сервіс не відповідає ({e})",
-  ecoIn: "Еко-режим через {m}:{s} · о {at}",
+  serviceDown: "сервіс не відповідає",
+  ecoIn: "Еко-режим о {at}, через {m}:{s}",
   ecoNext: "Еко-режим із наступним зчитуванням",
   dtekOk: "графік отримано",
   dtekStale: "графік застарів",
@@ -903,18 +964,18 @@ uk: {
   queue: "Черга",
   notFixed: "ще не визначена",
   schedule: "Графік",
-  scheduleLine: "оновлення ДТЕК {u} · отримано {c} · джерело {s}",
+  scheduleLine: "оновлення ДТЕК {u}, отримано {c}, джерело {s}",
   none: "немає",
   sources: "Джерела",
-  sourcesLine: "набір даних {d} · сайт {s}",
+  sourcesLine: "набір даних {d}, сайт {s}",
   nextOutage: "Найближче відключення",
   untilAt: "до {at}",
   noneInSchedule: "у графіку немає",
-  batteryLasts: "батареї вистачить",
-  yes: "так",
-  no: "ні",
+  lastsYes: "Батареї вистачить",
+  lastsNo: "Батареї не вистачить",
+  lastsUnknown: "Невідомо, чи вистачить батареї",
   plannedReturn: "Світло за графіком",
-  overdueBy: "минуло · запізнення {n} хв",
+  overdueBy: "запізнення {n} хв",
   againstLastPlan: "за останнім відомим графіком",
   battery: "Батарея",
   batteryUntil: "від батареї до {at}",
@@ -932,7 +993,7 @@ uk: {
   fromX: "з {x}",
   noData: "немає даних",
   kyivTime: "за київським часом",
-  cyclesTip: "Цикл: 35 Вт і більше понад базу 2–45 хв",
+  cyclesTip: "Цикл: 35 Вт і більше понад постійне навантаження 2–45 хв",
   loadTip: "База: найтихіші 15 % періоду",
   hoursTip: "Поточна година блідіша",
   ringOk: "{a}–100 %: норма",
@@ -1031,8 +1092,8 @@ uk: {
   srcBluetoothTip: "Лише Bluetooth: до хмари жодного запиту",
   srcCloud: "Хмара",
   srcCloudTip: "Лише хмара BLUETTI: Bluetooth не відкривається",
-  srcUseConfig: "Як у config",
-  srcUseConfigTip: "Забуває вибір, зроблений на цій сторінці: знову діє readingSource з config.json",
+  srcUseConfig: "Як у файлі налаштувань",
+  srcUseConfigTip: "Забуває вибір, зроблений на цій сторінці: знову діє джерело з файлу налаштувань",
   cloudSignIn: "Увійти в хмару BLUETTI",
   cloudSignInTip: "Відкриває вхід BLUETTI у новій вкладці; токен лишається на цьому ПК",
   cloudSignOut: "Вийти",
@@ -1077,7 +1138,9 @@ const val = (code) => { const k = 'v_' + String(code ?? '').toLowerCase().replac
 function noteText(n) { if (!n) return ''; const k = 'n_' + String(n.code || '').replace(/-/g, '_'); if (!n.code || !has(k)) return n.text || ''; const p = {}; (n.args || []).forEach((v, i) => { p[i] = String(v ?? '').split(', ').map((a) => val(qd(a))).join(', '); }); return t(k, p); }
 // A queue as the page shows it: GPV1.1 -> 1.1, a set GPV1.1+GPV2.1 -> 1.1 + 2.1 (the API keeps the full code).
 const qd = (q) => String(q ?? '').split('+').map((x) => x.replace(/^GPV(?=\d)/, '')).join(' + ');
-const notesText = (list, fallback) => (list && list.length ? list.map(noteText).join(' · ') : fallback || '');
+const notesText = (list, fallback) => (list && list.length ? list.map(noteText).join('; ') : fallback || '');
+// "30 днів", "2 дні", "1 день": the day word by the number's plural form in the page's language
+const dayWord = (n) => { let f = 'other'; try { f = new Intl.PluralRules(lang === 'uk' ? 'uk' : 'en').select(n); } catch (e) { /* no Intl: the plural */ } return t(`day_${has(`day_${f}`) ? f : 'other'}`); };
 const $ = (id) => document.getElementById(id);
 const pad = (n) => String(n).padStart(2, '0');
 // The markup carries no text: every element with data-i18n* gets it here, again on a language switch.
@@ -1135,10 +1198,10 @@ const row = (k, val) => `<div class="rowbar" style="grid-template-columns:1fr 1f
 const codes = [...(s.faults || []), ...(s.warnings || [])];
 const ours = D.hoursLeft == null ? '–' : Math.round(D.hoursLeft * 60);
 document.getElementById('stationBody').innerHTML =
-  row('stPack', `${v(s.packVolt, 'V')} · ${v(s.packAmp, 'A')}`)
-  + row('stTime', t('stTimeVal', { e: s.minutesToEmpty ?? '–', f: s.minutesToFull ?? '–', o: ours }) + (s.emptyGapHours == null ? '' : ` · ${t('stGap', { g: s.emptyGapHours })}`))
+  row('stPack', `${v(s.packVolt, 'V')}, ${v(s.packAmp, 'A')}`)
+  + row('stTime', t('stTimeVal', { e: s.minutesToEmpty ?? '–', f: s.minutesToFull ?? '–', o: ours }) + (s.emptyGapHours == null ? '' : `, ${t('stGap', { g: s.emptyGapHours })}`))
   + row('stAlarms', codes.length ? esc(codes.join(', ')) : t('stNone'))
-  + row('stTemps', [s.tempAmbient, s.tempInverter, s.tempPvDcDc].map((x) => v(x, '°C')).join(' · '));
+  + row('stTemps', [s.tempAmbient, s.tempInverter, s.tempPvDcDc].map((x) => v(x, '°C')).join(', '));
 }
 function render(D) {
 clearInterval(ecoTimer); ecoTimer = null;
@@ -1151,7 +1214,9 @@ else {
   paintMode(D);
 }
 paintStation(D);
-if (!D.rows.length) { $('title').textContent = `${t('appName')} · ${t('noReadings')}`; return; }
+// the app's name, then the station model (or the missing readings) as its own dimmer word
+const titleWith = (x) => { const s = document.createElement('span'); s.className = 'model'; s.textContent = x; $('title').replaceChildren(t('appName'), s); };
+if (!D.rows.length) { titleWith(t('noReadings')); return; }
 const rows = D.rows.map(toRow);
 const now = rows[rows.length - 1];
 const NOW = Date.now();
@@ -1187,15 +1252,18 @@ const socColor = (v) => (v <= D.thresholds.stopAt ? 'var(--bad)' : v <= D.thresh
 const cls = (v) => (v <= D.thresholds.stopAt ? 'bad' : v <= D.thresholds.emergencyAt ? 'warn' : 'ok');
 
 // Header
-$('title').textContent = `${t('appName')} · ${D.type}`;
-const gc = $('gridChip'); gc.className = 'chip ' + (now.mains ? 'ok' : 'warn'); gc.lastChild.textContent = now.mains ? t('gridOn', { w: uW(now.inp) }) : t('gridOff');
-// Eco on: its line. Mains off and the confirmation running: a countdown to the moment the station switches eco on.
-{ const e = $('ecoChip'); e.hidden = !D.eco && !D.ecoAt;
-  if (D.eco) { e.className = 'chip acc'; e.lastChild.textContent = D.ecoNote ? noteText(D.ecoNote) : D.eco; }
-  else if (D.ecoAt) { const at = Date.parse(D.ecoAt); e.className = 'chip warn';
+titleWith(D.type);
+const gc = $('gridChip'); gc.className = 'chip ' + (now.mains ? 'ok' : 'warn'); gc.lastChild.textContent = !now.mains ? t('gridOff') : now.inp > 0 ? t('gridCharging', { w: uW(now.inp) }) : t('gridOn');
+// Eco on: the mode switch already shows it, so the chip only says an emergency. Mains off and the confirmation running: a
+// countdown to the moment the station switches eco on.
+{ const e = $('ecoChip'), emergency = D.eco && D.ecoNote && String(D.ecoNote.code || '').startsWith('eco-emergency'); e.hidden = !emergency && (!!D.eco || !D.ecoAt);
+  if (emergency) { e.className = 'chip bad'; e.lastChild.textContent = noteText(D.ecoNote); }
+  else if (!D.eco && D.ecoAt) { const at = Date.parse(D.ecoAt); e.className = 'chip warn';
     const tick = () => { const s = Math.ceil((at - Date.now()) / 1000); e.lastChild.textContent = s > 0 ? t('ecoIn', { m: Math.floor(s / 60), s: pad(s % 60), at: hm(at) }) : t('ecoNext'); };
     tick(); if (!document.hidden) ecoTimer = setInterval(tick, 1000); } }
-$('readAt').textContent = t('readAt', { at: `${new Date(now.t).toDateString() === new Date(NOW).toDateString() ? '' : dmy(now.t) + ' '}${hm(now.t)}` }) + (NOW - now.t >= 60000 ? ' · ' + t('ago', { d: dur(NOW - now.t) }) : '');
+// when it was read, how long ago and a dry run: each its own word group, side by side
+const subParts = [t('readAt', { at: `${new Date(now.t).toDateString() === new Date(NOW).toDateString() ? '' : dmy(now.t) + ' '}${hm(now.t)}` }), NOW - now.t >= 60000 ? t('ago', { d: dur(NOW - now.t) }) : '', D.dryRun ? t('dryRun') : ''];
+$('readAt').replaceChildren(...subParts.filter(Boolean).map((x) => { const s = document.createElement('span'); s.textContent = x; return s; }));
 { const s = $('staleChip'); s.hidden = !(NOW - now.t > 5 * 60000); if (!s.hidden) s.lastChild.textContent = t('noReadingFor', { d: dur(NOW - now.t) }); }
 
 // Tab title and icon carry the charge, so the taskbar shows it without opening the page.
@@ -1242,7 +1310,7 @@ else { $('left').innerHTML = `${Math.floor(leftH)}<small>${t('uH')}</small> ${pa
   $('left').title = D.runtimeSource === 'model' ? t('fromModel') : measured ? t('fromMeasured') : t('byCapacity'); }
 if (live) { $('cutK').textContent = t('thisCut'); $('cut').textContent = dur(NOW - live.start); $('cutSub').textContent = t('recordedSince', { at: hm(live.start), from: live.socFrom, to: live.socTo }); $('cutSub2').textContent = t('usedSockets', { e: uWh(Math.round(live.wh)) }); }
 else { $('cutK').textContent = t('lastCut'); const c = cuts[cuts.length - 1];
-  if (c) { $('cut').textContent = dur((c.end || c.last) - c.start); $('cutSub').textContent = `${dmy(c.start)} ${hm(c.start)}–${hm(c.end || c.last)}`; $('cutSub2').textContent = `${c.socFrom}% → ${c.socTo}% · ${uWh(Math.round(c.wh))}`; }
+  if (c) { $('cut').textContent = dur((c.end || c.last) - c.start); $('cutSub').textContent = `${dmy(c.start)} ${hm(c.start)}–${hm(c.end || c.last)}`; $('cutSub2').textContent = t('pctFromToX', { from: c.socFrom, to: c.socTo, x: uWh(Math.round(c.wh)) }); }
   else { $('cut').textContent = '–'; $('cutSub').textContent = t('noneRecorded'); $('cutSub2').textContent = ''; } }
 // the rate at the current load: the service's time already scales the measured drop to it
 const perH = leftH ? now.soc / leftH : measured;
@@ -1252,7 +1320,7 @@ $('reach').innerHTML = now.mains ? `<div class="rowbar" style="grid-template-col
   return `<div class="rowbar" style="grid-template-columns:54px 1fr"><span class="${cls(p)}">${p}%</span><span class="n" style="text-align:left">${txt}</span></div>`; }).join('')
   + (!now.mains && EFF.drainPerHour != null && EFF.warnAt > D.thresholds.warnAt ? `<div class="dim">${t('levelsRaised', { r: fmt(EFF.drainPerHour), w: fmt(EFF.warnAt) })}</div>` : '');
 const omKey = 'om_' + (D.modeCode || '');
-$('volt').innerHTML = now.volt == null ? `<span class="na">${t('noData')}</span>` : `${fmt(now.volt, 1)}<small>${t('uV')}</small>`; $('voltSub').textContent = [now.hz == null ? '' : `${fmt(now.hz, 2)} ${t('uHz')}`, has(omKey) ? t(omKey) : D.mode].filter(Boolean).join(' · ');
+$('volt').innerHTML = now.volt == null ? `<span class="na">${t('noData')}</span>` : `${fmt(now.volt, 1)}<small>${t('uV')}</small>`; $('voltSub').textContent = [now.hz == null ? '' : `${fmt(now.hz, 2)} ${t('uHz')}`, has(omKey) ? t(omKey) : D.mode].filter(Boolean).join(', ');
 const day0 = new Date(NOW); day0.setHours(0, 0, 0, 0);
 const today = rows.filter((r) => r.t >= day0.getTime()), tc = cutsOf(today);
 const offMs = tc.reduce((s, c) => s + ((c.end || (live && c.start === live.start ? NOW : c.last)) - c.start), 0);
@@ -1310,7 +1378,7 @@ function draw(hours) {
     else { if (!list.length) { svg.onmouseleave(); return; }
       let best = list[0]; for (const r of list) if (Math.abs(r.t - tt) < Math.abs(best.t - tt)) best = r;
       c.setAttribute('x1', x(best.t)); c.setAttribute('x2', x(best.t)); c.setAttribute('visibility', 'visible');
-      tip.style.display = 'block'; tip.innerHTML = `<b>${lbl(best.t)}</b> · ${best.soc}% · ${uW(best.load)} · ${t('tipGrid', { s: best.mains ? t('on') : t('off') })}`; }
+      tip.style.display = 'block'; tip.innerHTML = `<b>${lbl(best.t)}</b>\n${best.soc}%\n${uW(best.load)}\n${t(best.mains ? 'tabGridOn' : 'tabOnBattery')}`; }
     placeTip(tip, e.clientX + 12, e.clientY + 14); };
   svg.onmouseleave = () => { $('tip').style.display = 'none'; const c = document.getElementById('cross'); if (c) c.setAttribute('visibility', 'hidden'); };
   // Energy per clock hour
@@ -1319,7 +1387,7 @@ function draw(hours) {
     const k1 = Math.floor(NOW / 3600000), n = Math.min(24, Math.max(4, hours)), keys = Array.from({ length: n }, (_, i) => k1 - n + 1 + i), mxE = Math.max(50, ...keys.map((k) => buckets.get(k) || 0));
     const bw = (hw - hl - 8) / n; let h = `<line x1="${hl}" x2="${hw - 8}" y1="${hh - hb}" y2="${hh - hb}" stroke="#34363b"/><line x1="${hl}" x2="${hw - 8}" y1="${ht}" y2="${ht}" stroke="#34363b" stroke-dasharray="2 5"/><text x="${hl - 6}" y="${ht + 4}" fill="#8b8e95" font-size="12" text-anchor="end">${Math.round(mxE)}</text><text x="${hl - 6}" y="${hh - hb + 4}" fill="#8b8e95" font-size="12" text-anchor="end">0</text><text x="${hl + 4}" y="${ht + 14}" fill="#8b8e95" font-size="11">${t('uWh')}</text>`;
     keys.forEach((k, i) => { const e = buckets.get(k) || 0, bh = (hh - hb - ht) * e / mxE, bx = hl + i * bw + 2;
-      h += `<rect x="${bx.toFixed(1)}" y="${(hh - hb - bh).toFixed(1)}" width="${Math.max(2, bw - 4).toFixed(1)}" height="${bh.toFixed(1)}" rx="2" class="hbar" fill="#548af7" fill-opacity="${k === k1 ? .55 : 1}"><title>${pad(new Date(k * 3600000).getHours())}:00 · ${uWh(Math.round(e))}</title></rect>`;
+      h += `<rect x="${bx.toFixed(1)}" y="${(hh - hb - bh).toFixed(1)}" width="${Math.max(2, bw - 4).toFixed(1)}" height="${bh.toFixed(1)}" rx="2" class="hbar" fill="#548af7" fill-opacity="${k === k1 ? .55 : 1}"><title>${pad(new Date(k * 3600000).getHours())}:00, ${uWh(Math.round(e))}</title></rect>`;
       if (n <= 8 || i % Math.ceil(n / 8) === 0) h += `<text x="${(bx + bw / 2 - 2).toFixed(1)}" y="${hh - 6}" fill="#8b8e95" font-size="12" text-anchor="middle">${pad(new Date(k * 3600000).getHours())}</text>`; });
     $('hours').setAttribute('viewBox', `0 0 ${hw} ${hh}`); $('hours').innerHTML = h; }
   // Cycles above the base load
@@ -1343,21 +1411,21 @@ function paint() { document.querySelectorAll('#rangeSeg button').forEach((b) => 
 paint();
 
 // Tables
-$('cuts').innerHTML = cuts.slice(-8).reverse().map((c) => `<tr><td>${dmy(c.start)} ${hm(c.start)}</td><td>${c.end ? hm(c.end) : (live === c ? `<span class="warn">${t('cutNow')}</span>` : t('unknown'))}</td><td>${dur((c.end || (live === c ? NOW : c.last)) - c.start)}</td><td>${c.socFrom}% → ${c.socTo}%</td><td>${uWh(Math.round(c.wh))}</td></tr>`).join('') || `<tr><td colspan="5" class="dim">${t('noneRecordedYet')}</td></tr>`;
+$('cuts').innerHTML = cuts.slice(-8).reverse().map((c) => `<tr><td>${dmy(c.start)} ${hm(c.start)}</td><td>${c.end ? hm(c.end) : (live === c ? `<span class="warn">${t('cutNow')}</span>` : t('unknown'))}</td><td>${dur((c.end || (live === c ? NOW : c.last)) - c.start)}</td><td>${t('pctFromTo', { from: c.socFrom, to: c.socTo })}</td><td>${uWh(Math.round(c.wh))}</td></tr>`).join('') || `<tr><td colspan="5" class="dim">${t('noneRecordedYet')}</td></tr>`;
 $('rows').innerHTML = rows.slice(-30).reverse().map((r) => `<tr><td>${dmy(r.t)} ${hm(r.t)}</td><td>${r.soc}%</td><td>${uW(r.load)}</td><td>${uW(r.inp)}</td><td>${r.mains ? t('on') : t('off')}</td><td>${r.volt} ${t('uV')}</td><td>${fmt(r.hz, 2)}</td></tr>`).join('');
 // Battery over the stored history (up to 30 days of 15-minute averages): cuts, time and energy on battery, the deepest discharge.
 { const lc = longRows(720);
-  if (!lc || !lc.rows.length) { $('battTitle').textContent = t('battTitle', { n: 30 }); $('battKpis').innerHTML = ''; }
+  if (!lc || !lc.rows.length) { $('battTitle').textContent = t('battTitle', { n: 30, d: dayWord(30) }); $('battKpis').innerHTML = ''; }
   else { const lr = lc.rows, cs = cutsOf(lr, lc.gap), days = Math.max(1, Math.round((NOW - lr[0].t) / 86400000));
     const lenOf = (c) => (c.end || c.last) - c.start, tot = cs.reduce((a, c) => a + lenOf(c), 0), e = cs.reduce((a, c) => a + c.wh, 0);
     const longest = cs.reduce((m, c) => (!m || lenOf(c) > lenOf(m) ? c : m), null), deepest = cs.reduce((m, c) => (!m || c.socTo < m.socTo ? c : m), null);
     const kpi = (k, v, sub) => `<div class="kpi"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${sub || ''}</div></div>`;
-    $('battTitle').textContent = t('battTitle', { n: days });
+    $('battTitle').textContent = t('battTitle', { n: days, d: dayWord(days) });
     $('battKpis').innerHTML = kpi(t('kCuts'), String(cs.length), t('kOnBattery', { d: dur(tot) }))
       + kpi(t('kLongest'), longest ? dur(lenOf(longest)) : '–', longest ? dmy(longest.start) : '')
       + kpi(t('kAvgCut'), cs.length ? dur(tot / cs.length) : '–', '')
       + kpi(t('kGiven'), `${fmt(e / 1000, 1)}<small>${t('uKWh')}</small>`, t('kCycles', { n: fmt(e / D.capacityWh, 1) }))
-      + kpi(t('kDeepest'), deepest ? `${deepest.socTo}%` : '–', deepest ? `${deepest.socFrom}% → ${deepest.socTo}% · ${dmy(deepest.start)}` : '')
+      + kpi(t('kDeepest'), deepest ? `${deepest.socTo}%` : '–', deepest ? t('pctFromToX', { from: deepest.socFrom, to: deepest.socTo, x: dmy(deepest.start) }) : '')
       + kpi(t('kAvgLoad'), tot ? `${Math.round(e / (tot / 3600000))}<small>${t('uW')}</small>` : '–', ''); } }
 // Service state: the manual mode, Max's battery hours at the current load, rejected readings and a silent station.
 const mx = $('maxChip'); mx.hidden = !(D.manual === 'max' && !now.mains && D.hoursLeft) || (D.notes ? D.notes.some((n) => n.code === 'max-held') : (D.note || '').includes('Max held back'));
@@ -1365,7 +1433,6 @@ if (!mx.hidden) mx.lastChild.textContent = t('maxChip', { h: `${fmt(D.hoursLeft)
 // a mode refusal shows under the mode buttons (paintMode), never repeated here
 const note = notesText(D.notes, D.note);
 const nc = $('noteChip'); nc.hidden = !note; nc.lastChild.textContent = note;
-if (D.dryRun) { $('readAt').textContent += ` · ${t('dryRun')}`; }
 }
 
 // An Intl formatter, built once per zone and name and kept for the page's life (building one is the costly part); zone null =
@@ -1425,9 +1492,9 @@ function renderDtek(w, th, mainsOn, hist) {
   const chip = $('dtekChip'), label = { ok: t('dtekOk'), stale: t('dtekStale'), none: t('dtekNone') }[w.state] || w.state;
   chip.className = 'chip ' + (w.state === 'ok' ? 'ok' : w.state === 'stale' ? 'warn' : 'bad'); chip.lastChild.textContent = label;
   const origin = { manual: t('originManual'), detected: w.queueSource === 'single' ? t('originSingle') : t('originDetected'), 'manual-refuted': t('originRefuted') }[w.queueOrigin] || '';
-  const doubt = w.queueContradictions > 0 ? ` · ${t('cutsAgainst', { n: Number(w.queueContradictions) })}` : '';
-  let s = row(t('queue'), w.queue ? `${esc(qd(w.queue))} <span class="dim">(${esc(origin + doubt)})</span>`
-    : w.queues.length ? `${esc(w.queues.map(qd).join(', '))} <span class="dim">(${esc([t('notFixed'), origin].filter(Boolean).join(' · '))})</span>` : `<span class="dim">${t('unknown')}</span>`);
+  const doubt = w.queueContradictions > 0 ? t('cutsAgainst', { n: Number(w.queueContradictions) }) : '';
+  let s = row(t('queue'), w.queue ? `${esc(qd(w.queue))} <span class="dim">(${esc([origin, doubt].filter(Boolean).join(', '))})</span>`
+    : w.queues.length ? `${esc(w.queues.map(qd).join(', '))} <span class="dim">(${esc([t('notFixed'), origin].filter(Boolean).join(', '))})</span>` : `<span class="dim">${t('unknown')}</span>`);
   if (w.update || w.collectedAt) s += row(t('schedule'), t('scheduleLine', { u: esc(w.update || t('unknown')), c: w.collectedAt ? dmy(w.collectedAt) + ' ' + hm(w.collectedAt) : t('unknown'), s: esc(w.source ? val(w.source) : t('none')) }));
   s += row(t('sources'), t('sourcesLine', { d: esc(val(w.datasetState)), s: esc(val(w.siteState)) }));
   // a set of queues: its planned outage is the union, and each interval says which of its queues it came from
@@ -1435,8 +1502,8 @@ function renderDtek(w, th, mainsOn, hist) {
   const nextFrom = isSet ? esc(qd((w.nextQueues || []).join('+'))) : esc(qd(w.nextQueue));
   if (w.nextStart) s += row(t('nextOutage'), (Date.parse(w.nextStart) <= Date.now() ? `<span class="warn">${t('cutNow')}</span> ${t('untilAt', { at: hm(w.nextEnd) })}` : `${dmy(w.nextStart)} ${hm(w.nextStart)}-${hm(w.nextEnd)}`) + (w.queue && !isSet ? '' : ` <span class="dim">(${nextFrom})</span>`));
   else if (w.state !== 'none' && w.windows.length) s += row(t('nextOutage'), `<span class="dim">${t('noneInSchedule')}</span>`);
-  const lasts = val(w.batteryLasts);
-  const lastsText = ` · ${t('batteryLasts')}: <span class="${{ yes: 'ok', no: 'bad' }[w.batteryLasts] || 'dim'}">${esc(lasts)}</span>`;
+  // whether the battery lasts: its own state chip, never "battery lasts: yes"
+  const lastsText = w.batteryLasts ? ` <span class="chip ${{ yes: 'ok', no: 'bad' }[w.batteryLasts] || ''}"><i></i><span>${t({ yes: 'lastsYes', no: 'lastsNo' }[w.batteryLasts] || 'lastsUnknown')}</span></span>` : '';
   if (w.overdue) {
     // the planned window has ended and mains is still off: the plan no longer says when, the battery alone does
     s += row(t('plannedReturn'), `<s>${dmy(w.plannedReturn)} ${hm(w.plannedReturn)}</s> <span class="bad">${t('overdueBy', { n: Number(w.overdueMin) })}${w.state === 'none' ? ' ' + t('againstLastPlan') : ''}</span>`);
@@ -1453,7 +1520,7 @@ function renderDtek(w, th, mainsOn, hist) {
   for (const q of w.windows) {
     // a set's rows: the day alone as the label (the queue row names the set), the union with where each interval came from
     const set = String(q.queue).includes('+');
-    const label = (day) => (set ? day : `${qd(q.queue)} · ${day}`);
+    const label = (day) => (set ? day : `${qd(q.queue)}, ${day}`);
     const from = (day) => { const parts = (q.intervals || []).filter((i) => kyivDmy(i.start) === day).map((i) => `${kyivHm(i.start)}-${kyivHm(i.end)}: ${qd(i.queues.join('+'))}`); return set && parts.length ? ` <span class="dim">(${esc(parts.join(', '))})</span>` : ''; };
     s += row(label(w.today), esc(q.today || t('noData')) + from(w.today) + kyivTag) + row(label(w.tomorrow), esc(q.tomorrow || t('noData')) + from(w.tomorrow) + kyivTag);
   }
@@ -1461,13 +1528,13 @@ function renderDtek(w, th, mainsOn, hist) {
   const nowMs = Date.now(), dayOf = (iso) => (dmy(iso) === dmy(new Date(nowMs).toISOString()) ? '' : ' ' + dmy(iso).slice(0, 5));
   const icoOn = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 1.5 4 9h3.5L6.5 14.5 12 7H8.5z" fill="currentColor"/></svg>';
   const icoOff = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 1.5 4 9h3.5L6.5 14.5 12 7H8.5z" fill="currentColor" opacity=".55"/><path d="M2.5 2.5l11 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
-  const lastsHtml = w.batteryLasts ? ` · ${t('batteryLasts')}: <span class="${{ yes: 'ok', no: 'bad' }[w.batteryLasts] || 'dim'}">${esc(val(w.batteryLasts))}</span>` : '';
+  const lastsHtml = lastsText.trim();
   const offNow = w.nextStart && Date.parse(w.nextStart) <= nowMs;
   // the station's reading wins over the plan: power back early, or an outage the schedule does not have
   $('dtekPill').innerHTML = mainsOn === true && offNow ? `<div class="dban ok"><b>${icoOn}${t('dtekBackEarly')}</b><span>${t('dtekPlannedUntil', { at: hm(w.nextEnd) + dayOf(w.nextEnd) })}</span></div>`
-    : mainsOn === false && !offNow ? `<div class="dban off"><b>${icoOff}${t('dtekUnplanned')}</b>${lastsHtml ? `<span>${lastsHtml.replace(/^ · /, '')}</span>` : ''}</div>`
+    : mainsOn === false && !offNow ? `<div class="dban off"><b>${icoOff}${t('dtekUnplanned')}</b>${lastsHtml}</div>`
     : !w.nextStart ? (w.state !== 'none' && w.windows.length ? `<div class="dban ok"><b>${icoOn}${t('dtekNoCuts')}</b></div>` : '')
-    : offNow ? `<div class="dban off"><b>${icoOff}${t('dtekBannerOff')}</b><span>${t('dtekFromTo', { a: hm(w.nextStart) + dayOf(w.nextStart), b: hm(w.nextEnd) + dayOf(w.nextEnd) })}${lastsHtml}</span></div>`
+    : offNow ? `<div class="dban off"><b>${icoOff}${t('dtekBannerOff')}</b><span>${t('dtekFromTo', { a: hm(w.nextStart) + dayOf(w.nextStart), b: hm(w.nextEnd) + dayOf(w.nextEnd) })}</span>${lastsHtml}</div>`
     : `<div class="dban ok"><b>${icoOn}${t('dtekOnUntil', { at: hm(w.nextStart) + dayOf(w.nextStart) })}</b><span>${t('dtekNextCut', { a: hm(w.nextStart) + dayOf(w.nextStart), b: hm(w.nextEnd) })}</span></div>`;
   // The schedule of the picked day (today / tomorrow tabs) as 24 hour cells in Kyiv time: an outage hour is amber, a half-hour outage fills its half.
   const ymd = (day) => day.split('.').reverse().join(''), kyivNow = new Date(nowMs).toISOString();
@@ -1477,7 +1544,7 @@ function renderDtek(w, th, mainsOn, hist) {
   const tomorrowPicked = dtekDay === 'tomorrow', day = tomorrowPicked ? w.tomorrow : w.today;
   // the hours already past, today only: what really happened, hatched over the plan
   const fact = !tomorrowPicked && day === nowDay && hist && hist.length ? factMinutes(hist, nowMs - nowMs % 60000 - nowMin * 60000, nowMin) : null;
-  const tab = (key, label, has) => `<button data-day="${key}" aria-pressed="${dtekDay === key}">${esc(label)}${has ? '' : ` · ${t('noData')}`}</button>`;
+  const tab = (key, label, has) => `<button data-day="${key}" aria-pressed="${dtekDay === key}">${esc(label)}${has ? '' : ` <span class="dim">${t('noData')}</span>`}</button>`;
   let grid = shown.length ? `<div class="dtop"><span class="dq">${t('queue')} ${esc(shown.map((q) => qd(q.queue)).join(', '))}</span><div class="seg" id="dtekTabs">${tab('today', t('dtekTodayDay', { d: w.today.slice(0, 5) }), shown.some((q) => q.today))}${tab('tomorrow', t('dtekTomorrowDay', { d: w.tomorrow.slice(0, 5) }), shown.some((q) => q.tomorrow))}</div></div>` : '';
   for (const q of shown) {
     const text = tomorrowPicked ? q.tomorrow : q.today;
@@ -1499,7 +1566,7 @@ function renderDtek(w, th, mainsOn, hist) {
           factTip += `&#10;${clock(k)}–${clock(j)} ${word[fact[k]]} (${j - k} ${t('uMin')})`; k = j;
         }
       }
-      cells += `<div class="${cls}" style="${text ? fill : ''}" title="${pad(h)}:00–${pad((h + 1) % 24)}:00 · ${text ? (cover.length ? t('outage') : t('dtekPowerOn')) : t('noData')}${factTip}">${over}<span>${pad(h)}–${pad(h + 1)}</span>${text ? (cover.length ? icoOff : icoOn) : ''}</div>`;
+      cells += `<div class="${cls}" style="${text ? fill : ''}" title="${pad(h)}:00–${pad((h + 1) % 24)}:00, ${text ? (cover.length ? t('outage') : t('dtekPowerOn')) : t('noData')}${factTip}">${over}<span>${pad(h)}–${pad(h + 1)}</span>${text ? (cover.length ? icoOff : icoOn) : ''}</div>`;
     }
     grid += (shown.length > 1 ? `<div class="dq" style="margin:10px 0 6px">${t('queue')} ${esc(qd(q.queue))}</div>` : '') + `<div class="dgrid">${cells}</div>`;
   }
@@ -1677,22 +1744,24 @@ function paintMode(D) {
   // an After-eco failure beside a mode refusal: both are said, and the line reads as a failure
   const pick = planError && t(PLAN_KEY[planError.p] || 'afterEco');
   const planFail = !planError ? '' : planError.code === 'down' ? t('planDown', { p: pick, e: planError.e }) : t('planNotSaved', { p: pick });
-  const own = [mine, planFail].filter(Boolean).join(' · ');
+  const own = [mine, planFail].filter(Boolean).join('; ');
   const l = modeLine(D, modePress, own, planFail ? '' : modeErrorCode), el = $('modeLine');
   // what is in force is state, not a control: the plan goes to a chip, the line stays for a press applying, held back or failed
   el.textContent = l.text; el.className = `hint ${l.kind}`.trim(); el.hidden = !l.kind;
   const p = D.powerPlan || {}, plan = ACTIVE_PLAN_KEY[p.id] ? t(ACTIVE_PLAN_KEY[p.id]) : p.name, pc = $('planChip');
-  pc.className = 'chip' + (p.id === 'saver' ? ' acc' : '');
+  pc.className = 'chip' + (p.id === 'saver' ? ' acc' : ''); pc.title = plan ? t('planTip') : '';
   // a hold is information beside the plan; applying, held back or failed takes the chip's place
   const shout = l.kind && l.kind !== 'info';
-  pc.lastChild.textContent = plan ? t('planChip', { p: plan }) : l.kind === 'info' ? modeLine({ ...D, modeHold: null }, null).text : l.text;
+  pc.lastChild.textContent = plan ? plan : l.kind === 'info' ? modeLine({ ...D, modeHold: null }, null).text : l.text;
   pc.hidden = Boolean(shout) || !(plan || D.powerMode === 'unreadable');
 }
 // The Windows power plan in force, as a chip (v2: the line under the buttons belongs to the modes view).
 function paintPlanChip(D) {
   const p = D.powerPlan || {}, plan = ACTIVE_PLAN_KEY[p.id] ? t(ACTIVE_PLAN_KEY[p.id]) : p.name, pc = $('planChip');
   setAttr(pc, 'class', 'chip' + (p.id === 'saver' ? ' acc' : ''));
-  const text = plan ? t('planChip', { p: plan }) : '';
+  setAttr(pc, 'title', plan ? t('planTip') : null);
+  // the plan's own name: the tooltip says it is the Windows power plan
+  const text = plan || '';
   if (pc.lastChild.textContent !== text) pc.lastChild.textContent = text;
   if (pc.hidden !== !plan) pc.hidden = !plan;
 }
@@ -1732,10 +1801,11 @@ var mpTimer = null;     // the minute refresh while the panel is open
 const MP_PROPS = new Set(['className', 'textContent', 'value', 'checked', 'disabled', 'hidden', 'title', 'id', 'htmlFor', 'type', 'min', 'max', 'step', 'rows', 'maxLength', 'inputMode', 'onclick', 'onchange', 'oninput']);
 const MP_FLAG = { normal: 'fwNormal', eco: 'fwEco', emergency: 'fwEmergency' };
 const MP_TONE = { applied: 'ok', satisfied: 'ok', relinquished: 'warn', failed: 'bad', 'restore-failed': 'bad' };
-// Each rule kind's fields: [name, unit key (none = HH:mm text), min, max, step]; hysteresis may be left out.
+// Each rule kind's fields: [name, unit key (none = HH:mm text), min, max, step, stored units per shown unit]; hysteresis may be
+// left out. Seconds are shown and typed as minutes.
 const MP_KINDS = {
-  mainsOffFor: [['seconds', 'uSec', 0, 86400, 1]],
-  mainsOnFor: [['seconds', 'uSec', 0, 86400, 1]],
+  mainsOffFor: [['seconds', 'uMin', 0, 86400, 1, 60]],
+  mainsOnFor: [['seconds', 'uMin', 0, 86400, 1, 60]],
   socBelow: [['percent', 'uPct', 0, 100, 'any'], ['hysteresis', 'uPct', 0, 100, 'any']],
   cutWithin: [['minutes', 'uMin', 0, 1440, 1], ['hysteresis', 'uMin', 0, 100, 'any']],
   timeWindow: [['from'], ['to']],
@@ -1755,7 +1825,8 @@ function mpEl(tag, props, ...kids) {
 function mpSet(box, ...kids) { box.replaceChildren(...kids.flat(Infinity).filter(mpKeep)); }
 const mpClone = (x) => JSON.parse(JSON.stringify(x === undefined ? null : x));
 const mpModule = (typeId) => ((mpCat && mpCat.modules) || []).find((m) => m.descriptor && m.descriptor.typeId === typeId) || null;
-const mpTitle = (typeId) => { const m = mpModule(typeId); return (m && m.descriptor.title) || typeId; };
+// an action type's name in the page's language; a type this page does not know keeps the catalogue's title
+const mpTitle = (typeId) => { const k = 'at_' + String(typeId).replace(/\./g, '_'), w = t(k), m = mpModule(typeId); return w !== k ? w : (m && m.descriptor.title) || typeId; };
 const mpTypes = (s) => (s && s.type !== undefined ? [].concat(s.type) : []);
 const mpModes = () => (mpView && mpView.settings && mpView.settings.modes) || [];
 const mpSlug = (name) => String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '').slice(0, 32).replace(/-+$/, '');
@@ -1926,18 +1997,26 @@ const mpRest = (k, v) => (k ? `${k}: ${v}` : v);
 function mpRuleText(c) {
   c = c || {};
   const n = (x) => fmt(x, Number.isInteger(Number(x)) ? 0 : 1);
-  if (c.kind === 'mainsOffFor') return t('rdMainsOff', { n: n(c.seconds) });
-  if (c.kind === 'mainsOnFor') return t('rdMainsOn', { n: n(c.seconds) });
+  if (c.kind === 'mainsOffFor') return t('rdMainsOff', { n: n(c.seconds / 60) });
+  if (c.kind === 'mainsOnFor') return t('rdMainsOn', { n: n(c.seconds / 60) });
   if (c.kind === 'socBelow') return t('rdSoc', { n: n(c.percent) });
   if (c.kind === 'cutWithin') return t('rdCut', { n: n(c.minutes) });
   if (c.kind === 'timeWindow') return t('rdTime', { a: c.from, b: c.to });
   return String(c.kind || '');
 }
+// The service's detail is English for its log: the page says only what it can word itself (the broker, the next try in local time).
+function mpWhy(detail) {
+  const d = String(detail || ''), retry = /next try at (\d{1,2}):(\d{2}) UTC/.exec(d), out = [];
+  if (/broker/i.test(d)) out.push(t('whyBroker'));
+  if (retry) { const at = new Date(); at.setUTCHours(Number(retry[1]), Number(retry[2]), 0, 0); out.push(t('whyRetry', { at: `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` })); }
+  return out.length ? out.join('; ') : d ? t('whyLog') : '';
+}
+// An action's state: its name, then the state word in the state's colour.
 function mpChip(title, a) {
   const word = t(`st_${String(a.status || 'unknown').replace(/-/g, '_')}`);
-  const why = a.detail && ['failed', 'restore-failed', 'unsupported'].includes(a.status);
-  return mpEl('span', { className: `chip ${MP_TONE[a.status] || ''}`.trim(), title: a.detail || null, 'data-st': a.status },
-    mpEl('i'), mpEl('span', {}, why ? t('modesChipWhy', { a: title, s: word, r: a.detail }) : t('modesChip', { a: title, s: word })));
+  const why = a.detail && ['failed', 'restore-failed', 'unsupported'].includes(a.status) ? mpWhy(a.detail) : '';
+  return mpEl('span', { className: `chip ${MP_TONE[a.status] || ''}`.trim(), 'data-st': a.status },
+    mpEl('i'), mpEl('span', {}, title), mpEl('span', { className: 'st' }, why ? t('modesChipWhy', { s: word, r: why }) : word));
 }
 // The selector (Auto + every mode), why the active mode is in force, each action's state, the hibernate setting, the last write.
 function mpPaintTop() {
@@ -1946,22 +2025,22 @@ function mpPaintTop() {
   const s = v.settings || {}, sel = s.selection || {}, modes = mpModes();
   const chosen = mpPress || (sel.kind === 'manual' ? sel.manualModeId : 'auto');
   mpSet($('modesSel'), [{ id: 'auto', name: t('modeAuto') }].concat(modes).map((m) => {
-    const b = mpEl('button', { type: 'button', 'data-m': m.id, 'aria-pressed': String(m.id === chosen), disabled: mpBusy, 'data-pending': mpPress === m.id }, m.name);
+    const b = mpEl('button', { type: 'button', 'data-m': m.id, 'aria-pressed': String(m.id === chosen), disabled: mpBusy, 'data-pending': mpPress === m.id }, modeName(m));
     b.onclick = () => mpSelect(m.id);
     return b;
   }));
-  const active = modes.find((m) => m.id === v.activeModeId), name = active ? active.name : v.activeModeId || '–';
+  const active = modes.find((m) => m.id === v.activeModeId), name = active ? modeName(active) : v.activeModeId || '–';
   const rule = sel.autoRule !== null && sel.autoRule !== undefined ? (s.rules || [])[sel.autoRule] : null, now = $('modesNow');
   now.textContent = sel.kind === 'manual' ? t('modesNowManual', { m: name })
     : rule ? t('modesNowAuto', { m: name, n: sel.autoRule + 1, c: mpRuleText(rule.condition) }) : t('modesNowKept', { m: name });
   // a change still running (the write answered 202): the mode it goes to, never the old one as if nothing happened
   const to = v.switching || (v.pending ? (mpPress || chosen) : null);
-  if (to) { const m = modes.find((x) => x.id === to); now.textContent = t('modesSwitching', { m: m ? m.name : to === 'auto' ? t('modeAuto') : to }); }
-  now.title = v.reason || '';
+  if (to) { const m = modes.find((x) => x.id === to); now.textContent = t('modesSwitching', { m: m ? modeName(m) : to === 'auto' ? t('modeAuto') : to }); }
   const chips = (v.actions || []).map((a) => mpChip(mpTitle(a.typeId), a));
+  // the service's problems are English for its log: one line in the page's language says there is one
   mpSet($('modesStatus'), v.emergency ? mpEl('span', { className: 'chip bad' }, mpEl('i'), mpEl('span', {}, t('modesEmergency'))) : null,
     chips, (v.restores || []).map((r) => mpChip(`${mpTitle(r.typeId)} (${r.key})`, r)),
-    chips.length ? null : mpEl('span', { className: 'dim' }, t('modesNoActions')), (v.problems || []).map((p) => mpEl('div', { className: 'bad' }, p)));
+    chips.length ? null : mpEl('span', { className: 'dim' }, t('modesNoActions')), (v.problems || []).length ? mpEl('div', { className: 'bad' }, t('modesProblem')) : null);
   const hib = mpEl('input', { type: 'checkbox', checked: s.autoHibernate !== false, disabled: mpBusy, 'data-f': 'hibernate' });
   hib.onchange = () => mpHibernate(hib.checked);
   mpSet($('modesHib'), mpEl('label', { className: 'ck' }, hib, t('modesHibernate')),
@@ -2031,9 +2110,8 @@ function mpPaintList() {
   const v = mpView;
   if (!v) return;
   mpSet($('modesList'), mpEl('h3', {}, t('modesList')), mpModes().map((m) => mpEl('div', { className: 'item' },
-    mpEl('span', { className: 'nm' }, m.name, m.builtIn ? mpEl('span', { className: 'tag' }, t('modesBuiltIn')) : null,
-      m.id === v.activeModeId ? mpEl('span', { className: 'tag on' }, t('modesActiveTag')) : null),
-    mpEl('span', { className: 'dim' }, t('modesFlagIs', { f: t(MP_FLAG[m.flagWord] || 'fwNormal') })),
+    mpEl('span', { className: 'nm' }, modeName(m)),
+    m.id === v.activeModeId ? mpEl('span', { className: 'act' }, t('modesActive')) : null,
     mpButton('edit', m.id, t('modesEdit'), () => mpEditMode(m.id)),
     m.builtIn ? null : mpButton('delete', m.id, t('modesDelete'), () => mpDeleteMode(m.id)))),
   mpEl('div', { className: 'row', style: 'margin-top:8px' }, mpButton('new', '', t('modesNew'), mpNewMode)));
@@ -2108,7 +2186,7 @@ function mpPaintEdit() {
   const pick = mpEl('select', { 'data-f': 'add-type', 'aria-label': t('modesActionType') },
     mods.map((x) => mpEl('option', { value: x.descriptor.typeId }, x.available ? x.descriptor.title : t('modesUnavailable', { r: x.descriptor.title }))));
   const top = Object.keys(errs).filter((k) => !used.has(k)).map((k) => mpEl('div', { className: 'ferr', 'data-err': k }, mpRest(k, errs[k])));
-  mpSet(box, mpEl('h3', {}, d.create ? t('modesNew') : t('modesEditTitle', { n: m.name })), top,
+  mpSet(box, mpEl('h3', {}, d.create ? t('modesNew') : t('modesEditTitle', { n: modeName(m) })), top,
     idField && idField.row, nameField.row, mpEl('div', { className: 'f' }, mpEl('label', { htmlFor: flagId }, t('modesFlag')), flag, flagErr),
     mpEl('h3', {}, t('modesActions')), boxes,
     mods.length ? mpEl('div', { className: 'row' }, pick, mpButton('add-action', '', t('modesAddAction'), () => mpAddAction(pick.value)))
@@ -2159,9 +2237,9 @@ async function mpSaveMode() {
 async function mpDeleteMode(id) {
   const m = mpModes().find((x) => x.id === id);
   if (!m || m.builtIn || mpBusy) return;
-  if (!confirm(t('modesDeleteAsk', { n: m.name }))) return;
+  if (!confirm(t('modesDeleteAsk', { n: modeName(m) }))) return;
   const r = await mpWrite('DELETE', `/api/modes/${encodeURIComponent(id)}`);
-  mpMsg = r.ok ? { kind: 'ok', text: t('modesDeleted', { n: m.name }) } : { kind: 'bad', text: t('modesNotSaved', { e: r.text }) };
+  mpMsg = r.ok ? { kind: 'ok', text: t('modesDeleted', { n: modeName(m) }) } : { kind: 'bad', text: t('modesNotSaved', { e: r.text }) };
   if (r.ok && mpDraft && !mpDraft.create && mpDraft.mode.id === id) mpDraft = null;
   mpPaintAll();
 }
@@ -2199,31 +2277,44 @@ async function mpTestNotice() {
   mpPaintTop();
 }
 function mpRulesTouched() { mpRulesDirty = true; mpRuleBtns.forEach((b) => { b.disabled = false; }); }
+// an arrow on a control is an icon, never a text character
+function mpArrow(d) {
+  const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg'), path = document.createElementNS(ns, 'path');
+  svg.setAttribute('viewBox', '0 0 12 12'); svg.setAttribute('aria-hidden', 'true');
+  path.setAttribute('d', d); path.setAttribute('fill', 'none'); path.setAttribute('stroke', 'currentColor'); path.setAttribute('stroke-width', '1.6'); path.setAttribute('stroke-linecap', 'round'); path.setAttribute('stroke-linejoin', 'round');
+  svg.append(path);
+  return svg;
+}
 function mpRuleRow(r, i, count, modes, errs, used) {
   const ek = 'r' + i;
   if (!r.condition || !MP_KINDS[r.condition.kind]) r.condition = { kind: 'mainsOffFor', ...MP_KIND_START.mainsOffFor };
   const c = r.condition;
   const kind = mpEl('select', { 'data-f': ek + '.kind', 'aria-label': t('modesRuleKind'), value: c.kind }, Object.keys(MP_KINDS).map((k) => mpEl('option', { value: k }, t(`ck_${k}`))));
   kind.onchange = () => { r.condition = { kind: kind.value, ...MP_KIND_START[kind.value] }; mpRulesDirty = true; mpPaintRules(); };
-  const parts = MP_KINDS[c.kind].map(([name, unit, min, max, step]) => {
+  const parts = MP_KINDS[c.kind].map(([name, unit, min, max, , scale = 1]) => {
     const id = 'mf' + (++mpSeq), err = mpErr(`${ek}.${name}`, errs, used, id + 'e');
     const lab = { hysteresis: 'modesHyst', from: 'modesFrom', to: 'modesTo' }[name];
-    // HH:mm as typed text: a time input would show the browser's 12-hour clock in an English locale
-    const input = mpEl('input', { id, type: unit ? 'number' : 'text', inputMode: unit ? 'decimal' : 'numeric', maxLength: unit ? null : 5, min, max, step,
-      placeholder: unit ? null : 'HH:mm', value: c[name] === undefined || c[name] === null ? '' : String(c[name]), 'data-f': `${ek}.${name}`,
+    // HH:mm and numbers as typed text: a time input would show the browser's 12-hour clock in an English locale, a number
+    // input its spinner; a number steps with the − and + beside it
+    const shown = c[name] === undefined || c[name] === null ? '' : unit ? String(Math.round(c[name] / scale * 100) / 100) : String(c[name]);
+    const input = mpEl('input', { id, type: 'text', inputMode: unit ? 'decimal' : 'numeric', maxLength: unit ? 8 : 5,
+      placeholder: unit ? null : 'HH:mm', value: shown, 'data-f': `${ek}.${name}`,
       'aria-label': lab ? null : t(`ck_${c.kind}`), 'aria-invalid': err ? 'true' : null, 'aria-describedby': err ? id + 'e' : null });
     input.oninput = () => {
       const x = Number(String(input.value).replace(',', '.'));
       if (!unit) c[name] = input.value.trim();
       else if (String(input.value).trim() === '' || !Number.isFinite(x)) delete c[name];
-      else c[name] = x;
+      else c[name] = Math.round(x * scale * 100) / 100;
       mpRulesTouched();
     };
-    return mpEl('span', { className: 'row' }, lab ? mpEl('label', { htmlFor: id }, t(lab)) : null, input, unit ? mpEl('span', { className: 'dim' }, t(unit)) : null, err);
+    const bump = (d) => () => { const x = Number(String(input.value).replace(',', '.')) || 0; input.value = String(Math.min(max / scale, Math.max(min / scale, Math.round(x) + d))); input.oninput(); };
+    const box = unit ? mpEl('span', { className: 'step' }, mpEl('button', { type: 'button', 'aria-label': t('modesLess'), title: t('modesLess'), onclick: bump(-1) }, '−'), input,
+      mpEl('button', { type: 'button', 'aria-label': t('modesMoreN'), title: t('modesMoreN'), onclick: bump(1) }, '+')) : input;
+    return mpEl('span', { className: 'row' }, lab ? mpEl('label', { htmlFor: id }, t(lab)) : null, box, unit ? mpEl('span', { className: 'dim' }, t(unit)) : null, err);
   });
   const modeErrId = 'mf' + (++mpSeq) + 'e', modeErr = mpErr(ek + '.modeId', errs, used, modeErrId);
   const mode = mpEl('select', { 'data-f': ek + '.modeId', 'aria-label': t('modesRuleTo'), value: r.modeId, 'aria-invalid': modeErr ? 'true' : null, 'aria-describedby': modeErr ? modeErrId : null },
-    modes.map((m) => mpEl('option', { value: m.id }, m.name)), modes.some((m) => m.id === r.modeId) ? null : mpEl('option', { value: r.modeId }, t('modesMissing', { v: r.modeId })));
+    modes.map((m) => mpEl('option', { value: m.id }, modeName(m))), modes.some((m) => m.id === r.modeId) ? null : mpEl('option', { value: r.modeId }, t('modesMissing', { v: r.modeId })));
   mode.onchange = () => { r.modeId = mode.value; mpRulesTouched(); };
   // an entry the broker's policy lacks (the save's warnings): what to run, elevated, to allow it, with a copy button
   const warns = ((mpDraft && mpDraft.warns) || []).filter((w) => w.action === i).map((w) => {
@@ -2236,9 +2327,10 @@ function mpRuleRow(r, i, count, modes, errs, used) {
   const rest = Object.keys(errs).filter((k) => (k === ek || k.startsWith(ek + '.')) && !used.has(k))
     .map((k) => { used.add(k); return mpEl('div', { className: 'ferr', 'data-err': k }, mpRest(k.slice(ek.length + 1), errs[k])); });
   const move = (to) => () => { const [x] = mpRules.splice(i, 1); mpRules.splice(to, 0, x); mpRuleErrs = {}; mpRulesDirty = true; mpPaintRules(); };
-  return mpEl('li', { 'data-f': ek }, mpEl('div', { className: 'row' }, kind, parts, mpEl('span', { 'aria-hidden': 'true' }, '→'), mode, modeErr, mpEl('span', { className: 'sp' }),
-    mpButton('up', i, '↑', move(i - 1), { disabled: i === 0, 'aria-label': t('modesUp'), title: t('modesUp') }),
-    mpButton('down', i, '↓', move(i + 1), { disabled: i === count - 1, 'aria-label': t('modesDown'), title: t('modesDown') }),
+  // the row reads as a sentence: If <condition> <values>, switch to <mode>
+  return mpEl('li', { 'data-f': ek }, mpEl('div', { className: 'row' }, mpEl('span', {}, t('modesIf')), kind, parts, mpEl('span', { className: 'cm' }, ','), mpEl('span', {}, t('modesThen')), mode, modeErr, mpEl('span', { className: 'sp' }),
+    mpButton('up', i, mpArrow('M6 10V2M2.5 5.5 6 2l3.5 3.5'), move(i - 1), { disabled: i === 0, 'aria-label': t('modesUp'), title: t('modesUp') }),
+    mpButton('down', i, mpArrow('M6 2v8M2.5 6.5 6 10l3.5-3.5'), move(i + 1), { disabled: i === count - 1, 'aria-label': t('modesDown'), title: t('modesDown') }),
     mpButton('remove', i, '×', () => { mpRules.splice(i, 1); mpRuleErrs = {}; mpRulesDirty = true; mpPaintRules(); }, { 'aria-label': t('modesRemove'), title: t('modesRemove') })),
   rest);
 }
