@@ -53,7 +53,8 @@ internal sealed class StationStore : IDisposable
         ddl.CommandText = """
             CREATE TABLE IF NOT EXISTS reading(at INTEGER NOT NULL, status INTEGER NOT NULL, soc REAL, in_ac REAL, in_dc REAL,
               out_ac REAL, out_dc REAL, volt REAL, hz REAL, mode TEXT, reason TEXT,
-              grid_volt REAL, grid_hz REAL);
+              grid_volt REAL, grid_hz REAL, pack_volt REAL, pack_amp REAL, station_min_full REAL, station_min_empty REAL,
+              temp_ambient REAL, temp_inverter REAL, temp_pv REAL);
             CREATE INDEX IF NOT EXISTS reading_at ON reading(at);
             CREATE TABLE IF NOT EXISTS agg5(at INTEGER PRIMARY KEY, n INTEGER NOT NULL, soc REAL, soc_min REAL, soc_max REAL,
               in_ac REAL, in_dc REAL, out_ac REAL, out_dc REAL, volt REAL, hz REAL, mains REAL, missed INTEGER NOT NULL, rejected INTEGER NOT NULL);
@@ -63,6 +64,7 @@ internal sealed class StationStore : IDisposable
             """;
         ddl.ExecuteNonQuery();
         AddGridColumns(ddl);
+        AddStationColumns(ddl);
     }
 
     /// <summary>
@@ -77,6 +79,25 @@ internal sealed class StationStore : IDisposable
             BEGIN;
             ALTER TABLE reading ADD COLUMN grid_volt REAL;
             ALTER TABLE reading ADD COLUMN grid_hz REAL;
+            COMMIT;
+            """;
+        ddl.ExecuteNonQuery();
+    }
+
+    /// <summary>The V2 station extras' columns (<see cref="StationExtras"/>), as <see cref="AddGridColumns"/>: all or none, old rows NULL.</summary>
+    private static void AddStationColumns(SqliteCommand ddl)
+    {
+        ddl.CommandText = "SELECT COUNT(*) FROM pragma_table_info('reading') WHERE name = 'pack_volt'";
+        if ((long)ddl.ExecuteScalar()! > 0) return;
+        ddl.CommandText = """
+            BEGIN;
+            ALTER TABLE reading ADD COLUMN pack_volt REAL;
+            ALTER TABLE reading ADD COLUMN pack_amp REAL;
+            ALTER TABLE reading ADD COLUMN station_min_full REAL;
+            ALTER TABLE reading ADD COLUMN station_min_empty REAL;
+            ALTER TABLE reading ADD COLUMN temp_ambient REAL;
+            ALTER TABLE reading ADD COLUMN temp_inverter REAL;
+            ALTER TABLE reading ADD COLUMN temp_pv REAL;
             COMMIT;
             """;
         ddl.ExecuteNonQuery();
@@ -125,9 +146,10 @@ internal sealed class StationStore : IDisposable
             if (_insertReading is null)
             {
                 _insertReading = _db.CreateCommand();
-                _insertReading.CommandText = "INSERT INTO reading(at,status,soc,in_ac,in_dc,out_ac,out_dc,volt,hz,mode,reason,grid_volt,grid_hz) "
-                    + "VALUES($at,$st,$soc,$ia,$id,$oa,$od,$v,$hz,$m,$why,$gv,$ghz)";
-                foreach (var n in (string[])["$at", "$st", "$soc", "$ia", "$id", "$oa", "$od", "$v", "$hz", "$m", "$why", "$gv", "$ghz"])
+                _insertReading.CommandText = "INSERT INTO reading(at,status,soc,in_ac,in_dc,out_ac,out_dc,volt,hz,mode,reason,grid_volt,grid_hz,"
+                    + "pack_volt,pack_amp,station_min_full,station_min_empty,temp_ambient,temp_inverter,temp_pv) "
+                    + "VALUES($at,$st,$soc,$ia,$id,$oa,$od,$v,$hz,$m,$why,$gv,$ghz,$pv,$pa,$tf,$te,$ta,$ti,$tp)";
+                foreach (var n in (string[])["$at", "$st", "$soc", "$ia", "$id", "$oa", "$od", "$v", "$hz", "$m", "$why", "$gv", "$ghz", "$pv", "$pa", "$tf", "$te", "$ta", "$ti", "$tp"])
                     _insertReading.Parameters.Add(new SqliteParameter { ParameterName = n });
             }
             var p = _insertReading.Parameters;
@@ -144,6 +166,14 @@ internal sealed class StationStore : IDisposable
             p[10].Value = reason.Length == 0 ? DBNull.Value : reason;
             p[11].Value = Db(r?.GridVolt);
             p[12].Value = Db(r?.GridHz);
+            var x = r?.Extras;
+            p[13].Value = Db(x?.PackVolt);
+            p[14].Value = Db(x?.PackAmp);
+            p[15].Value = Db(x?.StationMinutesToFull);
+            p[16].Value = Db(x?.StationMinutesToEmpty);
+            p[17].Value = Db(x?.TempAmbient);
+            p[18].Value = Db(x?.TempInverter);
+            p[19].Value = Db(x?.TempPvDcDc);
             _insertReading.ExecuteNonQuery();
         }
     }

@@ -113,8 +113,9 @@ answer: unit | 0x03 | byteCount = 2 x count | data | CRC
   version the station reports, not on this default.
 
 Column "Watcher": **today** = read in a poll (the reading fields of `V2Models.cs`, the values an AC200PL poll reads at
-its V1 registers), **map** = declared in `V2Models.All` for the models named but not read in a poll, **no** = not
-declared.
+its V1 registers), **map** = declared in `V2Models.All` for the models named but not read in a poll, **read on V2 stations** = an optional
+block after the reading (design.md, section 2; a block the station refuses shows as not supported in `/api/health`
+`stationBlocks`), never asked of a V1 station, **no** = not declared.
 
 ### 2.3 Page 100 - home data [code: ProtocolParserV2.parseHomeData]
 
@@ -122,12 +123,12 @@ Length 56 registers (version 2000 and lower) up to 116 (version 2023 and up) [co
 
 | Reg | Field | Type, scale | Watcher |
 |---|---|---|---|
-| 100 | pack total voltage | u16 /10 V | no |
-| 101 | pack total current | u16 /10 A | no |
+| 100 | pack total voltage | u16 /10 V | read on V2 stations (`V2Extras`; never on V1) |
+| 101 | pack total current | u16 /10 A | read on V2 stations (`V2Extras`; never on V1) |
 | 102 | SOC | u16 %, capped at 100 | today |
 | 103 | pack charging status | u16 code | no |
-| 104 | time to full (`packChgFullTime`) | u16, unit not read | map (TIME_REMAINING: AC50B, AC70, EL10, EL30V2, EL100V2, Handsfree 1) |
-| 105 | time to empty (`packDsgEmptyTime`) | u16, unit not read | no |
+| 104 | time to full (`packChgFullTime`) | u16, unit not read | map (TIME_REMAINING: AC50B, AC70, EL10, EL30V2, EL100V2, Handsfree 1); read on V2 stations (`V2Extras`; never on V1) |
+| 105 | time to empty (`packDsgEmptyTime`) | u16, unit not read | read on V2 stations (`V2Extras`; never on V1) |
 | 106 | pack aging status, progress, fault | 4-bit fields | no |
 | 107 low | pack count (max 16) | u8 | no |
 | 108 | packs online | bit list | no |
@@ -135,11 +136,11 @@ Length 56 registers (version 2000 and lower) up to 116 (version 2023 and up) [co
 | 110-115 | device model | ASCII, 12 bytes | map |
 | 116-119 | serial number | 4 registers | map |
 | 120 low / 121 | inverter count / inverters online | u8 / bits | no |
-| 122 low | `invPowerType` (3 = high power) | u8 | no |
+| 122 low | `invPowerType` (3 = high power) | u8 | read on V2 stations (`V2Extras`; never on V1) (picks the code table) |
 | 123 | energy flow lines | bits | no |
 | 124 | control status (`getSysCtrlStatus`) | bits | no |
-| 126-129 | **warnings** (alarm words) | 4 x u16 bits, section 3 | no |
-| 133-138 | **faults** (version 2001+) | 6 x u16 bits, section 3 | no |
+| 126-129 | **warnings** (alarm words) | 4 x u16 bits, section 3 | read on V2 stations (`V2Extras`; never on V1) |
+| 133-138 | **faults** (version 2001+) | 6 x u16 bits, section 3 | read on V2 stations (`V2Extras`; never on V1) |
 | 140-141 | total DC output power | u32 W | today (low word) |
 | 142-143 | total AC output power | s32 W | today (low word, as u16) |
 | 144-145 | total PV (DC input) power | u32 W | today (low word) |
@@ -168,9 +169,9 @@ Length 45 to 100 registers [code: getReadRegLen].
 | 1111 low | `invPowerType` | u8 | no |
 | 1113-1130 | 6 firmware entries: type u16, version u32 | | no |
 | 1148 low, 1149 low | working time number, voltage type (version 2001+, else 1142, 1143) | u8 | no |
-| 1151 | ambient temperature | u16 - 40 °C (0 = none) | no |
-| 1152 | inverter max temperature | u16 - 40 °C | no |
-| 1153 | PV DC-DC max temperature | u16 - 40 °C (temps need version 2005+) | no |
+| 1151 | ambient temperature | u16 - 40 °C (0 = none) | read on V2 stations (`V2Extras`; never on V1) |
+| 1152 | inverter max temperature | u16 - 40 °C | read on V2 stations (`V2Extras`; never on V1) |
+| 1153 | PV DC-DC max temperature | u16 - 40 °C (temps need version 2005+) | read on V2 stations (`V2Extras`; never on V1) |
 | 1155-1160 | charge and discharge power limits per phase | u16 W | no |
 | 1161-1169 | rated input, output and grid input current per phase | u16 | no |
 

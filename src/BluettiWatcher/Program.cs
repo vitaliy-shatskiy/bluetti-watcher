@@ -89,7 +89,7 @@ var api = new StationApi(config, service, store, time, started, dtek, Log, () =>
         {
             using var planSwitch = new BluettiWatcher.PowerMode.PowerModeSwitch([.. BluettiWatcher.PowerMode.PowerModeSwitch.ProcessEnvironment(), .. config.PowerModeEnvironment], TextWriter.Null);
             return planSwitch.ActivePlan();
-        }, account);
+        }, account, bluetooth.StationBlocks);
 using var http = new MiniHttpServer(IPAddress.Loopback, config.Port, api.HandleAsync, Log);
 try { http.Start(); }
 catch (SocketException e) { Log($"DID NOT RUN - 127.0.0.1:{config.Port} is taken ({e.SocketErrorCode})"); return 2; }

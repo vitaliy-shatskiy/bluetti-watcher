@@ -183,10 +183,25 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         KeyExchangeGuardLink? link = null;
         int opens = 0;
         bool stopped = false;
+        bool openRetried = false;
+        // What the poll waits for now: a budget that runs out names it, so the log tells a slow open from a silent station.
+        string waiting = "the connection to open";
         var values = new Dictionary<string, FieldValue>(StringComparer.Ordinal);
         var problems = new List<string>();
+        var extraBodies = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        ExtraBlock? asking = null;
         List<ReadRequest> unanswered;
         lock (_flightLock) unanswered = _unanswered;
+
+        // The fields that answered are this poll's own, whatever failed after them: a partial reading, never nothing.
+        Reading? Result()
+        {
+            var reading = V1Models.ToReading(values, deriveMode: !model.HasOutputMode);
+            if (reading is null) return Miss(problems.Count > 0 ? string.Join("; ", problems) : "no field answered");
+            if (problems.Count > 0) Note($"partial reading: {string.Join("; ", problems)}");
+            else Recovered();
+            return V2Extras.Decode(extraBodies) is { } extras ? reading with { Extras = extras } : reading;
+        }
 
         // A request whose answer was lost (its connection dropped, timed out or garbled) is asked once more over a new connection,
         // so a spurious disconnect never costs its fields; the first answer stands when no new connection opens.
@@ -209,8 +224,19 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
             if (link is null)
             {
                 if (opens > MaxReconnects) { problems.Add(string.Create(CultureInfo.InvariantCulture, $"stopped after {opens} connections")); stopped = true; return null; }
+                waiting = "the connection to open";
                 var open = await connector.OpenAsync(address, budget.Token);
                 opens++;
+                if (open.Link is null && !openRetried && opens <= MaxReconnects)
+                {
+                    // Windows fails one GATT setup now and then (Unreachable, no ff01/ff02) and the next one a second later
+                    // works: one more open inside this poll's budget before the poll is given to the cloud.
+                    openRetried = true;
+                    string first = open.Failure ?? "no connection";
+                    open = await connector.OpenAsync(address, budget.Token);
+                    opens++;
+                    if (open.Link is not null) Note($"connection opened at the second try (first: {first})", miss: false);
+                }
                 if (open.Link is null) { problems.Add(open.Failure ?? "no connection"); stopped = true; return null; }
                 // Owned by this poll: disposed when the connection is dropped, or in the finally below.
                 // lift-verified 2026-10-14 CA2000 fires without it
@@ -218,6 +244,7 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
                 link = new KeyExchangeGuardLink(open.Link);
 #pragma warning restore CA2000
             }
+            waiting = string.Create(CultureInfo.InvariantCulture, $"registers {start}+{quantity}");
             var answer = await ExchangeAsync(link, ModbusRead.Request(start, quantity), unanswered, budget.Token);
             if (answer.State == AssemblyState.Invalid)
             {
@@ -248,15 +275,39 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
                 }
                 Take(answer, range.Start, model, values, problems);
             }
-            var reading = V1Models.ToReading(values, deriveMode: !model.HasOutputMode);
-            if (reading is null) return Miss(problems.Count > 0 ? string.Join("; ", problems) : "no field answered");
-            if (problems.Count > 0) Note($"partial reading: {string.Join("; ", problems)}");
-            else Recovered();
-            return reading;
+            if (model.IotVersion == 2 && values.Count > 0)
+            {
+                foreach (var block in V2Extras.Blocks)
+                {
+                    // An extra never opens a connection nor is asked again: a lost one waits for the next poll.
+                    if (link is null) break;
+                    if (_blocks.TryGetValue(block.Name, out var known) && known != BlockSupported) continue;
+                    asking = block;
+                    var answer = await AskAsync(block.Start, block.Quantity);
+                    asking = null;
+                    if (answer is null) break;
+                    if (answer is { State: AssemblyState.Complete, Body: { } body })
+                    {
+                        _blocks[block.Name] = BlockSupported;
+                        _blockMisses.TryRemove(block.Name, out _);
+                        extraBodies[block.Name] = body;
+                    }
+                    else if (answer.State == AssemblyState.Exception) Unsupported(block, answer.Error ?? "exception reply");
+                    else Missed(block, answer.Error ?? "no answer");
+                }
+            }
+            return Result();
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested && asking is not null)
+        {
+            // The reading is in; only the extra block was cut off, and it costs no later poll its time.
+            Missed(asking, string.Create(CultureInfo.InvariantCulture, $"no answer within readerTimeoutSec ({config.ReaderTimeoutSec} s)"));
+            return Result();
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            return Miss(string.Create(CultureInfo.InvariantCulture, $"no reading within readerTimeoutSec ({config.ReaderTimeoutSec} s)"));
+            problems.Add(string.Create(CultureInfo.InvariantCulture, $"readerTimeoutSec ({config.ReaderTimeoutSec} s) ran out waiting for {waiting}"));
+            return Result();
         }
         catch (EncryptedStationException)
         {
@@ -272,6 +323,40 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
         {
             if (link is not null) await link.DisposeAsync();
         }
+    }
+
+    /// <summary>The optional blocks a V2 station answered or refused, by name; absent = not asked yet. Refusals hold until a restart.</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _blocks = new(StringComparer.Ordinal);
+    private const string BlockSupported = "supported";
+
+    /// <summary>
+    /// Each optional block (<see cref="V2Extras.Blocks"/>) and whether this station serves it: "supported", "not supported: why",
+    /// "not asked yet", or for a V1 station "not on this protocol (V1)", as its registers there carry other data.
+    /// </summary>
+    public IReadOnlyList<KeyValuePair<string, string>> StationBlocks()
+    {
+        bool v2 = BleModels.TryGet(config.Type, out var model) && model.IotVersion == 2;
+        return [.. V2Extras.Blocks.Select(b => KeyValuePair.Create(b.Name,
+            !v2 ? "not on this protocol (V1)" : _blocks.TryGetValue(b.Name, out var s) ? s : "not asked yet"))];
+    }
+
+    /// <summary>Polls in a row in which a block went unanswered (timed out, garbled, short, the link dropped).</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _blockMisses = new(StringComparer.Ordinal);
+    /// <summary>A lost answer may be the radio, not the station: only this many in a row mark the block not supported.</summary>
+    private const int BlockMissesToGiveUp = 2;
+
+    private void Missed(ExtraBlock block, string why)
+    {
+        if (_blockMisses.AddOrUpdate(block.Name, 1, (_, n) => n + 1) >= BlockMissesToGiveUp)
+            Unsupported(block, string.Create(CultureInfo.InvariantCulture, $"{why} ({BlockMissesToGiveUp} polls in a row)"));
+    }
+
+    /// <summary>An exception reply is the station's own answer: the block is not supported at once.</summary>
+    private void Unsupported(ExtraBlock block, string why)
+    {
+        string text = string.Create(CultureInfo.InvariantCulture, $"not supported: registers {block.Start}+{block.Quantity}, {why}");
+        _blocks[block.Name] = text;
+        Note($"station block {block.Name} {text}; not asked again until the service restarts", miss: false);
     }
 
     private static void Take(ResponseAssembler answer, int start, BleModel model, Dictionary<string, FieldValue> values, List<string> problems)

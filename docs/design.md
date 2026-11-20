@@ -36,7 +36,21 @@ read-only features to come, are mapped in [bluetti-protocol.md](bluetti-protocol
    app can connect between reads; the reading fields in batched function-0x03 reads (notifications on ff01, requests
    on ff02), each answer reassembled to its full length and CRC-checked. The AC200PL's read of 70-80 also carries the
    grid input: register 77 voltage and 80 frequency, both / 10 (as the official app reads them, not in the library);
-   no other request follows the reading. An answer that timed out or came back invalid
+   no other request follows the reading on a V1 station. A V2 station is asked four optional blocks after its reading
+   (`V2Extras`, docs/bluetti-protocol.md sections 2.3, 2.4 and 3): pack voltage and current (100-101), its own time to
+   full and to empty (104-105, minutes likely, not confirmed), warnings and faults (122-138, decoded into the app's codes:
+   prefix E, or B for a high-power inverter, warnings from 113 or 97, faults from 1) and temperatures (1151-1153,
+   u16 - 40 °C). An extra never opens a connection and is never asked again in the poll; an exception reply marks its block "not supported" at once,
+   a short or garbled answer or no answer in two polls in a row does too (one lost answer may be the radio); the mark
+   holds until the service restarts (logged once,
+   `/api/health` `stationBlocks`), so it never fails or slows a later poll. A V1 station (the AC200PL) is never asked them:
+   its registers 100-138 carry other data (105-120 are cell voltages). The station's values are stored per reading and
+   shown on the page; the pack current does not feed the runtime estimate (the app reads it unsigned, so it does not say
+   charge from discharge, and no V2 station was available to validate it). A new warning or fault, a code that clears
+   and a temperature above `stationTempHighC` (re-armed 5 °C under it) each write an event row and run the matching
+   `actions` command. When opening the connection fails (GATT Unreachable, no ff01/ff02), the poll opens once more
+   before it gives up; when `readerTimeoutSec` runs out, the fields already read are kept as a partial reading and the log
+   names what the read was waiting for. An answer that timed out or came back invalid
    ends its connection and the next request goes over a new one; as a reconnect may reuse the radio link, an answer
    that an earlier unanswered request (of this poll or an earlier one) could have sent (same byte count, so any
    one-register read) is set aside and the registers are asked again, so a late answer never fills another request; the

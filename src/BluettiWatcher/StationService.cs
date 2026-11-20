@@ -145,6 +145,24 @@ internal sealed class StationService(StationConfig config, IStationReader reader
     /// <summary>The levels of the last accepted reading: the configured ones raised by its measured drain.</summary>
     public Thresholds Thresholds => StationDecision.Effective(config, _drain);
 
+    /// <summary>The station's codes active and its over-temperature state; in memory, so a code still set after a restart is said once more.</summary>
+    private IReadOnlySet<string> _stationCodes = new HashSet<string>(StringComparer.Ordinal);
+    private bool _stationHot;
+
+    /// <summary>The station's own warnings, faults and temperature (V2 stations): an event row and the config's action per change.</summary>
+    private void StationAlarmEvents(StationExtras? extras, DateTimeOffset now)
+    {
+        var (codes, hot, events) = StationAlarms.Step(_stationCodes, _stationHot, extras, config.StationTempHighC);
+        _stationCodes = codes;
+        _stationHot = hot;
+        foreach (var e in events)
+        {
+            store.AddEvent(now, e.Kind, e.Detail);
+            log(e.Detail);
+            onState?.Fire(e.Kind);
+        }
+    }
+
     /// <summary>One poll. Returns the delay in seconds before the next one.</summary>
     public async Task<int> PollAsync(CancellationToken ct)
     {
@@ -193,6 +211,7 @@ internal sealed class StationService(StationConfig config, IStationReader reader
                 onState?.Fire(StateActions.GridHigh);
             }
             else if (gridRearmed) log($"grid input {Fmt(reading!.GridVolt!.Value)} V, under {Fmt(GridVoltageAlarm.RearmBelow)} V: the high-voltage alert re-armed");
+            if (status == ReadingStatus.Accepted) StationAlarmEvents(reading!.Extras, now);
 
             foreach (var a in d.Actions)
             {
