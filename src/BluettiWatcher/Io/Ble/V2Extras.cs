@@ -4,7 +4,7 @@ using BluettiWatcher.Decision;
 namespace BluettiWatcher.Io.Ble;
 
 /// <summary>
-/// The optional V2 reads (docs/bluetti-protocol.md, sections 2.3, 2.4 and 3) and their decoding. V2 only: on a V1 station
+/// The optional V2 reads (docs/bluetti-protocol.md, sections 2.5 and 3) and their decoding. V2 only: on a V1 station
 /// (the AC200PL) registers 100-138 carry other data (105-120 are cell voltages), so asking them would decode wrong values.
 /// All are function 0x03 reads under register 2000.
 /// </summary>
