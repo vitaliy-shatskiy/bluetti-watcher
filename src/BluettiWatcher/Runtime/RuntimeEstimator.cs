@@ -22,8 +22,8 @@ internal readonly record struct MeasuredRate(double Rate, double MeanLoad, bool 
 
 /// <summary>
 /// The battery time from the real discharge: the efficiency the SOC drop over the recent readings off mains shows, applied
-/// to the current load; the efficiency formula only while there is too little data. It informs only: no battery level and
-/// no hibernate reads it.
+/// to the current load; the efficiency formula only while there is too little data. The battery time informs only; the
+/// battery levels read the measured drain alone (<see cref="DrainPerHour"/>), and only to rise.
 /// </summary>
 internal static class RuntimeEstimator
 {
@@ -73,6 +73,22 @@ internal static class RuntimeEstimator
             if (run[k].InDc > 0 || (k > first && run[k - 1].Soc - run[k].Soc > c.SocJumpFloor)) clean = false;
         }
         return new MeasuredRate(rate, load / (last - first + 1), clean);
+    }
+
+    /// <summary>
+    /// The drain now, battery points per hour: the measured rate (<see cref="Rate"/>) at the current reading's load, as the
+    /// battery time takes it. The battery levels follow it (<see cref="StationDecision.Effective"/>). null on mains, with no
+    /// load, with too little data, or when the newest stored reading is older than <c>maxGapSec</c> (a stale rate).
+    /// </summary>
+    public static double? DrainPerHour(Reading? current, IReadOnlyList<HistoryRow> rows, long nowSec, StationConfig c)
+    {
+        if (current is not { Soc: { } soc } || !double.IsFinite(soc) || current.InAc > 0) return null;
+        double load = (current.OutAc ?? 0) + (current.OutDc ?? 0);
+        if (!(load > 0)) return null;
+        long newest = rows.Where(r => r.At <= nowSec).Select(r => r.At).DefaultIfEmpty(long.MinValue).Max();
+        if (nowSec - newest > c.MaxGapSec || Rate(rows, nowSec, c) is not { } w) return null;
+        double drain = w.MeanLoad > 0 ? w.Rate * load / w.MeanLoad : w.Rate;
+        return double.IsFinite(drain) && drain > 0 ? drain : null;
     }
 
     /// <summary>

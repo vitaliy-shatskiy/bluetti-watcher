@@ -34,7 +34,8 @@ internal static class Fx
     /// <paramref name="fail"/>. <paramref name="before"/> runs on the state before each step (index, state) - the page's buttons.
     /// </summary>
     public static List<StationDecisionResult> Step(object[] steps, FlagView? flag = null, StationAction[]? fail = null, StationState? state = null,
-        StationConfig? cfg = null, Func<int, DateTimeOffset, StationState, StationState>? before = null, Func<int, StationAction, bool>? failWhen = null)
+        StationConfig? cfg = null, Func<int, DateTimeOffset, StationState, StationState>? before = null, Func<int, StationAction, bool>? failWhen = null,
+        Func<int, double?>? drain = null)
     {
         cfg ??= Cfg();
         flag ??= Flag();
@@ -56,7 +57,7 @@ internal static class Fx
             if (!first) clock = clock.AddSeconds(dt);
             first = false;
             if (before is not null) state = before(i, clock, state ?? new StationState());
-            var d = StationDecision.Decide(reading, state, f, clock, cfg);
+            var d = StationDecision.Decide(reading, state, f, clock, cfg, drain?.Invoke(i));
             foreach (var a in d.Actions.Where(a => !fail.Contains(a) && failWhen?.Invoke(i, a) != true)) d = d with { State = StationDecision.Complete(d.State, a, clock) };
             state = d.State;
             outList.Add(d);

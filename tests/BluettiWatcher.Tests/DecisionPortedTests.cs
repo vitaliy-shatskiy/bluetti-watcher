@@ -218,7 +218,7 @@ public class DecisionPortedTests
         Assert.Equal("emergency-on|stop|hibernate-warning||hibernate||", AllActs(d, 3, 9));
         Assert.Equal(Level.Low, d[3].Battery!.Level);
         Assert.Equal(Level.Critical, d[4].Battery!.Level);
-        Assert.Equal(Level.Hibernating, d[5].Battery!.Level);
+        Assert.Equal(Level.Warning, d[5].Battery!.Level);
     }
 
     // design.md §6 Battery levels and hibernate

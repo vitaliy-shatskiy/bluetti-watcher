@@ -260,6 +260,21 @@ public sealed class RuntimeEstimatorTests : IDisposable
     }
 
     [Fact]
+    public async Task Now_gives_the_configured_and_the_effective_thresholds()
+    {
+        using var rig = Open("eff", new StationConfig { FittedRuntime = false });
+        Seed(rig.Store, -40, -1, m => 60 - (m + 40) * 1.0);   // 60 %/h at 200 W, the poll at 220 W
+        rig.Reader.Next.Enqueue(Bat(21));
+        await rig.Service.PollAsync(CancellationToken.None);
+        using var doc = await GetNow(rig.Api);
+        var (cfg, eff) = (doc.RootElement.GetProperty("thresholds"), doc.RootElement.GetProperty("effectiveThresholds"));
+        Assert.Equal((7.0, 5.0), (cfg.GetProperty("warnAt").GetDouble(), cfg.GetProperty("hibernateAt").GetDouble()));
+        Assert.True(eff.GetProperty("warnAt").GetDouble() > 7, eff.ToString());
+        Assert.Equal(5.0, eff.GetProperty("hibernateAt").GetDouble());
+        Assert.True(eff.GetProperty("drainPerHour").GetDouble() > 60, eff.ToString());
+    }
+
+    [Fact]
     public async Task Now_names_the_source_and_the_rate_and_a_restart_during_a_cut_keeps_measuring()
     {
         // the measured rate and the learned efficiency, with the fitted model off (it is tested below)
@@ -476,9 +491,10 @@ public sealed class RuntimeEstimatorTests : IDisposable
         Assert.Equal((JsonValueKind.Null, JsonValueKind.Null), (doc.RootElement.GetProperty("runtimeSource").ValueKind, doc.RootElement.GetProperty("hoursLeft").ValueKind));
     }
 
-    // Levels and hibernate act on SOC thresholds only: a history implying minutes left changes nothing.
+    // A history implying minutes left raises the levels (the measured drain), never delays them: the warning is written no
+    // later and the PC hibernates in both.
     [Fact]
-    public async Task The_levels_and_hibernate_ignore_the_estimate()
+    public async Task The_levels_only_come_earlier_with_a_fast_measured_drain()
     {
         async Task<(Level, string, int)> Run(bool fastHistory)
         {
@@ -509,9 +525,11 @@ public sealed class RuntimeEstimatorTests : IDisposable
         }
         var none = await Run(false);
         var fast = await Run(true);
-        Assert.Equal(none, fast);
-        Assert.Equal(Level.Hibernating, fast.Item1);
-        Assert.True(fast.Item3 > 0, "the PC hibernated, in both");
+        static int Warned((Level, string Calls, int) run) => Array.IndexOf(run.Calls.Split(','), "battery Warning");
+        Assert.Equal(Level.Warning, none.Item1);
+        Assert.Equal(Level.Warning, fast.Item1);
+        Assert.True(none.Item3 > 0 && fast.Item3 > 0, "the PC hibernated, in both");
+        Assert.InRange(Warned(fast), 0, Warned(none));
     }
 
     [Fact]
@@ -571,7 +589,31 @@ public sealed class RuntimeEstimatorTests : IDisposable
         Assert.Contains(Callees(typeof(StationApi)), IsEstimate);
         var types = typeof(StationDecision).Assembly.GetTypes().Where(t => t.Namespace == "BluettiWatcher.Decision" && !t.IsNested).Append(typeof(StationService)).ToList();
         Assert.Contains(typeof(StationDecision), types);
+        // the service reads the measured drain, a plain number the levels may only rise with; nothing else of the estimator
+        Assert.Contains(Callees(typeof(StationService)), IsDrain);
         foreach (var t in types)
-            Assert.DoesNotContain(Callees(t), IsEstimate);
+            Assert.DoesNotContain(Callees(t), m => IsEstimate(m) && !(t == typeof(StationService) && IsDrain(m)));
+    }
+
+    private static bool IsDrain(MethodBase m) => m.DeclaringType == typeof(RuntimeEstimator) && m.Name == nameof(RuntimeEstimator.DrainPerHour);
+
+    // design.md §6: the drain the levels follow is the measured rate at the current load; none on mains, with thin or stale data.
+    [Fact]
+    public void DrainPerHour_is_the_measured_rate_at_the_current_load()
+    {
+        var c = new StationConfig();
+        Assert.Equal(10 * 220 / 200.0, RuntimeEstimator.DrainPerHour(Bat(70), TenPerHour(), Now, c)!.Value, 6);
+        Assert.Null(RuntimeEstimator.DrainPerHour(Grid(70), TenPerHour(), Now, c));
+        Assert.Null(RuntimeEstimator.DrainPerHour(Bat(70), Rows(-5, 0, _ => 70), Now, c));
+    }
+
+    [Fact]
+    public void DrainPerHour_of_a_stale_history_is_none()
+    {
+        var c = new StationConfig();
+        // the same 10 %/h discharge, its newest row 11 minutes old: past maxGapSec (600 s)
+        var stale = TenPerHour().Where(r => r.At <= Now - 11 * 60).ToList();
+        Assert.NotNull(RuntimeEstimator.Rate(stale, Now, c));
+        Assert.Null(RuntimeEstimator.DrainPerHour(Bat(70), stale, Now, c));
     }
 }

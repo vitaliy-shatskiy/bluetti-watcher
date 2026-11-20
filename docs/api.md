@@ -31,7 +31,7 @@ The current state, for the page. `?settle=1` answers once a saved page choice (`
 | `powerMode` | The flag's mode in force as the service last read it: `normal`, `eco`, `emergency`, or `unreadable` (not read yet or untrusted). |
 | `powerPlan` | The active Windows power plan as the switch reads it (`powercfg /list`): `{ "id": "high" \| "balanced" \| "saver" \| "other" \| "", "name" }`; `""` = unknown. |
 | `returnPlan` | The plan the end of eco sets (see `/api/return-plan`). |
-| `level` | Battery level: `ok`, `low`, `critical`, `hibernating`. |
+| `level` | Battery level in the cut: `ok`, `low` (emergency), `critical` (stop), `warning` (the hibernate warning was given; the PC hibernates at `hibernateAt`). |
 | `cut` | true while a power cut is confirmed. |
 | `grid` | Mains: `on`, `off`, `unknown`. |
 | `silent` | true while the station does not answer. |
@@ -44,7 +44,8 @@ The current state, for the page. `?settle=1` answers once a saved page choice (`
 | `runtimeSource` | `model` (fitted to this station's discharges), `rate` (measured), `learned`, `config`; null without an estimate. |
 | `ratePerHour` | Measured discharge, % per hour, whenever the readings yield one (with `runtimeSource` `rate` or `model`); else null. |
 | `learnedEfficiency` | The learned efficiency, or null. |
-| `thresholds` | `emergencyAt`, `stopAt`, `warnAt`, `hibernateAt`. |
+| `thresholds` | `emergencyAt`, `stopAt`, `warnAt`, `hibernateAt`, as configured. |
+| `effectiveThresholds` | The levels the last accepted reading was decided on: `emergencyAt`, `stopAt`, `warnAt`, `hibernateAt`, each the configured one raised by the measured drain (design.md section 6), and `drainPerHour` (% per hour, capped at 120; null = no measured drain, the configured levels). |
 | `last` | The last accepted reading, or null: `at`, `soc`, `inAc`, `inDc`, `outAc`, `outDc`, `volt`, `hz`, `mains`; the grid input `gridVolt` (V) and `gridHz`, V1 registers 77 and 80 of the AC200PL over Bluetooth, else null. |
 | `wake` | The wake timer, or null: `everyMinutes`, `floorPercent`, `armed`, `wakeAt`, `disarmOwed`, `error`. |
 | `dtekWatcher` | The DTEK module (below). |

@@ -36,10 +36,22 @@ internal sealed class PowerModeAdapter(StationConfig config, IProcessRunner runn
     public static IReadOnlyList<string> EmergencyArgs { get; } = ["on", "-Source", "station"];
     public static IReadOnlyList<string> LiftArgs { get; } = ["off", "-Source", "station"];
 
+    /// <summary>
+    /// The flag's level word (ok, low, critical, hibernating). From the warning on the flag says hibernating: the hook's
+    /// "the PC hibernates at N %: save now" is the warning, and the flag format stays as installed switches read it.
+    /// </summary>
+    public static string FlagLevel(Level level) => level switch
+    {
+        Level.Low => "low",
+        Level.Critical => "critical",
+        Level.Warning => "hibernating",
+        _ => "ok",
+    };
+
     public static IReadOnlyList<string> BatteryArgs(BatteryReport b, double hibernateAt)
     {
         var inv = CultureInfo.InvariantCulture;
-        return ["battery", "-Soc", b.Soc.ToString("0.##", inv), "-Level", b.Level.ToString().ToLowerInvariant(),
+        return ["battery", "-Soc", b.Soc.ToString("0.##", inv), "-Level", FlagLevel(b.Level),
             "-Mains", b.Mains ? "on" : "off", "-HibernateAt", hibernateAt.ToString("0.##", inv)];
     }
 

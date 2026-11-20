@@ -236,6 +236,22 @@ Levels (defaults): `emergencyAt` 20 % -> station emergency (`on`); `stopAt` 10 %
 always, manual Max included. While on battery the reading goes into the flag (`battery`) at each level change and at
 least every `batteryRefreshSec` (600 s); this write is best effort.
 
+- The level after the warning is `warning` (`/api/now`): the warning was given, the PC hibernates at `hibernateAt`.
+  The flag's word for it stays `hibernating` (the hook's `the PC hibernates at N %: save now`). A state saved by an
+  earlier version under the old name `Hibernating` loads as `warning`.
+- Levels raised by the drain. At a high drain the battery can pass the warning and `hibernateAt` within a few polls,
+  and the hibernate, which waits `hibernateAfterWarnSec` after the warning, would come far under `hibernateAt`. So each
+  poll applies the configured levels raised by the measured drain `d` (the measured rate at the current load, section
+  7; `poll` = the larger of `pollSec` and `fastPollSec`): `warnAt` at least `hibernateAt + d x (hibernateAfterWarnSec +
+  2 polls)`, `stopAt` at least the warning plus `d x 2 polls`, `emergencyAt` at least the stop plus `d x 2 polls` (one
+  poll for the ladder's own step, one as the margin; rounded up to a tenth, at most 100). The hibernate then comes at
+  the first poll its own agreement allows at or under `hibernateAt`. `hibernateAt` never moves (the fresh-reading guard
+  and the wake read it), a level never goes under its configured value, and a low drain leaves them as configured. `d`
+  is capped at 120 %/h (above what a station of this class drains at its rated output), so one wild sample raises the
+  warning by at most 10 points. No measured drain (on mains, too little data, the newest stored reading older than
+  `maxGapSec`, a failed history read, a value not finite or not above 0) = the configured levels. A raised level only
+  brings its step earlier: a reading at or under the configured level always counts toward it, so the configured
+  hibernate is never delayed. `/api/now` gives the levels in force as `effectiveThresholds`.
 - Agreement for a level = two accepted readings at least `agreeSec` (90 s) apart with no accepted reading between
   them that contradicts the level. Misses and rejected readings between them neither break nor count toward it; only
   a gap reset does. An accepted reading whose mains state is unknown is not on battery: it breaks every level's
@@ -277,7 +293,8 @@ least every `batteryRefreshSec` (600 s); this write is best effort.
 ## 7. Battery time
 
 The hours of battery shown (`hoursLeft`, to empty; the DTEK module's battery time, to `hibernateAt`) inform only:
-battery levels and hibernate act on SOC thresholds alone and never read the estimate.
+battery levels and hibernate never read the estimate. The levels read one number beside it, the measured rate at the
+current load, and only to rise (section 6).
 
 - Measured rate: the SOC drop over the trailing run of accepted readings off mains within `rateWindowMin` (60). The
   run ends at a reading on mains, a reading without SOC or a gap over `maxGapSec`; the span runs from the run's first
