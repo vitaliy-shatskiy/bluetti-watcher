@@ -22,13 +22,11 @@ internal sealed class TrayHost : ITrayView, IDisposable
     private const uint CloseMsg = WM_APP + 4;
     private const uint IconId = 1;
     private const string ClassName = "BluettiWatcherTray";
-    private static readonly TraySnapshot Starting = new(null, TrayPower.Unknown, null, null, "starting", Decision.ManualMode.Auto, null, null, true, false);
+    private static readonly TraySnapshot Starting = new(null, TrayPower.Unknown, null, null, "starting", null, null, true, false);
 
     private readonly ITrayModes _modes;
     private readonly Uri _panel;
     private readonly TimeZoneInfo _zone;
-    /// <summary>The page's language, read at each tooltip and menu: a switch on the page shows at the next poll.</summary>
-    private readonly Func<TrayWords> _words;
     private readonly Action<string> _log;
     private readonly Thread _thread;
     private readonly ManualResetEventSlim _ready = new();
@@ -49,12 +47,11 @@ internal sealed class TrayHost : ITrayView, IDisposable
     private string _shownTip = "";
     private TraySnapshot _shown = Starting;
 
-    private TrayHost(ITrayModes modes, Uri panel, TimeZoneInfo zone, Func<TrayWords> words, Action<string> log)
+    private TrayHost(ITrayModes modes, Uri panel, TimeZoneInfo zone, Action<string> log)
     {
         _modes = modes;
         _panel = panel;
         _zone = zone;
-        _words = words;
         _log = log;
         _sender = new NoticeSender(Toasts.Registered, n => Toasts.Show(n, panel), Balloon, log);
         _thread = new Thread(Run) { IsBackground = true, Name = "tray" };
@@ -62,10 +59,10 @@ internal sealed class TrayHost : ITrayView, IDisposable
     }
 
     /// <summary>Starts the tray thread; null (logged) when its window could not be made.</summary>
-    public static TrayHost? Start(ITrayModes modes, Uri panel, TimeZoneInfo zone, Func<TrayWords> words, Action<string> log)
+    public static TrayHost? Start(ITrayModes modes, Uri panel, TimeZoneInfo zone, Action<string> log)
     {
         ArgumentNullException.ThrowIfNull(log);
-        TrayHost? host = new TrayHost(modes, panel, zone, words, log);
+        TrayHost? host = new TrayHost(modes, panel, zone, log);
         try
         {
             host._thread.Start();
@@ -213,7 +210,7 @@ internal sealed class TrayHost : ITrayView, IDisposable
     {
         var key = TrayIconRenderer.Key(_shown, IconSize());
         if (key != _shownKey) SwapIcon(key);
-        _shownTip = TrayText.Tooltip(_shown, _zone, _words());
+        _shownTip = TrayText.Tooltip(_shown, _zone);
         var d = Data(NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP);
         d.uCallbackMessage = CallbackMsg;
         d.hIcon = _icon;
@@ -244,7 +241,7 @@ internal sealed class TrayHost : ITrayView, IDisposable
             if (SwapIcon(key)) flags |= NIF_ICON;
             else old = 0;
         }
-        string tip = TrayText.Tooltip(s, _zone, _words());
+        string tip = TrayText.Tooltip(s, _zone);
         if (!string.Equals(tip, _shownTip, StringComparison.Ordinal)) flags |= NIF_TIP | NIF_SHOWTIP;
         if (flags == 0) return;
         var d = Data(flags);
@@ -318,7 +315,7 @@ internal sealed class TrayHost : ITrayView, IDisposable
     private void ShowMenu(int x, int y)
     {
         var modes = _modes.Modes;
-        var items = TrayMenu.Build(modes, _modes.Current, _words());
+        var items = TrayMenu.Build(modes, _modes.Current);
         nint menu = CreatePopupMenu();
         if (menu == 0) return;
         int id;

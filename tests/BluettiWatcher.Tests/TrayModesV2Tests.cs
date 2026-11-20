@@ -54,14 +54,14 @@ public sealed class TrayModesV2Tests : IDisposable
 
         Assert.Equal(["fault:F7", "fault:F8", "warning:W1", "temperature"], list.Select(a => a.Code));
         Assert.Equal(StationAlarmKind.OverTemperature, list[^1].Kind);
-        Assert.Equal("The station is above its temperature limit (63 °C).", TrayNotices.FromAlarm(list[^1], TrayWords.En).Text);
+        Assert.Contains("63 °C", list[^1].Text, StringComparison.Ordinal);
         Assert.Empty(StationAlarm.ListOf(new StationAlarmState([], [], Hot: false, TempMax: 30)));
     }
 
     [Fact]
     public void FromEvent_ModeChanged_IsAModeChangeNotice()
     {
-        var n = TrayNotices.FromEvent("mode-changed", "eco (rule 1: mains off for 300 s)", 50, TrayWords.En);
+        var n = TrayNotices.FromEvent("mode-changed", "eco (rule 1: mains off for 300 s)", 50);
         Assert.NotNull(n);
         Assert.Equal(NotificationKind.ModeChanges, n.Kind);
     }

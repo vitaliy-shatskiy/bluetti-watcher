@@ -51,7 +51,7 @@ public sealed partial class PageI18nTests
             .Concat(ChosenKey().Matches(page).SelectMany(m => new[] { m.Groups[1].Value, m.Groups[2].Value }))
             .Concat(MarkupKey().Matches(page).Select(m => m.Groups[1].Value))
             .ToHashSet(StringComparer.Ordinal);
-        Assert.Contains("leftFor", used);   // the reader sees the script's calls
+        Assert.Contains("fromMeasured", used);   // the reader sees the script's calls
         Assert.Contains("modeAutoTip", used);    // and the markup's attributes
         Assert.Empty(used.Where(k => !en.Contains(k)).Order());
         Assert.Empty(used.Where(k => !uk.Contains(k)).Order());
@@ -118,8 +118,8 @@ public sealed partial class PageI18nTests
 
     // The labels of the DTEK and cycles rows (a 150 px column) and of the load statistics (110 px), in both languages.
     [Theory]
-    [InlineData(150, "dkUpdated,dkCollected,dkQueueBy,dkAgainst,plannedReturn,battery,expectedReturn,dkPlanChanges,dkReturns,siteSays,dkSource,dkDataset,dkSite")]
-    [InlineData(110, "statBase,statTypical,statAvg,statPeak,statEnergy")]
+    [InlineData(150, "queue,schedule,sources,nextOutage,plannedReturn,battery,expectedReturn,plan,pastCuts,siteSays,cycBase,cycCount,cycAvgLen,cycAvgExtra,cycShare,cycNow")]
+    [InlineData(110, "statBase,statTypical,statAvg,statPeak,statOnTop,statEnergy")]
     public void Row_labels_fit_their_column_in_both_languages(int column, string keys)
     {
         ArgumentNullException.ThrowIfNull(keys);
@@ -333,9 +333,10 @@ public sealed partial class PageI18nTests
         Assert.Equal("True", Result("Europe/Istanbul", "winter"));  // +3 all year: equal to Kyiv in summer only
         Assert.Equal("False", Result("Europe/Istanbul", "summer"));
         Assert.Equal("True", Result("Asia/Tokyo", "oldBrowser"));
-        // the schedule list's date caption carries the tag, and only through that check
+        // the schedule rows carry the tag, and only through that check
         Assert.Contains("kyivOffsetDiffers(Date.now()) ?", page, StringComparison.Ordinal);
-        Assert.Contains("<div class=\"dkcap\"><span>${esc(day)}</span>${kyivTag}</div>", page, StringComparison.Ordinal);
+        Assert.Contains("from(w.today) + kyivTag", page, StringComparison.Ordinal);
+        Assert.Contains("from(w.tomorrow) + kyivTag", page, StringComparison.Ordinal);
     }
 
     // Intl: a formatter is built once per zone and name; an unknown zone gives null, never a throw
@@ -428,7 +429,7 @@ public sealed partial class PageI18nTests
     {
         string page = Page();
         Assert.Contains("const qd = (q) => String(q ?? '').split('+').map((x) => x.replace(/^GPV(?=\\d)/, '')).join(' + ');", page, StringComparison.Ordinal);
-        foreach (string use in new[] { "`${t('queue')} ${qd(w.queue)}`", "w.queues.map(qd)", "esc(qd(q.queue))", "val(qd(a))", "esc(qd((i.queues || []).join('+')))" })
+        foreach (string use in new[] { "esc(qd(w.queue))", "w.queues.map(qd)", "esc(qd(w.nextQueue))", "(set ? day : `${qd(q.queue)} · ${day}`)", "row(label(w.today)", "row(label(w.tomorrow)", "val(qd(a))", "qd(i.queues.join('+'))" })
             Assert.Contains(use, page, StringComparison.Ordinal);
         Assert.DoesNotContain("esc(w.queue)", page, StringComparison.Ordinal);
     }
@@ -436,20 +437,36 @@ public sealed partial class PageI18nTests
     [GeneratedRegex(@"const qd = \(q\) => String\(q \?\? ''\)\.split\('(.)'\)\.map\(\(x\) => x\.replace\(/(.+?)/, ''\)\)\.join\('(.+?)'\);")]
     private static partial Regex PageQd();
 
-    // A queue or a set of queues as the schedule card names it (heading, per-queue caption, a set's list rows), by the page's own qd;
-    // the day list's caption is the date alone, so no queue label shares a fixed column with it.
+    [GeneratedRegex(@"const set = String\(q\.queue\)\.includes\('(.)'\);\s*const label = \(day\) => \(set \? day : `\$\{qd\(q\.queue\)\}(.+?)\$\{day\}`\);")]
+    private static partial Regex PageLabel();
+
+    /// <summary>The window-row label as the page builds it: its own qd (split, prefix pattern, join) and label code, read from station.html.</summary>
+    private static string WindowLabel(string page, string queue, string day)
+    {
+        var qd = PageQd().Match(page);
+        var label = PageLabel().Match(page);
+        Assert.True(qd.Success && label.Success, "the page's qd or window-row label is not where the test reads it");
+        string shown = string.Join(qd.Groups[3].Value, queue.Split(qd.Groups[1].Value[0]).Select(x => Regex.Replace(x, qd.Groups[2].Value, "")));
+        return queue.Contains(label.Groups[1].Value[0], StringComparison.Ordinal) ? day : shown + label.Groups[2].Value + day;
+    }
+
+    // The rows a queue or a set of queues adds (150 px column), built by the page's own code. A set's rows carry the day alone.
     [Theory]
-    [InlineData("GPV6.2", "6.2")]
-    [InlineData("GPV12.12", "12.12")]
-    [InlineData("GPV4.1+GPV6.2", "4.1 + 6.2")]
-    [InlineData("GPV12.12+GPV12.12+GPV12.12+GPV12.12", "12.12 + 12.12 + 12.12 + 12.12")]
-    public void Queue_names_drop_the_GPV_prefix_and_join_a_set(string queue, string shown)
+    [InlineData("GPV6.2", "6.2 · 08.10.2026")]
+    [InlineData("GPV12.12", "12.12 · 08.10.2026")]
+    [InlineData("GPV4.1+GPV6.2", "08.10.2026")]
+    [InlineData("GPV12.12+GPV12.12+GPV12.12+GPV12.12", "08.10.2026")]
+    public void Window_row_labels_of_a_queue_or_a_set_fit_their_column(string queue, string label)
     {
         ArgumentNullException.ThrowIfNull(queue);
-        ArgumentNullException.ThrowIfNull(shown);
-        var qd = PageQd().Match(Page());
-        Assert.True(qd.Success, "the page's qd is not where the test reads it");
-        Assert.Equal(shown, string.Join(qd.Groups[3].Value, queue.Split(qd.Groups[1].Value[0]).Select(x => Regex.Replace(x, qd.Groups[2].Value, ""))));
+        ArgumentNullException.ThrowIfNull(label);
+        string page = Page();
+        Assert.Equal(label, WindowLabel(page, queue, "08.10.2026"));
+        Assert.True(LabelWidth(label) <= 148, $"{label} ({LabelWidth(label):0} px)");
+        Assert.True(LabelWidth(WindowLabel(page, queue, "28.12.2026")) <= 148);
+        // the page's qd of a set, as the queue row shows it
+        var qd = PageQd().Match(page);
+        Assert.Equal("4.1 + 6.2", string.Join(qd.Groups[3].Value, "GPV4.1+GPV6.2".Split(qd.Groups[1].Value[0]).Select(x => Regex.Replace(x, qd.Groups[2].Value, ""))));
     }
 
     [Fact]
@@ -463,7 +480,7 @@ public sealed partial class PageI18nTests
         // draw() cannot run here (it needs a DOM), so the helper is tested with the arguments draw passes: all rows, the range start, NOW and the line's own GAP
         Assert.Contains("const gaps = gapsOf(rows, t0, NOW, GAP);", page, StringComparison.Ordinal);
         Assert.Contains("const GAP = 10 * 60000;", page, StringComparison.Ordinal);
-        Assert.Contains("const runs = runsOf(list, GAP);", page, StringComparison.Ordinal);   // the line breaks on "> GAP" (runsOf); the band rule is the same
+        Assert.Contains("r.t - list[i - 1].t > GAP ? 'M' : 'L'", page, StringComparison.Ordinal);   // the line breaks on "> GAP"; the band rule is the same
         string script = $$"""
             const src = {{System.Text.Json.JsonSerializer.Serialize(FunctionText(page, "gapsOf"))}};
             const gapsOf = new Function(src + '; return gapsOf;')();
@@ -516,43 +533,6 @@ public sealed partial class PageI18nTests
     }
 
     [Fact]
-    public void The_chart_line_breaks_exactly_where_the_gap_finder_puts_a_band()
-    {
-        string page = Page().Replace("\r\n", "\n", StringComparison.Ordinal);
-        string script = $$"""
-            const runsOf = new Function({{System.Text.Json.JsonSerializer.Serialize(FunctionText(page, "runsOf"))}} + '; return runsOf;')();
-            const M = 60000, GAP = 10 * M;
-            const lens = (mins) => runsOf(mins.map((m) => ({ t: m * M })), GAP).map((r) => r.map((x) => x.t / M).join(','));
-            console.log(JSON.stringify({
-              none: lens([]),
-              atGap: lens([0, 1, 2, 12, 13]),        // 10 min exactly: one line
-              overGap: lens([0, 1, 2, 13, 14]),      // 11 min: two lines
-              lone: lens([0, 1, 20, 40, 41]),        // the reading at 20 stands alone between two holes
-            }));
-            """;
-        using var doc = System.Text.Json.JsonDocument.Parse(RunScript(script));
-        string J(string name) => doc.RootElement.GetProperty(name).GetRawText();
-        Assert.Equal("[]", J("none"));
-        Assert.Equal("[\"0,1,2,12,13\"]", J("atGap"));
-        Assert.Equal("[\"0,1,2\",\"13,14\"]", J("overGap"));
-        Assert.Equal("[\"0,1\",\"20\",\"40,41\"]", J("lone"));
-    }
-
-    [Fact]
-    public void A_stored_range_is_one_of_the_range_buttons_and_the_dropped_4_hours_becomes_8()
-    {
-        string page = Page().Replace("\r\n", "\n", StringComparison.Ordinal);
-        int seg = page.IndexOf("id=\"rangeSeg\"", StringComparison.Ordinal), segEnd = page.IndexOf("</div>", seg, StringComparison.Ordinal);
-        var buttons = Regex.Matches(page[seg..segEnd], "data-h=\"(\\d+)\"").Select(m => m.Groups[1].Value);
-        Assert.Equal("1,8,24,168,720", string.Join(',', buttons));
-        string script = $$"""
-            const rangeOf = new Function({{System.Text.Json.JsonSerializer.Serialize(FunctionText(page, "rangeOf"))}} + '; return rangeOf;')();
-            console.log([null, '', '4', '1', '8', '24', '168', '720', 'abc', '12'].map(rangeOf).join(','));
-            """;
-        Assert.Equal("8,8,8,1,8,24,168,720,8,8", RunScript(script));
-    }
-
-    [Fact]
     public void The_markup_holds_no_text_of_its_own()
     {
         string page = Page();
@@ -560,62 +540,5 @@ public sealed partial class PageI18nTests
         Assert.True(a >= 0 && b > a);
         var texts = TextNode().Matches(page[a..(b + 1)]).Select(m => m.Groups[1].Value.Trim()).Where(s => s.Any(char.IsLetter)).ToList();
         Assert.Empty(texts);
-    }
-
-    /// <summary>The page's own renderDtek at 23:35 Kyiv inside a planned 20:30-01:30 outage, mains off: the HTML of each element it wrote.</summary>
-    private static Dictionary<string, string> RenderDtek(string lang)
-    {
-        string page = Page().Replace("\r\n", "\n", StringComparison.Ordinal);
-        string Line(string pattern)
-        {
-            var m = Regex.Match(page, pattern, RegexOptions.Multiline);
-            Assert.True(m.Success, $"{pattern} is not where the test reads it");
-            return m.Value;
-        }
-        int i18nAt = page.IndexOf("const I18N = {", StringComparison.Ordinal);
-        string i18n = page[i18nAt..(page.IndexOf("\n};", i18nAt, StringComparison.Ordinal) + 3)];
-        const string w = """
-            { state: 'ok', note: '', notes: [], source: 'dataset', update: '20.11.2026 21:59', collectedAt: '2026-11-20T22:26:19+02:00',
-              datasetState: 'ok', siteState: 'off', queues: ['GPV1.1'], queue: 'GPV1.1', queueSource: 'config', queueOrigin: 'manual', queueContradictions: 0,
-              queueSet: ['GPV1.1'], nextStart: '2026-11-20T20:30:00+02:00', nextEnd: '2026-11-21T01:30:00+02:00', nextQueue: 'GPV1.1', nextQueues: ['GPV1.1'],
-              return: '2026-11-21T01:30:00+02:00', batteryLasts: 'yes', overdue: false, plannedReturn: '2026-11-21T01:30:00+02:00', planChanges: 0,
-              lateBackMin: 3, lateCuts: 40, today: '20.11.2026', tomorrow: '21.11.2026',
-              windows: [{ queue: 'GPV1.1', today: '11:00-16:00, 20:30-24:00', tomorrow: '00:00-01:30', intervals: [
-                { start: '2026-11-20T11:00:00+02:00', end: '2026-11-20T16:00:00+02:00', queues: ['GPV1.1'] },
-                { start: '2026-11-20T20:30:00+02:00', end: '2026-11-21T01:30:00+02:00', queues: ['GPV1.1'] }] }] }
-            """;
-        string script = string.Join("\n",
-            "var els = {}; function $(id) { return els[id] || (els[id] = { hidden: false, innerHTML: '', textContent: '', className: '', lastChild: {} }); }",
-            "var __now = Date.parse('2026-11-20T23:35:00+02:00'); Date.now = function () { return __now; };",
-            "var dtekDay = 'today'; function show() {}",
-            i18n, $"let lang = '{lang}';", Line(@"^function t\(key, p\) \{.*\}$"),
-            Line(@"^const has = .*;$"), Line(@"^const val = .*;$"), Line(@"^function noteText\(n\) \{.*\}$"), Line(@"^const qd = .*;$"),
-            Line(@"^const notesText = .*;$"), Line(@"^const pad = .*;$"),
-            FunctionText(page, "dtf"), FunctionText(page, "kyivZone"), FunctionText(page, "kyivOffsetDiffers"), FunctionText(page, "factMinutes"),
-            FunctionText(page, "renderDtek"),
-            $"renderDtek({w}, {{}}, false, [{{ at: '2026-11-20T20:20:00+02:00', soc: 90, mains: true }}, {{ at: '2026-11-20T20:31:00+02:00', soc: 89, mains: false }}]);",
-            "const out = {}; for (const k of Object.keys(els)) out[k] = String(els[k].innerHTML) + String(els[k].textContent); console.log(JSON.stringify(out));");
-        using var doc = System.Text.Json.JsonDocument.Parse(RunScript(script, "FLE Standard Time"));
-        return doc.RootElement.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetString() ?? "", StringComparer.Ordinal);
-    }
-
-    [Theory]
-    [InlineData("uk", "Відключення за графіком до 01:30", "Батареї вистачить", "Відключення")]
-    [InlineData("en", "Scheduled outage until 01:30", "Battery will last", "Outage")]
-    public void RenderDtek_OutageAcrossMidnight_ListsTheWholeIntervalAndSaysTheBatteryLasts(string lang, string status, string tag, string kind)
-    {
-        var els = RenderDtek(lang);
-        string all = string.Concat(els.Values);
-        Assert.Contains($">{status}<", els["dtekPill"], StringComparison.Ordinal);
-        Assert.Contains($">{tag}<", els["dtekPill"], StringComparison.Ordinal);
-        // the list under the strip: one row per interval, the range as text and what it is, the midnight crossing whole
-        Assert.Matches($"<li[^>]*><span[^>]*>20:30–01:30</span><span[^>]*>{kind}</span>", els["dtekGrid"]);
-        Assert.Contains(">11:00–16:00<", els["dtekGrid"], StringComparison.Ordinal);
-        Assert.Contains(">20.11.2026<", els["dtekGrid"], StringComparison.Ordinal);                // the list caption carries the date
-        Assert.DoesNotContain("20.11<", els["dtekGrid"], StringComparison.Ordinal);               // the day switch does not
-        Assert.DoesNotContain("·", all, StringComparison.Ordinal);
-        Assert.DoesNotContain("→", all, StringComparison.Ordinal);
-        Assert.DoesNotContain("11:00-16:00", all, StringComparison.Ordinal);                     // ranges take the en dash
-        Assert.DoesNotContain("class=\"dgrid\"", all, StringComparison.Ordinal);                 // no hour tiles
     }
 }

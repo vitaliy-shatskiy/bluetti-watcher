@@ -7,7 +7,7 @@ namespace BluettiWatcher.Tray;
 /// What the tray shows, built after each poll and each mode change. <see cref="Cut"/> is the decision's confirmed cut (the
 /// mains notices follow it); <see cref="Power"/> is the last fresh reading's input (the icon's colour follows it).
 /// </summary>
-internal sealed record TraySnapshot(double? Soc, TrayPower Power, double? InWatts, double? OutWatts, string Mode, ManualMode Choice,
+internal sealed record TraySnapshot(double? Soc, TrayPower Power, double? InWatts, double? OutWatts, string Mode,
     double? HoursLeft, DateTimeOffset? ReadAt, bool Stale, bool Cut)
 {
     /// <summary>
@@ -20,7 +20,8 @@ internal sealed record TraySnapshot(double? Soc, TrayPower Power, double? InWatt
         ArgumentNullException.ThrowIfNull(state);
         bool stale = last is null || lastAt is null || (now - lastAt.Value).TotalSeconds > staleAfterSec;
         var power = stale ? TrayPower.Unknown : last!.InAc > 0 ? TrayPower.Mains : TrayPower.Battery;   // stale is false only with a reading
-        return new TraySnapshot(last?.Soc, power, Sum(last?.InAc, last?.InDc), Sum(last?.OutAc, last?.OutDc), flag?.Mode ?? "unknown", state.Manual,
+        string mode = $"{flag?.Mode ?? "unknown"} · {state.Manual}";
+        return new TraySnapshot(last?.Soc, power, Sum(last?.InAc, last?.InDc), Sum(last?.OutAc, last?.OutDc), mode,
             power == TrayPower.Battery ? hoursLeft : null, lastAt, stale, state.Cut || state.CutBeforeGap);
     }
 

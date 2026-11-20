@@ -537,34 +537,6 @@ public sealed class ReadingSourceTests : IDisposable
     }
 
     [Fact]
-    public async Task Api_SignInWithNoBrowserAnswer_TimesOutAndTheNextStartsAnew()
-    {
-        using var w = new World(this, wait: TimeSpan.FromMilliseconds(100));
-        string first = JsonElement.Parse((await Send(w.Api, Req("POST", "/api/cloud/sign-in"))).Body).GetProperty("authorizeUrl").GetString()!;
-        var state = await Poll(w.Api, s => s != "waiting");
-        Assert.Equal("timed-out", state.GetProperty("signIn").GetProperty("state").GetString());
-        // the catcher was released: a new start opens a new one, never the old address
-        var (status, body) = await Send(w.Api, Req("POST", "/api/cloud/sign-in"));
-        Assert.Equal(202, status);
-        Assert.NotEqual(first, JsonElement.Parse(body).GetProperty("authorizeUrl").GetString());
-        Assert.False(File.Exists(TokenPath));
-    }
-
-    [Fact]
-    public async Task Api_SignInCancel_EndsTheWaitAndIsGuarded()
-    {
-        using var w = new World(this);
-        string first = JsonElement.Parse((await Send(w.Api, Req("POST", "/api/cloud/sign-in"))).Body).GetProperty("authorizeUrl").GetString()!;
-        Assert.Equal(403, (await Send(w.Api, Req("POST", "/api/cloud/sign-in/cancel", guarded: false))).Status);
-        Assert.Equal(405, (await Send(w.Api, Req("GET", "/api/cloud/sign-in/cancel"))).Status);
-        var (status, body) = await Send(w.Api, Req("POST", "/api/cloud/sign-in/cancel"));
-        Assert.Equal(200, status);
-        Assert.Equal("cancelled", JsonElement.Parse(body).GetProperty("signIn").GetProperty("state").GetString());
-        Assert.Equal("cancelled", JsonElement.Parse((await Send(w.Api, Req("GET", "/api/cloud"))).Body).GetProperty("signIn").GetProperty("state").GetString());
-        Assert.NotEqual(first, JsonElement.Parse((await Send(w.Api, Req("POST", "/api/cloud/sign-in"))).Body).GetProperty("authorizeUrl").GetString());
-    }
-
-    [Fact]
     public async Task Api_Cloud_SaysUntilWhenTheTokenRuns()
     {
         Token();

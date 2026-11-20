@@ -13,7 +13,7 @@ public sealed class TrayMenuTests
     [Fact]
     public void The_menu_lists_auto_the_modes_then_panel_and_exit()
     {
-        var items = TrayMenu.Build(Modes, null, TrayWords.En);
+        var items = TrayMenu.Build(Modes, null);
         Assert.Equal(["Auto", "Eco", "Max", "", "Open panel", "Exit tray"], items.Select(i => i.Text));
         Assert.Equal([true, true, true, false, false, false], items.Select(i => i.Radio));
         Assert.True(items[3].Separator);
@@ -27,18 +27,18 @@ public sealed class TrayMenuTests
     [InlineData("max", "Max")]
     public void Exactly_the_current_choice_is_checked(string? current, string text)
     {
-        var items = TrayMenu.Build(Modes, current, TrayWords.En);
+        var items = TrayMenu.Build(Modes, current);
         Assert.Equal(text, Assert.Single(items, i => i.Checked).Text);
     }
 
     [Fact]
     public void A_current_mode_no_longer_listed_checks_nothing() =>
-        Assert.DoesNotContain(TrayMenu.Build(Modes, "gone", TrayWords.En), i => i.Checked);
+        Assert.DoesNotContain(TrayMenu.Build(Modes, "gone"), i => i.Checked);
 
     [Fact]
     public void Each_id_resolves_to_its_command()
     {
-        var items = TrayMenu.Build(Modes, null, TrayWords.En);
+        var items = TrayMenu.Build(Modes, null);
         Assert.Equal((TrayCommand.SelectMode, (string?)null), TrayMenu.Resolve(items[0].Id, Modes));
         Assert.Equal((TrayCommand.SelectMode, "eco"), TrayMenu.Resolve(items[1].Id, Modes));
         Assert.Equal((TrayCommand.SelectMode, "max"), TrayMenu.Resolve(items[2].Id, Modes));

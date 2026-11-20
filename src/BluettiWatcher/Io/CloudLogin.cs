@@ -21,9 +21,6 @@ internal sealed class CloudLogin(StationConfig config, HttpMessageHandler handle
 
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
 
-    /// <summary>The last run ended because the browser did not come back within <see cref="Wait"/>.</summary>
-    public bool TimedOut { get; private set; }
-
     internal static Uri BuildAuthorizeUrl(string redirectUri, string state) => new(
         $"{AuthorizeUrl}?response_type=code&client_id={Uri.EscapeDataString(BluettiCloudReader.ClientId)}"
         + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}&state={Uri.EscapeDataString(state)}");
@@ -92,7 +89,6 @@ internal sealed class CloudLogin(StationConfig config, HttpMessageHandler handle
         }
         catch (TimeoutException)
         {
-            TimedOut = true;
             print(string.Create(CultureInfo.InvariantCulture, $"login failed: no answer from the browser within {Wait.TotalSeconds:0} s"));
             return 1;
         }
