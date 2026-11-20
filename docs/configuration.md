@@ -216,7 +216,23 @@ Hibernation off: create an empty file `no-hibernate` in the data directory. It i
 | `lockWaitSec` | int | 30 | 0-600: a start waits this long for an older instance to release the port's lock. |
 | `dataDir` | string | `%LOCALAPPDATA%\bluetti-watcher` | Database, log, config and kill switch (also `--data-dir`). |
 | `rawRetentionDays` | int | 30 | Raw minute rows kept this long, then folded into 5-minute aggregates. |
+| `tray` | bool | true | The notification-area icon and the Windows notifications ([design.md](design.md) §12); `false` or `--no-tray` = neither. Shown only in an interactive session. Which notifications show lives in `notifications.json` (below). |
 | `trimWorkingSet` | bool | true | After each poll the process's pages leave its working set, so the Task Manager "Memory" column (private working set) drops under 1 MB after each poll (an open page raises it again until the next one). Cosmetic: commit (private bytes) does not change, and the pages fault back in at the next poll (from RAM while Windows keeps them on its standby list). `false` keeps them. |
+
+## Notifications (`notifications.json`)
+
+A file of its own in the data directory, written by the service when a switch changes (`PUT /api/settings/notifications`,
+[api.md](api.md)); every group is on while the file is missing. An unreadable file is named in `service.log` and every
+group stays on until the next change rewrites it.
+
+| Key | Default | Notifications |
+|---|---|---|
+| `mains` | true | Mains lost, mains back (the confirmed cut, not a single reading). |
+| `modeChanges` | true | Eco switched on by the service, modes lifted when mains is back, a page choice dropped. |
+| `lowBattery` | true | Battery emergency, stop, the hibernate warning. |
+| `failures` | true | A power-mode command or action that failed, a mode choice refused. |
+| `faults` | true | Station faults and warnings, the grid voltage alert. |
+| `overTemperature` | true | The station reports over-temperature. |
 
 ## DTEK module (`dtekWatcher`)
 
@@ -237,7 +253,7 @@ Off by default; it makes no request while off. `null` = off.
 ## Command line
 
 `BluettiWatcher.exe [--config <file>] [--data-dir <dir>] [--port <n>] [--flag <file>] [--power-mode <power-mode.ps1>]
-[--dry-run]` - flags override config.json. `--flag` sets `powerMode.flagPath`,
+[--dry-run] [--no-tray]` - flags override config.json; `--no-tray` sets `tray` to false. `--flag` sets `powerMode.flagPath`,
 `--power-mode` sets `powerMode.script`.
 
 `BluettiWatcher.exe --cloud-login [--data-dir <dir>]` - signs in to the BLUETTI cloud in the browser and writes the

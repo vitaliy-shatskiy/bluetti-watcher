@@ -29,6 +29,7 @@ internal static class Cli
           --flag <file>          power-mode flag file
           --power-mode <script>  path of power-mode.ps1
           --dry-run              decide and log, never hibernate
+          --no-tray              no notification-area icon and no Windows notifications
           --cloud-login          sign in to the BLUETTI cloud (opens the browser, prints no token)
           --version              print the version
           -h, --help, /?         print this text

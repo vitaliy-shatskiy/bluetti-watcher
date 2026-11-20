@@ -189,7 +189,11 @@ internal sealed class StationStore : IDisposable
             cmd.Parameters.AddWithValue("$d", detail);
             cmd.ExecuteNonQuery();
         }
+        EventAdded?.Invoke(kind, detail);
     }
+
+    /// <summary>Called with each event's kind and detail once it is stored (the tray's notifications); it must not block or throw.</summary>
+    public Action<string, string>? EventAdded { get; set; }
 
     public string? GetMeta(string key)
     {

@@ -7,6 +7,7 @@ using BluettiWatcher.Http;
 using BluettiWatcher.Io;
 using BluettiWatcher.Io.Ble;
 using BluettiWatcher.Storage;
+using BluettiWatcher.Tray;
 
 // Command line: see Cli.Usage (--help). The service prints nothing (it logs to service.log); every other command prints
 // into the terminal it was started from.
@@ -91,12 +92,28 @@ using var stop = new CancellationTokenSource();
 // The page's sign-in: the --cloud-login flow inside the service, its catcher on a port the OS assigns; the token is written through the reader's lock.
 using var signInHttp = new SocketsHttpHandler();
 using var account = new CloudAccount(config, cloud, signInHttp, time, Log, stop.Token);
+// Which notifications show: notifications.json in the data directory, edited through /api/settings/notifications.
+var notificationSettings = new NotificationSettingsStore(Path.Combine(config.DataDir, "notifications.json"), Log);
 var api = new StationApi(config, service, store, time, started, dtek, Log, () => bluetooth.StationEncrypted, () => bluetooth.BluetoothStalled,
         () =>
         {
             using var planSwitch = new BluettiWatcher.PowerMode.PowerModeSwitch([.. BluettiWatcher.PowerMode.PowerModeSwitch.ProcessEnvironment(), .. config.PowerModeEnvironment], TextWriter.Null);
             return planSwitch.ActivePlan();
-        }, account, bluetooth.StationBlocks, modes is null ? null : new ModesApi(config, modes));
+        }, account, bluetooth.StationBlocks, modes is null ? null : new ModesApi(config, modes), notificationSettings);
+// The notification-area icon and the notifications: a thread of this process, only in an interactive session (README, Tray).
+using var trayHost = config.Tray && Environment.UserInteractive
+    ? TrayHost.Start(new ManualTrayModes(service), new Uri($"http://127.0.0.1:{config.Port}/"), time.LocalTimeZone, Log)
+    : null;
+var tray = trayHost is null ? null : new TrayController(trayHost, notificationSettings);
+if (tray is not null) store.EventAdded = tray.OnEvent;
+void ShowTray()
+{
+    if (tray is null) return;
+    var at = time.GetLocalNow();
+    var last = service.LastAccepted;
+    tray.Update(TraySnapshot.From(last, service.LastAcceptedAt, service.State, service.LastFlag, api.Runtime(last, at).HoursLeft, at, config.MaxGapSec));
+}
+ShowTray();
 using var http = new MiniHttpServer(IPAddress.Loopback, config.Port, api.HandleAsync, Log);
 try { http.Start(); }
 catch (SocketException e) { Log($"DID NOT RUN - 127.0.0.1:{config.Port} is taken ({e.SocketErrorCode})"); return 2; }
@@ -144,6 +161,9 @@ try
         // A page choice saved by POST /api/mode runs here, with the power-mode timeout, never the request's.
         try { await service.ApplyPendingAsync(stop.Token); }
         catch (Exception e) when (e is not OperationCanceledException) { Log($"mode change failed: {e.GetType().Name}: {e.Message}"); }
+        // After each poll and each page or tray choice: the icon is redrawn only when what it shows changed.
+        try { ShowTray(); }
+        catch (Exception e) when (e is not OperationCanceledException) { Log($"tray update failed: {e.GetType().Name}: {e.Message}"); }
         if (time.GetElapsedTime(lastCompact).TotalHours >= 1) { service.Compact(); lastCompact = time.GetTimestamp(); }
         await service.WaitForWorkAsync(schedule.Wait, stop.Token);
     }
