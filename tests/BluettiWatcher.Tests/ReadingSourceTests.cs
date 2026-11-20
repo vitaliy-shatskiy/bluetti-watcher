@@ -18,6 +18,7 @@ public sealed class ReadingSourceTests : IDisposable
     private const string NewRefresh = "REFRESH-NEW-77e3";
     private const string Devices = "https://gw.bluettipower.com/api/bluiotdata/ha/v2/devices";
     private const string TokenUrl = "https://sso.bluettipower.com/oauth2/token";
+    private const string LastAlive = "https://gw.bluettipower.com/api/bluiotdata/realtime/v1/getDeviceLastAlive";
     private const int Port = 18940;
 
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "bluetti-src-test-" + Guid.NewGuid().ToString("N"));
@@ -42,7 +43,7 @@ public sealed class ReadingSourceTests : IDisposable
                     foreach (var secret in new[] { Access, Refresh, NewAccess, NewRefresh })
                         Assert.DoesNotContain(secret, line, StringComparison.Ordinal);
             foreach (var c in _http.Calls)
-                Assert.True((c.Method == HttpMethod.Get && c.Url == Devices) || (c.Method == HttpMethod.Post && c.Url == TokenUrl), $"{c.Method} {c.Url} is not allowed");
+                Assert.True((c.Method == HttpMethod.Get && c.Url == Devices) || (c.Method == HttpMethod.Post && c.Url is TokenUrl or LastAlive), $"{c.Method} {c.Url} is not allowed");
         }
         finally
         {
@@ -54,15 +55,18 @@ public sealed class ReadingSourceTests : IDisposable
 
     private void Log(string line) { lock (_log) _log.Add(line); }
 
-    private BluettiCloudReader Cloud => _cloud ??= new(_cfg, _http, _clock, Log);
+    private BluettiCloudReader Cloud => _cloud ??= new(_cfg, _http, _clock, Log) { KnownSerial = "SERIAL-1" };
 
     private string TokenPath => Path.Combine(_dir, "cloud-token.json");
 
     private void Token(string access = Access, string refresh = Refresh) =>
         File.WriteAllText(TokenPath, $$"""{"access_token":"{{access}}","refresh_token":"{{refresh}}","token_type":"bearer","expires_in":2678400,"created_at":{{T0.ToUnixTimeSeconds()}}}""");
 
-    private static string Answer(string soc = "71", string grid = "0", string acLoad = "169", string ctrlAc = "1", int msgCode = 0) =>
-        $$"""{"msgCode":{{msgCode}},"message":"OK","data":[{"sn":"SERIAL-1","online":"1","model":"AC200PL-AC200PL","stateList":[{"fnCode":"SOC","fnValue":"{{soc}}"},{"fnCode":"GridAllTotalPower","fnValue":"{{grid}}"},{"fnCode":"SetCtrlAc","fnValue":"{{ctrlAc}}"},{"fnCode":"ACLoadAllTotalPower","fnValue":"{{acLoad}}"}]}]}""";
+    /// <summary>A getDeviceLastAlive answer stamped with the test clock's local time.</summary>
+    private string Answer(string soc = "71", string grid = "0", string acLoad = "169", string ctrlAc = "1", int msgCode = 0) =>
+        $$$"""{"msgCode":{{{msgCode}}},"message":"OK","data":{"allFieldIsNull":false,"timestamp":"{{{LocalNow()}}}","batterySoc":"{{{soc}}}","powerGridIn":"{{{grid}}}","acSwitch":"{{{ctrlAc}}}","powerAcOut":"{{{acLoad}}}","powerPvIn":null,"powerDcOut":null}}""";
+
+    private string LocalNow() => TimeZoneInfo.ConvertTime(_clock.GetUtcNow(), _clock.Zone).ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
 
     // --- the setting -------------------------------------------------------------------------------------------------
 
@@ -185,7 +189,7 @@ public sealed class ReadingSourceTests : IDisposable
         Assert.Contains("not read yet", fresh.Detail, StringComparison.Ordinal);
         _http.Json("{}", HttpStatusCode.InternalServerError);
         Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
-        Assert.Equal(("error", "devices answered HTTP 500"), (Cloud.Status().State, Cloud.Status().Detail));
+        Assert.Equal(("error", "the live state answered HTTP 500"), (Cloud.Status().State, Cloud.Status().Detail));
         _http.Json(Answer());
         Assert.NotNull(await Cloud.ReadAsync(CancellationToken.None));
         Assert.Equal("ok", Cloud.Status().State);
@@ -215,7 +219,7 @@ public sealed class ReadingSourceTests : IDisposable
         Assert.Equal("sign-in-needed", status.State);
         Assert.Contains($"HTTP {(int)refused}", status.Detail, StringComparison.Ordinal);
 
-        // Every poll after it: no devices call with the dead access token, no refresh with the refused one.
+        // Every poll after it: no live-state call with the dead access token, no refresh with the refused one.
         _clock.Now = T0.AddMinutes(1);
         Assert.Null(await Cloud.ReadAsync(CancellationToken.None));
         _clock.Now = T0.AddHours(5);

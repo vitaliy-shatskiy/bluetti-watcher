@@ -72,9 +72,10 @@ internal sealed record CloudToken(string Access, string Refresh, string TokenTyp
 }
 
 /// <summary>
-/// The BLUETTI cloud as the fallback reading (design.md §4 Cloud fallback), through the API of the official Home Assistant integration.
-/// READ ONLY, FOREVER, as the Bluetooth path: the only calls are the device list (GET), the token refresh (POST) and,
-/// through <see cref="CloudHistoryReader"/>'s own allow-list, the history's power curve; no control, fulfillment or bind call exists here. No token ever reaches a log line: a failure names its kind only.
+/// The BLUETTI cloud as the fallback reading (design.md §4 Cloud fallback), with the token of the official Home Assistant integration.
+/// READ ONLY, FOREVER, as the Bluetooth path: the only calls are the device list (GET, for the serial), the live state
+/// (getDeviceLastAlive, the official app's read), the token refresh (POST) and, through <see cref="CloudHistoryReader"/>'s
+/// own allow-list, the history's power curve; no control, fulfillment or bind call exists here. No token ever reaches a log line: a failure names its kind only.
 /// </summary>
 internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandler handler, TimeProvider time, Action<string> log) : IStationReader, IDisposable
 {
@@ -82,6 +83,8 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
     // (github.com/bluetti-official/bluetti-home-assistant, custom_components/bluetti/profile/application.yaml).
     // ClientSecret is base64("HomeAssistant"). Access comes only from the user's own token (cloud-token.json, never in the repo).
     private const string DevicesUrl = "https://gw.bluettipower.com/api/bluiotdata/ha/v2/devices";
+    // The official app's live read: the device list answers every value 0 for some stations while they run (design.md §4 AC2b).
+    private const string LastAliveUrl = "https://gw.bluettipower.com/api/bluiotdata/realtime/v1/getDeviceLastAlive";
     internal const string TokenUrl = "https://sso.bluettipower.com/oauth2/token";
     internal const string AppKey = "19974C15BCCBC91B21A8BA71BF5";
     internal const string AppVer = "1.0.5";
@@ -250,14 +253,24 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
         finally { _gate.Release(); }
     }
 
+    /// <summary>
+    /// design.md §4 AC2: the live state from getDeviceLastAlive (the device list is read only while no serial is known);
+    /// no live state in it falls to the history's newest point (AC2b), said once per outage.
+    /// </summary>
     private async Task<(Reading? Reading, string Why)> ReadOnceAsync(CancellationToken ct)
     {
-        var (answer, why) = await DevicesWithTokenAsync(ct);
-        if (why == NoLiveState)
+        if (_serial is null)
         {
-            if (!_noLiveState) log($"cloud: {NoLiveState}");
+            var (_, listWhy) = await WithTokenAsync(DevicesAsync, ct);
+            if (_serial is null) return (null, listWhy.Length > 0 ? listWhy : $"no {config.Type} serial in the cloud answer");
+        }
+        string serial = _serial;
+        var (answer, why) = await WithTokenAsync((access, c) => LastAliveAsync(access, serial, c), ct);
+        if (why.StartsWith(NoLiveState, StringComparison.Ordinal))
+        {
+            if (!_noLiveState) log($"cloud: {why}");
             _noLiveState = true;
-            (answer, why) = await NewestHistoryAsync(ct);
+            (answer, why) = await NewestHistoryAsync(why, ct);
         }
         else if (answer is not null)
         {
@@ -267,8 +280,8 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
         return answer is null ? (null, why) : Stale(answer, time.GetUtcNow()) is { } stale ? (null, stale) : (answer, "");
     }
 
-    /// <summary>The device list's all-zero answer: no live state, a plain miss unless the history replaces it (design.md §4 AC2b).</summary>
-    internal const string NoLiveState = "no live state (all values zero)";
+    /// <summary>A live state that is no reading (every field null, no SOC, too old): a plain miss unless the history replaces it (design.md §4 AC2b).</summary>
+    internal const string NoLiveState = "no live state from getDeviceLastAlive";
     /// <summary>The source of a reading taken from the cloud history's newest point.</summary>
     internal const string HistorySource = "cloud-history";
     /// <summary>At most one history call this often for the live reading; between calls the last newest point is used.</summary>
@@ -279,14 +292,19 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
     private DateTimeOffset? _historyCalledAt;
 
     /// <summary>
-    /// design.md §4 AC2b: with the device list answering no live state, the history's newest point of today is the reading
-    /// while it is no older than cloudHistoryMaxAgeMin; older, missing, or no call allowed (the 5-minute spacing keeps the
-    /// last answer, the daily cap is shared with the back-fill) is a miss. Its outcome is logged when it changes.
+    /// design.md §4 AC2b: with getDeviceLastAlive answering no live state (<paramref name="liveWhy"/>), the history's newest
+    /// point of today is the reading while it is no older than cloudHistoryMaxAgeMin; older, missing, or no call allowed (the
+    /// 5-minute spacing keeps the last answer, the daily cap is shared with the back-fill) is a miss. Its outcome is logged when it changes.
     /// </summary>
-    private async Task<(Reading? Reading, string Why)> NewestHistoryAsync(CancellationToken ct)
+    private async Task<(Reading? Reading, string Why)> NewestHistoryAsync(string liveWhy, CancellationToken ct)
     {
         int maxAge = config.CloudHistoryMaxAgeMin;
-        if (History is null || Store is null || maxAge <= 0 || config.CloudHistory == false || _serial is not { } serial) return (null, NoLiveState);
+        if (History is null || Store is null || maxAge <= 0 || config.CloudHistory == false || _serial is not { } serial) return (null, liveWhy);
+        (Reading? Reading, string Why) HistoryMiss(string why)
+        {
+            HistoryNote(why);
+            return (null, $"{liveWhy}; {why}");
+        }
         var now = time.GetUtcNow();
         var zone = time.LocalTimeZone;
         if (_historyCalledAt is not { } called || now - called >= HistoryEvery)
@@ -304,12 +322,6 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
         if (now - point.At > TimeSpan.FromMinutes(maxAge)) return HistoryMiss(Invariant($"the history's newest point is older than {maxAge} min"));
         HistoryNote("its newest point is the reading");
         return (new Reading(point.Soc, point.InAc, point.OutAc, DerivedMode(point.InAc, point.OutAc, point.OutAc > 0), point.InDc, point.OutDc, Source: HistorySource), "");
-    }
-
-    private (Reading? Reading, string Why) HistoryMiss(string why)
-    {
-        HistoryNote(why);
-        return (null, $"{NoLiveState}; {why}");
     }
 
     private void HistoryNote(string text)
@@ -362,7 +374,7 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
         {
             if (_serial is null)
             {
-                var (_, why) = await DevicesWithTokenAsync(ct);
+                var (_, why) = await WithTokenAsync(DevicesAsync, ct);
                 if (_serial is null) return (null, null, why.Length > 0 ? why : $"no {config.Type} serial in the cloud answer");
             }
             if (refused is not null)
@@ -394,44 +406,59 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
         return (token, true, "");
     }
 
-    private async Task<(Reading? Reading, string Why)> DevicesWithTokenAsync(CancellationToken ct)
+    /// <summary>One cloud call with the current token: refreshed first when due, and once more after a refresh when it answers 805.</summary>
+    private async Task<(Reading? Reading, string Why)> WithTokenAsync(Func<string, CancellationToken, Task<(int? MsgCode, Reading? Reading, string Why)>> call, CancellationToken ct)
     {
         var (token, refreshed, why) = await FreshTokenAsync(ct);
         if (token is null) return (null, why);
         // The access token already answered 805 and its refresh was refused: no call can succeed until a new sign-in.
         if (HeldRefusal(token) is { } held && held.DeadAccess == token.Access) return (null, SignInNeeded(held));
-        var answer = await DevicesAsync(token.Access, ct);
+        var answer = await call(token.Access, ct);
         if (answer.MsgCode != Expired) return (answer.Reading, answer.Why);
         if (refreshed) return (null, $"msgCode {Expired} (token expired) after a token refresh");
         var (renewed, refreshWhy) = await RefreshAsync(token, ct);
         if (renewed is null && _refused is { } refused && refused.Refresh == token.Refresh) _refused = refused with { DeadAccess = token.Access };
         if (renewed is null) return (null, $"msgCode {Expired} (token expired) and {refreshWhy}");
-        answer = await DevicesAsync(renewed.Access, ct);
+        answer = await call(renewed.Access, ct);
         return answer.MsgCode == Expired ? (null, $"msgCode {Expired} (token expired) after a token refresh") : (answer.Reading, answer.Why);
     }
 
-    /// <summary>The GET is idempotent: with no answer at all (a timeout, a failed connection) it is sent once more; an answer never is.</summary>
+    /// <summary>
+    /// Both calls only read: with no answer at all (a timeout, a failed connection) one is sent once more; an answer never is.
+    /// <paramref name="name"/> names the call in the reason; <paramref name="send"/> builds a fresh request each time.
+    /// </summary>
+    private async Task<(HttpStatusCode Status, string? Body, string Why)> RetriedAsync(string name, Func<Task<(HttpStatusCode Status, string? Body, string Why)>> send)
+    {
+        var (status, body, why) = await send();
+        if (body is not null) return (status, body, "");
+        string first = why;
+        (status, body, why) = await send();
+        if (body is null) return (0, null, why == first ? $"{name}: {first}, again on retry" : $"{name}: {first}, then {why} on retry");
+        log($"cloud: {name} answered on the second try (first: {first})");
+        return (status, body, "");
+    }
+
+    /// <summary>The device list, read only for the station's serial (design.md §4 AC2): its values are no reading.</summary>
     private async Task<(int? MsgCode, Reading? Reading, string Why)> DevicesAsync(string access, CancellationToken ct)
     {
-        var (status, body, why) = await DevicesOnceAsync(access, ct);
-        if (body is null)
-        {
-            string first = why;
-            (status, body, why) = await DevicesOnceAsync(access, ct);
-            if (body is null) return (null, null, why == first ? $"devices: {first}, again on retry" : $"devices: {first}, then {why} on retry");
-            log($"cloud: devices answered on the second try (first: {first})");
-        }
+        var (status, body, why) = await RetriedAsync("devices", () => DevicesOnceAsync(access, ct));
+        if (body is null) return (null, null, why);
         if (status != HttpStatusCode.OK) return (null, null, Invariant($"devices answered HTTP {(int)status}"));
         try
         {
             using var doc = JsonDocument.Parse(body);
-            if (Serial(doc.RootElement, config.Type) is { } sn) _serial = sn;
-            return Parse(doc.RootElement, config.Type);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return (null, null, "the devices answer is not an object");
+            if (MsgCode(root) is not { } code) return (null, null, "the devices answer has no msgCode");
+            if (code != 0) return (code, null, Invariant($"msgCode {code}"));
+            if (Serial(root, config.Type) is not { } sn) return (code, null, $"no {config.Type} in the cloud account");
+            _serial = sn;
+            return (code, null, "");
         }
         catch (JsonException) { return (null, null, "the devices answer is not JSON"); }
     }
 
-    /// <summary>The <c>sn</c> of the device <see cref="Parse"/> reads, online or not; null when there is none.</summary>
+    /// <summary>The <c>sn</c> of the first device whose model starts with <paramref name="type"/>, online or not; null when there is none.</summary>
     internal static string? Serial(JsonElement root, string type)
     {
         if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array) return null;
@@ -444,38 +471,89 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
     private async Task<(HttpStatusCode Status, string? Body, string Why)> DevicesOnceAsync(string access, CancellationToken ct)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, new Uri(DevicesUrl));
+        Headers(req, access);
+        return await SendAsync(req, ct);
+    }
+
+    private static void Headers(HttpRequestMessage req, string access)
+    {
         req.Headers.TryAddWithoutValidation("Authorization", access);   // raw, no "Bearer"
         req.Headers.Add("x-os", "open");
         req.Headers.Add("x-app-key", AppKey);
         req.Headers.Add("x-app-ver", AppVer);
+    }
+
+    /// <summary>The live state of the station <paramref name="serial"/> (the app's own read, design.md §4 AC2).</summary>
+    private async Task<(int? MsgCode, Reading? Reading, string Why)> LastAliveAsync(string access, string serial, CancellationToken ct)
+    {
+        var (status, body, why) = await RetriedAsync("live state", () => LastAliveOnceAsync(access, serial, ct));
+        if (body is null) return (null, null, why);
+        if (status != HttpStatusCode.OK) return (null, null, Invariant($"the live state answered HTTP {(int)status}"));
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            return ParseLastAlive(doc.RootElement, time.GetUtcNow(), time.LocalTimeZone, config.CloudLiveMaxAgeSec);
+        }
+        catch (JsonException) { return (null, null, "the live state answer is not JSON"); }
+    }
+
+    private async Task<(HttpStatusCode Status, string? Body, string Why)> LastAliveOnceAsync(string access, string serial, CancellationToken ct)
+    {
+        var json = new System.Buffers.ArrayBufferWriter<byte>();
+        using (var w = new Utf8JsonWriter(json))
+        {
+            w.WriteStartObject();
+            w.WriteString("deviceSn", serial);
+            w.WriteEndObject();
+        }
+        using var req = new HttpRequestMessage(HttpMethod.Post, new Uri(LastAliveUrl))
+        {
+            Content = new StringContent(System.Text.Encoding.UTF8.GetString(json.WrittenSpan), System.Text.Encoding.UTF8, "application/json"),
+        };
+        Headers(req, access);
         return await SendAsync(req, ct);
     }
 
-    /// <summary>The first device whose model starts with <paramref name="type"/>; its SOC, AC in and AC out, and a derived mode (design.md §4 AC2a).</summary>
-    internal static (int? MsgCode, Reading? Reading, string Why) Parse(JsonElement root, string type)
+    /// <summary>
+    /// design.md §4 AC2: getDeviceLastAlive's flat <c>data</c>, numbers as strings (or numbers, or null). A reading only
+    /// when <c>allFieldIsNull</c> is false, <c>batterySoc</c> is a number and <c>timestamp</c> (the station's local
+    /// "yyyy-MM-dd HH:mm:ss", read in <paramref name="zone"/>) is at most <paramref name="maxAgeSec"/> off
+    /// <paramref name="now"/> either way; else <see cref="NoLiveState"/> with the reason. Powers: grid in = AC in, AC out,
+    /// PV in = DC in, DC out; the mode is derived (AC2a) with <c>acSwitch</c> as the AC output's state.
+    /// </summary>
+    internal static (int? MsgCode, Reading? Reading, string Why) ParseLastAlive(JsonElement root, DateTimeOffset now, TimeZoneInfo zone, int maxAgeSec)
     {
-        if (root.ValueKind != JsonValueKind.Object) return (null, null, "the devices answer is not an object");
-        int? code = root.TryGetProperty("msgCode", out var mc) ? Long(mc) is { } l ? (int)l : null : null;
-        if (code is null) return (null, null, "the devices answer has no msgCode");
+        if (root.ValueKind != JsonValueKind.Object) return (null, null, "the live state answer is not an object");
+        if (MsgCode(root) is not { } code) return (null, null, "the live state answer has no msgCode");
         if (code != 0) return (code, null, Invariant($"msgCode {code}"));
-        if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array) return (code, null, "the devices answer has no device list");
-        foreach (var d in data.EnumerateArray())
-        {
-            if (d.ValueKind != JsonValueKind.Object || Str(d, "model") is not { } model || !model.StartsWith(type, StringComparison.OrdinalIgnoreCase)) continue;
-            if (Str(d, "online") != "1") return (code, null, $"the {type} is offline in the cloud");
-            var f = new Dictionary<string, string>(StringComparer.Ordinal);
-            if (d.TryGetProperty("stateList", out var list) && list.ValueKind == JsonValueKind.Array)
-                foreach (var s in list.EnumerateArray())
-                    if (s.ValueKind == JsonValueKind.Object && Str(s, "fnCode") is { } k && Str(s, "fnValue") is { } v) f[k] = v;
-            double? Num(string k) => f.TryGetValue(k, out var v) && double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) && double.IsFinite(n) ? n : null;
-            if (Num("SOC") is not { } soc) return (code, null, "no numeric SOC in the cloud answer");
-            double? inAc = Num("GridAllTotalPower"), outAc = Num("ACLoadAllTotalPower");
-            // A running station is never at 0 % with nothing flowing: the cloud holds no live state for it.
-            if (soc == 0 && (inAc ?? 0) == 0 && (outAc ?? 0) == 0) return (code, null, NoLiveState);
-            return (code, new Reading(soc, inAc, outAc, DerivedMode(inAc, outAc, Num("SetCtrlAc") == 1), Source: "cloud"), "");
-        }
-        return (code, null, $"no {type} in the cloud account");
+        if (!root.TryGetProperty("data", out var d) || d.ValueKind != JsonValueKind.Object) return (code, null, $"{NoLiveState} (no data)");
+        if (!d.TryGetProperty("allFieldIsNull", out var allNull) || allNull.ValueKind != JsonValueKind.False)
+            return (code, null, $"{NoLiveState} ({(allNull.ValueKind == JsonValueKind.True ? "every field null" : "no allFieldIsNull false")})");
+        double? Num(string k) => Str(d, k) is { } v && double.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) && double.IsFinite(n) ? n : null;
+        if (Num("batterySoc") is not { } soc) return (code, null, $"{NoLiveState} (no numeric batterySoc)");
+        if (LocalInstant(Str(d, "timestamp"), now, zone) is not { } at) return (code, null, $"{NoLiveState} (no readable timestamp)");
+        double age = (now - at).TotalSeconds;
+        if (maxAgeSec <= 0 || Math.Abs(age) > maxAgeSec)
+            return (code, null, Invariant($"{NoLiveState} (timestamp {age:0} s off the clock, cloudLiveMaxAgeSec {maxAgeSec})"));
+        double? inAc = Num("powerGridIn"), outAc = Num("powerAcOut");
+        // A running station is never at 0 % with nothing flowing: the cloud holds no live state for it.
+        if (soc == 0 && (inAc ?? 0) == 0 && (outAc ?? 0) == 0) return (code, null, $"{NoLiveState} (all values zero)");
+        return (code, new Reading(soc, inAc, outAc, DerivedMode(inAc, outAc, Num("acSwitch") == 1), Num("powerPvIn"), Num("powerDcOut"), Source: "cloud"), "");
     }
+
+    /// <summary>
+    /// A local "yyyy-MM-dd HH:mm:ss" in <paramref name="zone"/>; in the hour a clock change repeats, the reading of the two
+    /// nearer <paramref name="now"/>; a time the zone skips, or unreadable text, is null.
+    /// </summary>
+    private static DateTimeOffset? LocalInstant(string? text, DateTimeOffset now, TimeZoneInfo zone)
+    {
+        if (!DateTime.TryParseExact(text, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var local) || zone.IsInvalidTime(local)) return null;
+        if (!zone.IsAmbiguousTime(local)) return new DateTimeOffset(local, zone.GetUtcOffset(local));
+        return zone.GetAmbiguousTimeOffsets(local).Select(o => new DateTimeOffset(local, o)).MinBy(t => (t - now).Duration());
+    }
+
+    private static int? MsgCode(JsonElement root) =>
+        root.TryGetProperty("msgCode", out var mc) && Long(mc) is { } l && l is >= int.MinValue and <= int.MaxValue ? (int)l : null;
 
     /// <summary>The cloud has no output mode: mains in = mains on; no AC in while the AC output is on and feeds a load = the inverter; else unknown.</summary>
     private static string? DerivedMode(double? inAc, double? outAc, bool acOn) =>

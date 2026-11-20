@@ -145,6 +145,11 @@ internal sealed class StationConfig
     /// most this many minutes old (design.md §4 AC2b); 0 or less = never.
     /// </summary>
     public int CloudHistoryMaxAgeMin { get; set; } = 10;
+    /// <summary>
+    /// The cloud's live state (getDeviceLastAlive) is a reading while its timestamp is at most this many seconds off the
+    /// clock (design.md §4 AC2); older, or 0 or less, = no live state, so the history stand-in (AC2b) is asked.
+    /// </summary>
+    public int CloudLiveMaxAgeSec { get; set; } = 120;
 
     public const string DefaultMutex = "Local\\BluettiWatcherPowerMode";
     public const string DefaultTaskPrefix = "BluettiWatcherEco";
