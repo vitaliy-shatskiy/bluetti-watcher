@@ -1,5 +1,5 @@
 <#
-shortcut.ps1 - the "Bluetti Watcher" shortcuts (install.ps1 step 7). Functions only: install.ps1 dot-sources it,
+shortcut.ps1 - the "Bluetti Watcher" shortcuts (install.ps1 step 3). Functions only: install.ps1 dot-sources it,
 tools/test-install.ps1 runs them on temp files. Dot-sourcing changes nothing.
 
 The Start-menu shortcut carries the app id (System.AppUserModel.ID) the service's notifications are shown under: Windows

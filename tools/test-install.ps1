@@ -167,6 +167,8 @@ try {
     Check 'install: broker exe copy step is an elevated would line' ($r.Text -match 'would\s+elevated: copy .+BluettiWatcher\.exe to .+\\broker\\bin\\BluettiWatcher\.exe') $r.Text
     Check 'install: broker task step is an elevated would line' ($r.Text -match "would\s+elevated: register the task 'BluettiWatcherBroker': SYSTEM") $r.Text
     Check 'install: broker steps after the service steps' ($r.Text.IndexOf("register the task 'BluettiWatcherBroker'") -gt $r.Text.IndexOf("register the logon task 'BluettiWatcher'")) $r.Text
+    # the shortcut carrying the app id is written before the swap starts the new service: its first notices are toasts
+    Check 'install: shortcut step before the swap' ($r.Text.IndexOf('create the shortcuts') -ge 0 -and $r.Text.IndexOf('create the shortcuts') -lt $r.Text.IndexOf('swap, the only downtime')) $r.Text
     Check 'install: no leave-as-it-is broker line' ($r.Text -notmatch 'leave the admin broker') $r.Text
     Check 'install with broker steps: nothing written' $r.Unchanged
     # a prefix no task has: no old GPU task to remove

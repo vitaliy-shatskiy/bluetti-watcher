@@ -38,26 +38,28 @@ enabled and started, a bin that never passed the health check replaced by bin.ol
      starts it, so no console window opens; BluettiWatcher.exe is a console program for the commands typed in a
      terminal). The live bin gets its twin too when it has none, so a swap undone still has what the task starts. The
      service keeps running; a failure here changes nothing
-  3. the swap (tools/swap.ps1), the only downtime, seconds: the task disabled and stopped, a bounded wait until no
+  3. shortcuts "Bluetti Watcher" on the Desktop and in the Start menu: Chrome (else Edge) --app=http://127.0.0.1:<port>/;
+     the Start-menu one carries the app id BluettiWatcher (tools/shortcut.ps1), under which the service's notifications
+     are Windows toasts kept in the notification centre (without it: tray balloons, which Windows keeps nowhere). Before
+     the swap, so the new service's first notices are toasts already; a failure is named, not fatal
+  4. the swap (tools/swap.ps1), the only downtime, seconds: the task disabled and stopped, a bounded wait until no
      process runs from bin and its files are unlocked, bin -> bin.old, bin.new -> bin; then the logon task
      "BluettiWatcher": as the current user, Interactive (the user's session, never session 0: the power-mode mutex is
      Local\), Limited, hidden, no time limit, restarted every minute on failure, one instance (IgnoreNew); a second
      trigger every 5 minutes brings it back after any exit; started at once, then /api/health must answer and
      bin.old is removed. A failed swap or no health answer: bin.old is bin again, the task enabled and started, exit 1.
-  4. only then (the new exe answered): power-mode\*.ps1 copied to <data dir>\power-mode\ (each file replaced whole;
+  5. only then (the new exe answered): power-mode\*.ps1 copied to <data dir>\power-mode\ (each file replaced whole;
      they forward to BluettiWatcher.exe power-mode, which an older exe has not got)
-  5. the 1.0.0 Python venv <data dir>\.venv, if there is one, deleted (the built-in reader does not use it); a junction
+  6. the 1.0.0 Python venv <data dir>\.venv, if there is one, deleted (the built-in reader does not use it); a junction
      or symlink there is unlinked, its target never followed; a failure is named, not fatal
-  6. the wake task (config wakeTaskName, default "BluettiWatcherWake"; tools/wake-task.ps1): disabled, WakeToRun, one
+  7. the wake task (config wakeTaskName, default "BluettiWatcherWake"; tools/wake-task.ps1): disabled, WakeToRun, one
      time trigger, a no-op action (System32 conhost.exe --headless cmd.exe /d /c exit 0) as the current user,
      interactive token, least privilege; security: Administrators, SYSTEM and the user full control (the unelevated
      service sets its time and enables it before a hibernation in a cut, wakeEveryMinutes > 0, and disables it on
      mains). Registered from XML through COM and read back; one that differs is deleted again
-  7. shortcuts "Bluetti Watcher" on the Desktop and in the Start menu: Chrome (else Edge) --app=http://127.0.0.1:<port>/;
-     the Start-menu one carries the app id BluettiWatcher (tools/shortcut.ps1), under which the service's notifications
-     are Windows toasts kept in the notification centre (without it: tray balloons, which Windows keeps nowhere)
   8. elevated only: the admin broker (above), then the old GPU cap tasks removed; not elevated: one line naming the
-     elevated step (a broker already registered: its copy of the exe is stale until that step runs)
+     elevated step (a broker already registered: its copy of the exe is stale until that step runs; the service tells
+     a broker still older than itself 10 minutes after its start, once per version)
 
 Exit: 0 done (or the dry run found nothing in the way; a shell that is not elevated only skips step 8) · 1 a step
 failed, or the dry run found something in the way · 2 could not run (-Broker -Apply: also when not elevated).
@@ -201,7 +203,7 @@ if ($wakeName) {
 }
 if ($wakeProblem) { $problems += $wakeProblem }
 
-# ---- the wake task alone: removed (the way back from step 6)
+# ---- the wake task alone: removed (the way back from step 7)
 if ($RemoveWake) {
     if ($wakeProblem) { Write-Output "blocked: $wakeProblem"; exit 1 }
     Step "remove the wake task '$script:WatcherWakeTask' (Bluetti Watcher then wakes nothing; set wakeEveryMinutes to 0 too)"
@@ -242,13 +244,13 @@ Step "config: $configNote"
 if ($fromRelease) { Step "copy the release's $releaseBin to the staging directory $staging (one left by a failed run is removed first)" }
 else { Step "publish $(if ($Fallback) { 'trimmed self-contained single file' } else { 'NativeAOT' }) to the staging directory $staging (one left by a failed run is removed first); Bluetti Watcher keeps running through the build, a failed publish changes nothing" }
 Step "write the service twin $script:WatcherServiceExe (the exe with the Windows GUI subsystem, what the task starts: no console window) in $staging, and in $bin when it has none"
+Step "create the shortcuts $($shortcuts -join ' and ') -> $browser --app=$url; $startShortcut with the app id $script:WatcherAppId (the notifications are Windows toasts under it; before the swap, so the new service's first notices are toasts)"
 Step "swap, the only downtime (seconds): disable and stop the task '$task', wait up to 30 s until no process runs from $bin and its files are unlocked, move $bin to $previous and $staging to $bin"
 Step "register the logon task '$task': $serviceExe --port $Port as $env:USERDOMAIN\$env:USERNAME, Interactive, Limited, hidden, restart on failure, also every 5 minutes (one instance); start it and wait for ${url}api/health"
 Step "after the health check passed: remove $previous. A failed swap or no health answer: $previous is $bin again, the task '$task' enabled and started, exit 1"
 Step "copy the power-mode switch $powerModeFrom\*.ps1 to $powerModeTo (after the health check: the scripts forward to BluettiWatcher.exe power-mode)"
 if (Test-Path -LiteralPath $oldVenv) { Step "remove the 1.0.0 Python venv $oldVenv (after the health check; the built-in reader does not use it)" }
 Step "register the wake task '$script:WatcherWakeTask': disabled, WakeToRun, a time trigger the service sets, action $([Environment]::GetFolderPath('System'))\conhost.exe --headless cmd.exe /d /c exit 0 (a no-op) as $env:USERDOMAIN\$env:USERNAME, interactive token, least privilege; security: Administrators, SYSTEM, the user; read back after registering"
-Step "create the shortcuts $($shortcuts -join ' and ') -> $browser --app=$url; $startShortcut with the app id $script:WatcherAppId (the notifications are Windows toasts under it)"
 if (-not $Apply) {
     Write-Output 'elevated part (the admin broker, power modes): runs after the service when this shell is elevated, else afterwards: install.ps1 -Broker -Apply in an elevated shell'
     Write-BrokerSteps 'elevated: '
@@ -286,7 +288,14 @@ try {
     }
     $null = New-WatcherServiceExe -Dir $staging
 
-    # ---- 3. swap, logon task, health
+    # ---- 3. shortcuts, before the swap: the new service's first notices are toasts only when the Start-menu shortcut
+    # already carries the app id. A failure is named, not fatal: the service runs, its notifications are then tray balloons.
+    foreach ($lnk in $shortcuts) {
+        try { Set-WatcherShortcut -Path $lnk -Browser $browser -Url $url -AppId $(if ($lnk -eq $startShortcut) { $script:WatcherAppId } else { '' }) }
+        catch { Write-Output "install: the shortcut $lnk could not be written ($($_.Exception.Message)); the notifications stay tray balloons until a run that writes it" }
+    }
+
+    # ---- 4. swap, logon task, health
     # The logon trigger plus one every 5 minutes, one instance (tools/swap.ps1)
     $def = New-WatcherTaskDefinition -Exe $serviceExe -Port $Port -WorkingDirectory $root -User "$env:USERDOMAIN\$env:USERNAME"
     $register = {
@@ -304,7 +313,7 @@ try {
     Install-WatcherBinaries -Bin $bin -Staging $staging -Previous $previous -TaskName $task -Marker $marker -Ops $ops -Register $register -Health $health -Log $log
     Write-Output "install: ${url}api/health answers"
 
-    # ---- 4. the power-mode scripts, once the new exe answers: they forward to BluettiWatcher.exe power-mode, which an
+    # ---- 5. the power-mode scripts, once the new exe answers: they forward to BluettiWatcher.exe power-mode, which an
     # older exe has not got (a failed swap keeps the older scripts with the older exe); each file replaced whole
     $null = New-Item -ItemType Directory -Force -Path $powerModeTo
     foreach ($f in @(Get-ChildItem -LiteralPath $powerModeFrom -Filter '*.ps1' -File)) {
@@ -314,7 +323,7 @@ try {
     }
     Write-Output "install: power-mode scripts in $powerModeTo"
 
-    # ---- 5. the 1.0.0 Python venv: the built-in reader does not use it; a failure is named, not fatal
+    # ---- 6. the 1.0.0 Python venv: the built-in reader does not use it; a failure is named, not fatal
     if (Test-Path -LiteralPath $oldVenv) {
         try {
             Write-Output "install: $(Remove-WatcherOldVenv $oldVenv)"
@@ -325,16 +334,9 @@ try {
 catch { Stop-Install $_.Exception.Message }
 Write-Output "install: no-hibernate $(if (Test-Path -LiteralPath $switch) { "present ($switch): hibernation off" } else { 'absent: hibernation on' })"
 
-# ---- 6. the wake task: a failure leaves the service running without a wake (exit 1 at the end)
+# ---- 7. the wake task: a failure leaves the service running without a wake (exit 1 at the end)
 $wakeTask = Register-WatcherWakeTask
 Write-Output "install: $($wakeTask.text)"
-
-# ---- 7. shortcuts
-# A failure is named, not fatal: the service runs, its notifications are then tray balloons.
-foreach ($lnk in $shortcuts) {
-    try { Set-WatcherShortcut -Path $lnk -Browser $browser -Url $url -AppId $(if ($lnk -eq $startShortcut) { $script:WatcherAppId } else { '' }) }
-    catch { Write-Output "install: the shortcut $lnk could not be written ($($_.Exception.Message)); the notifications stay tray balloons until a run that writes it" }
-}
 
 # ---- 8. the admin broker, elevated only; then the old GPU cap tasks
 $sid = if ($elevated) { Get-WatcherServiceUserSid -TaskName $task } else { $null }
