@@ -373,7 +373,7 @@ internal static class PowerModeHook
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
-                continue;   // the next one
+                continue;
             }
         }
     }

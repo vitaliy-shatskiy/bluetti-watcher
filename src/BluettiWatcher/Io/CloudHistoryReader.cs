@@ -30,7 +30,6 @@ internal sealed class CloudHistoryReader(HttpMessageHandler handler) : IDisposab
 
     private readonly HttpClient _http = new(handler, disposeHandler: false) { Timeout = System.Threading.Timeout.InfiniteTimeSpan, MaxResponseContentBufferSize = 1 << 20 };
 
-    /// <summary>The cap on each request.</summary>
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(15);
 
     public void Dispose() => _http.Dispose();

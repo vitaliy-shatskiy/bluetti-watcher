@@ -95,7 +95,7 @@ $task = 'BluettiWatcher'
 $config = Join-Path $root 'config.json'
 $powerModeFrom = Join-Path $repo 'power-mode'
 $powerModeTo = Join-Path $root 'power-mode'
-# The Python venv of 1.0.0; nothing uses it since 1.1.0.
+# The 1.0.0 Python venv: the built-in reader does not use it, so the install deletes it.
 $oldVenv = Join-Path $root '.venv'
 # Deletes the old venv: a plain folder goes whole; a junction or symlink (at the venv, or inside it) is unlinked alone, never
 # followed, so what it points at stays. A plain file is not a venv: refused. Throws on failure.

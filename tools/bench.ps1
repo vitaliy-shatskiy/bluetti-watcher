@@ -17,11 +17,11 @@ Runs:
   stress   on the same instance after the page run: -StressRounds rounds of -StressConcurrency concurrent /api/history
            requests over the whole seeded month of minute rows (the largest answers, MBs each). The process must
            survive them: an exit (a crash) or a failed request is a missed budget.
-NOT MEASURED: CPU per poll and disk bytes per day (the MaxPollCpuMs and MaxDiskMBPerDay budgets). Since 1.1.0 the service
+NOT MEASURED: CPU per poll and disk bytes per day (the MaxPollCpuMs and MaxDiskMBPerDay budgets). The service
 reads over Bluetooth or the BLUETTI cloud, and the cloud address is fixed in the exe, so there is no station to stand in
 for it without a product change, and polling a made-up MAC would drive this machine's radio. The report names both as
 "not measured", and the closing line says so: those budgets are neither met nor missed here (see the poll test suite and
-a live service's own counters).Timing numbers (startup, CPU, latency) are marked provisional while a dotnet test run is busy on this machine; memory and
+a live service's own counters). Timing numbers (startup, CPU, latency) are marked provisional while a dotnet test run is busy on this machine; memory and
 sizes are not affected by it.
 
 Exit: 0 every MEASURED budget met (the unmeasured ones are named; not a pass for them) · 1 a measured budget missed (each named) ·
@@ -45,7 +45,7 @@ param(
     [string] $SnapshotScript,
     # Budgets.
     [double] $MaxPrivateMB = 15,
-    # NativeAOT keeps hydrated data (IlcDehydrate=false): a bigger file for less private memory. Since 1.2.0 the exe is
+    # NativeAOT keeps hydrated data (IlcDehydrate=false): a bigger file for less private memory. The exe is
     # the whole release (SQLite is Windows' winsqlite3.dll): 10.7 MB measured.
     [double] $MaxExeMB = 12,
     [double] $MaxStartupMs = 100,
@@ -84,8 +84,8 @@ try {
     $provisional = $busy.Count -gt 0
 
     # --- the seed database: no product code, no Python -----------------------------------------------------------------------
-    # The SQLite library the exe uses: Windows' own winsqlite3.dll since 1.2.0 (the release ships no SQLite library);
-    # a build before 1.2.0 has e_sqlite3.dll beside the exe, and that one is used. Driven through a few inline C# P/Invokes. Same layout as StationStore makes for a new file (1 KB pages, WAL), so the
+    # The SQLite library the exe uses: Windows' own winsqlite3.dll (the release ships none); an older build with
+    # e_sqlite3.dll beside the exe uses that one. Driven through a few inline C# P/Invokes. Same layout as StationStore makes for a new file (1 KB pages, WAL), so the
     # exe's CREATE IF NOT EXISTS keeps it.
     $sqliteDll = Join-Path (Split-Path $Exe) 'e_sqlite3.dll'
     if (-not (Test-Path -LiteralPath $sqliteDll)) { $sqliteDll = Join-Path ([Environment]::SystemDirectory) 'winsqlite3.dll' }

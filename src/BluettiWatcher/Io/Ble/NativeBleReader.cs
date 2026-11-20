@@ -328,14 +328,14 @@ internal sealed partial class NativeBleReader(StationConfig config, IBleConnecto
 
     /// <summary>
     /// The share of readerTimeoutSec one connection open may take: two opens (the first and its retry) leave at least 20 %
-    /// of the budget for the register reads, so an open that hangs no longer spends the whole poll.
+    /// of the budget for the register reads, so an open that hangs never spends the whole poll.
     /// </summary>
     private const double OpenShare = 0.4;
 
     /// <summary>
     /// One open, cut at <see cref="OpenShare"/> of readerTimeoutSec (a failure naming the cap) even when the Bluetooth call
     /// ignores its cancellation; such an open keeps running, and a link it hands over late is released at once.
-    /// The poll's own budget (<paramref name="budget"/>) running out still ends the poll as before.
+    /// The poll's own budget (<paramref name="budget"/>) running out ends the poll.
     /// </summary>
     private async Task<BleOpen> OpenCappedAsync(ulong address, CancellationToken budget)
     {

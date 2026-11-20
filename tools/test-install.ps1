@@ -58,7 +58,7 @@ function Invoke-DryRun([string] $Script = $installer, $Config = $null, [string[]
 }
 
 try {
-    # AC5: no config and no -Mac: the dry run names the missing MAC, runs nothing, exits 1
+    # no config and no -Mac: the dry run names the missing MAC, runs nothing, exits 1
     $r = Invoke-DryRun
     Check 'no mac: named' ($r.Text -match 'blocked: no station MAC: pass -Mac') $r.Text
     Check 'no mac: exit 1' ($r.Code -eq 1) "exit $($r.Code)"
@@ -419,7 +419,7 @@ try {
         $r = & $install $w $ops
         Check 'c1 upgrade: a user-owned old policy is not carried' ($r.ok -and (Get-Content -Raw (Join-Path $w.Root 'policy.json')) -notmatch 'Evil' -and -not (Test-Path -LiteralPath $w.Old)) $r.text
 
-        # W1: the policy's user is the service task's principal, not the elevated caller
+        # the policy's user is the service task's principal, not the elevated caller
         $q = @{ Query = { param($name) if ($name -ceq 'BluettiWatcher') { '<Task><Principals><Principal id="Author"><UserId>S-1-5-21-7-7-7-1002</UserId><LogonType>InteractiveToken</LogonType></Principal></Principals></Task>' } else { $null } } }
         Check 'w1: the service task principal SID' ((Get-WatcherServiceUserSid -TaskName 'BluettiWatcher' -Ops $q) -ceq 'S-1-5-21-7-7-7-1002')
         Check 'w1: no service task, no SID' ($null -eq (Get-WatcherServiceUserSid -TaskName 'Missing' -Ops $q))

@@ -36,7 +36,6 @@ internal static class FlagReaderExtensions
 /// </summary>
 internal sealed partial class FlagFileReader(string path, Action<string> log, string mutexName, TimeSpan? lockWait = null) : IFlagReader
 {
-    /// <summary>The mutex this reader takes.</summary>
     public string MutexName => mutexName;
 
     private readonly TimeSpan _wait = lockWait ?? TimeSpan.FromSeconds(5);

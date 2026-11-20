@@ -30,7 +30,6 @@ internal static class TrayIconRenderer
     public static string Text(double? soc) =>
         soc is { } v && double.IsFinite(v) ? ((int)Math.Round(Math.Clamp(v, 0, 100), MidpointRounding.AwayFromZero)).ToString(CultureInfo.InvariantCulture) : "?";
 
-    /// <summary>The bar's fill colour.</summary>
     public static uint FillColor(TrayPower power) => power switch
     {
         TrayPower.Mains => MainsFill,

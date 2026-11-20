@@ -57,7 +57,6 @@ internal sealed partial class BrokerCore
         };
     }
 
-    /// <summary>The operations the broker knows.</summary>
     public IReadOnlyCollection<string> Operations => _operations.Keys;
 
     private static BrokerResult Refused(string why) => new(false, $"refused: {why}", null);

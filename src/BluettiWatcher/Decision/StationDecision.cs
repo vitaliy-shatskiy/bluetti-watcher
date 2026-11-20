@@ -419,7 +419,6 @@ internal static partial class StationDecision
         return s;
     }
 
-    /// <summary>The user's choice from the page.</summary>
     public static StationState SetManual(StationState state, ManualMode mode, DateTimeOffset now)
     {
         var s = StationState.Normalize(state).Clone();

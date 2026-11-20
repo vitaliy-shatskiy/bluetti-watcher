@@ -19,7 +19,6 @@ internal sealed class CloudLogin(StationConfig config, HttpMessageHandler handle
     /// <summary>How long the catcher waits for the browser to come back.</summary>
     public TimeSpan Wait { get; set; } = TimeSpan.FromMinutes(5);
 
-    /// <summary>The cap on the token request.</summary>
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
 
     internal static Uri BuildAuthorizeUrl(string redirectUri, string state) => new(

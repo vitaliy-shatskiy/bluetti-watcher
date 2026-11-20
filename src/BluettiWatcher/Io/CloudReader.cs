@@ -117,7 +117,6 @@ internal sealed class BluettiCloudReader(StationConfig config, HttpMessageHandle
     private sealed record Refusal(string Refresh, string? DeadAccess, int Http, DateTimeOffset At);
     private sealed record Outcome(bool Ok, string Why, DateTimeOffset At);
 
-    /// <summary>The cap on each request.</summary>
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(15);
 
     /// <summary>

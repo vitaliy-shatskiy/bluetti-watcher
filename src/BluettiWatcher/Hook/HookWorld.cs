@@ -13,7 +13,6 @@ namespace BluettiWatcher.Hook;
 /// <param name="Rules">A rules file's text by its name (power-mode.rules.md, ...); null = no such file.</param>
 internal sealed record HookWorld(string FlagFile, string TempDir, TimeZoneInfo Zone, Func<long> NowMs, Func<string, string?> Rules)
 {
-    /// <summary>The world of this process.</summary>
     public static HookWorld FromProcess() => new(
         FlagFileOf(Env("POWER_MODE_FILE"), Env("ProgramData"), Env("ALLUSERSPROFILE")),
         TempDirOf(Env("TEMP"), Env("TMP"), Env("SystemRoot"), Env("windir")),
