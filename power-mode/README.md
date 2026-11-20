@@ -135,7 +135,9 @@ powershell -NoProfile -File power-mode.ps1 gpu-task install      # -RestoreWatts
 It registers two on-demand tasks, `<prefix>GpuCap` (`nvidia-smi -pl <card minimum>`) and `<prefix>GpuRestore`
 (`nvidia-smi -pl <default or -RestoreWatts>`): System32 `nvidia-smi` under `conhost.exe --headless`, as the user, at
 the highest run level, the wattage fixed at install. Nothing a process without elevation writes reaches what runs
-elevated. `gpu-task status` lists them; `gpu-task remove` (elevated) deletes them.
+elevated. `gpu-task status` lists them; `gpu-task remove` (elevated) deletes them. Registering the admin broker
+(`install.ps1 -Apply` or `-Broker -Apply`, elevated; [design.md](../docs/design.md), section 13) removes both tasks:
+the modes engine sets the GPU limit through the broker instead.
 
 ## Tests
 
