@@ -20,15 +20,16 @@ h2{font-size:11px;line-height:16px;margin:0 0 12px;font-weight:600;color:var(--d
 /* the power controls: one grid, a label column and a control column; both groups the same height, segment width and right edge */
 .modebox{display:grid;grid-template-columns:auto auto;align-items:center;gap:8px 12px}
 .modebox .cl{color:var(--dim);font-size:12px;text-align:right;white-space:nowrap}
-.modebox .seg{display:grid;grid-template-columns:repeat(3,1fr)}
+.modebox .seg{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(64px,auto)}
+#modeSeg button{min-width:0;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#modeMore{all:unset;cursor:pointer;height:30px;line-height:30px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 14px;border-radius:5px;font-size:13px;color:var(--dim)}#modeMore[aria-pressed=true]{background:var(--accent);color:#fff}#modeMore:focus-visible{outline:1px solid var(--accent)}
 #modeSeg button,#planSeg button{height:30px;padding:0 14px;font-size:13px;text-align:center}
-.modebox .hint{grid-column:1/-1;width:0;min-width:100%;color:var(--dim);font-size:12px;text-align:right}
+.modebox .hint{grid-column:1/-1;width:0;min-width:100%;min-height:18px;color:var(--dim);font-size:12px;text-align:right}
 /* the language: a small text toggle in the corner, the chosen one bright */
 .lang{display:flex;align-items:center;font-size:12px;line-height:18px}
 .lang button{all:unset;cursor:pointer;padding:2px 4px;color:var(--dim);letter-spacing:.04em}
 .lang button:hover{color:var(--text)}
 .lang button[aria-pressed=true]{color:var(--text);font-weight:600}
-.lang button+button::before{content:"·";color:var(--dim);font-weight:400;margin-right:8px}
+.lang button+button{margin-left:8px}
 .lang button:focus-visible{outline:1px solid var(--accent)}
 .chip{display:inline-flex;align-items:center;gap:7px;min-height:26px;max-width:100%;padding:4px 11px;border-radius:13px;background:var(--raised);font-size:12px;line-height:16px;color:var(--text)}
 .chip i{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}
@@ -177,7 +178,7 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 /* phones */
 @media(max-width:600px){body{padding:10px}main{gap:8px}.card{padding:14px;border-radius:12px}.tiles{gap:8px}.v{font-size:24px;line-height:30px}.v small{font-size:12px;margin:0 4px 0 2px}
   .ring svg{width:200px;height:200px}.ring .pct{font-size:46px;line-height:50px}
-  #modeSeg button,#planSeg button{padding:0 6px}
+  #modeSeg button,#planSeg button{padding:0 6px}#modeMore{padding:0 6px;max-width:90px}
   .dgrid{gap:4px}.dgrid .c{height:48px;font-size:11px;gap:3px}.dban b{font-size:14px}
   #dtekBody .rowbar{grid-template-columns:1fr!important;gap:0;margin-bottom:6px}
   .ring svg{width:220px;height:220px}.ring .wh{font-size:11px;line-height:15px}.ring{padding:12px}
@@ -246,6 +247,9 @@ en: {
   language: "Language",
   powerMode: "Power mode",
   modeAuto: "Auto",
+  modeNormal: "Normal",
+  modeMore: "More modes",
+  modeAutoIs: "Auto picked {m}",
   modeAutoTip: "Eco during a power cut",
   modeEco: "Eco",
   modeEcoTip: "Eco now",
@@ -645,6 +649,9 @@ uk: {
   language: "Мова",
   powerMode: "Режим живлення",
   modeAuto: "Авто",
+  modeNormal: "Звичайний",
+  modeMore: "Інші режими",
+  modeAutoIs: "Авто обрав {m}",
   modeAutoTip: "Еко-режим під час відключення",
   modeEco: "Еко",
   modeEcoTip: "Еко-режим зараз",
@@ -1123,9 +1130,13 @@ document.getElementById('stationBody').innerHTML =
 function render(D) {
 clearInterval(ecoTimer); ecoTimer = null;
 // the plan the end of eco sets, shown with no readings too: a plan GUID put in the config by hand presses no button and says so
-document.querySelectorAll('#planSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.p === D.returnPlan)));
-$('planLabel').textContent = t(D.returnPlan === 'custom' ? 'afterEcoCustom' : 'afterEco');
-paintMode(D);
+// under v2 the power group is the modes view's (paintModesV2); /api/now's manual and returnPlan are the legacy engine's
+if (mpView) paintPlanChip(D);
+else {
+  document.querySelectorAll('#planSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.p === D.returnPlan)));
+  $('planLabel').textContent = t(D.returnPlan === 'custom' ? 'afterEcoCustom' : 'afterEco');
+  paintMode(D);
+}
 paintStation(D);
 if (!D.rows.length) { $('title').textContent = `${t('appName')} · ${t('noReadings')}`; return; }
 const rows = D.rows.map(toRow);
@@ -1534,11 +1545,12 @@ async function fetchAndShow(force, settle) {
     const s = $('staleChip'); s.hidden = false; s.lastChild.textContent = t('serviceDown', { e: e.message });
   }
 }
-function schedule() { clearTimeout(pollTimer); pollTimer = document.hidden ? null : setTimeout(() => load().then(schedule), POLL); }
+// the modes view rides the same minute (unless the engine is legacy): a switch from the tray shows within one poll
+function schedule() { clearTimeout(pollTimer); pollTimer = document.hidden ? null : setTimeout(() => Promise.all([load(), mpEngine === 'legacy' ? null : mpRefresh()]).then(schedule), POLL); }
 // Hidden: no requests and no countdown. Seen again: fresh data at once, then the minute rhythm.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { clearTimeout(pollTimer); pollTimer = null; clearInterval(ecoTimer); ecoTimer = null; }
-  else load(true).then(schedule);
+  else Promise.all([load(true), mpEngine === 'legacy' ? null : mpRefresh()]).then(schedule);
 });
 document.querySelectorAll('#langSeg button').forEach((b) => { b.onclick = () => {
   lang = b.dataset.lang === 'uk' ? 'uk' : 'en';
@@ -1659,6 +1671,14 @@ function paintMode(D) {
   pc.lastChild.textContent = plan ? t('planChip', { p: plan }) : l.kind === 'info' ? modeLine({ ...D, modeHold: null }, null).text : l.text;
   pc.hidden = Boolean(shout) || !(plan || D.powerMode === 'unreadable');
 }
+// The Windows power plan in force, as a chip (v2: the line under the buttons belongs to the modes view).
+function paintPlanChip(D) {
+  const p = D.powerPlan || {}, plan = ACTIVE_PLAN_KEY[p.id] ? t(ACTIVE_PLAN_KEY[p.id]) : p.name, pc = $('planChip');
+  setAttr(pc, 'class', 'chip' + (p.id === 'saver' ? ' acc' : ''));
+  const text = plan ? t('planChip', { p: plan }) : '';
+  if (pc.lastChild.textContent !== text) pc.lastChild.textContent = text;
+  if (pc.hidden !== !plan) pc.hidden = !plan;
+}
 var ecoTimer = null; // the eco countdown's one-second tick, stopped while the page is hidden
 var dtekDay = 'today'; // the DTEK tab picked: today or tomorrow
 var introChart = true; // the chart draws its lines in on the first paint and on a range switch, not on the minute repaint
@@ -1685,7 +1705,11 @@ var mpRules = [];       // the Auto rules shown: a copy the inputs edit
 var mpRulesDirty = false, mpRuleErrs = {}, mpRulesMsg = '', mpRuleBtns = [];
 var mpMsg = null;       // the last write's outcome on the panel's line { kind, text, down }
 var mpBusy = false;     // a write is out: another waits for it
-var mpPress = null;     // the selector choice a press is sending
+var mpPress = null;     // the selector choice a press is sending (the header's or the panel's), until the change is done
+var mpGen = 0;          // counts writes: a read that saw it change was sent before one and is dropped
+var mpEngine = '';      // '' not known yet, 'v2', or 'legacy' (GET /api/modes answered 409)
+var mpChase = 0;        // reads in a row that found a change still running
+var selError = '';      // the last select's failure, said under the header's buttons
 var mpSeq = 0;          // ids pairing labels with their controls
 var mpTimer = null;     // the minute refresh while the panel is open
 const MP_PROPS = new Set(['className', 'textContent', 'value', 'checked', 'disabled', 'hidden', 'title', 'id', 'htmlFor', 'type', 'min', 'max', 'step', 'rows', 'maxLength', 'inputMode', 'onclick', 'onchange', 'oninput']);
@@ -1889,6 +1913,59 @@ function mpPaintTop() {
     mpButton('test-notice', '', t('modesTestNotice'), mpTestNotice));
   const msg = $('modesMsg');
   msg.textContent = mpMsg ? mpMsg.text : ''; msg.className = `msg ${mpMsg ? mpMsg.kind : ''}`.trim(); msg.hidden = !mpMsg;
+  paintModesV2();
+}
+// The header's power group under v2 reads the same view and presses through the same mpSelect as the panel: Auto and every
+// mode, the first few as buttons and the rest in a menu. Built again only when the list or the language changes; a repaint
+// touches only an attribute whose value changed, so a poll never flickers the group.
+const MODE_BUILT_IN = { normal: ['Normal', 'modeNormal'], eco: ['Eco', 'modeEco'], max: ['Max', 'modeMax'] };
+const MODE_SEG_MAX = 4;
+function modeChoice(v, press) {
+  const sel = ((v && v.settings) || {}).selection || {};
+  const chosen = press || (sel.kind === 'manual' ? sel.manualModeId : 'auto');
+  return { chosen, applying: press || (v && v.switching) || (v && v.pending ? chosen : null) || null, autoTo: sel.autoModeId || (v && v.activeModeId) || null };
+}
+// A built-in mode under its own name speaks the page's language; a renamed or custom one keeps the user's name.
+function modeName(m) {
+  const b = MODE_BUILT_IN[m.id];
+  return b && m.name === b[0] ? t(b[1]) : m.name;
+}
+function setAttr(el, k, v) {
+  if (v === null) { if (el.getAttribute(k) !== null) el.removeAttribute(k); } else if (el.getAttribute(k) !== v) el.setAttribute(k, v);
+}
+function paintModesV2() {
+  const v = mpView, seg = $('modeSeg');
+  if (!v || !seg) return;
+  if (!$('planSeg').hidden) { $('planSeg').hidden = true; $('planLabel').hidden = true; }   // After eco belongs to the legacy engine
+  const items = [{ id: 'auto', name: t('modeAuto') }].concat(mpModes().map((m) => ({ id: m.id, name: modeName(m) })));
+  // a phone keeps three options as buttons: the group never wraps or squeezes, the rest go to the menu
+  const cap = typeof matchMedia === 'function' && matchMedia('(max-width: 600px)').matches ? 3 : MODE_SEG_MAX;
+  const shown = items.slice(0, cap), more = items.slice(cap), c = modeChoice(v, mpPress);
+  const key = `${cap}|${lang}|${items.map((m) => `${m.id}=${m.name}`).join('|')}`;
+  if (seg.dataset.key !== key) {
+    seg.dataset.key = key;
+    const kids = shown.map((m) => { const b = document.createElement('button'); b.dataset.m = m.id; b.textContent = m.name; b.title = m.name; b.onclick = () => mpSelect(m.id); return b; });
+    if (more.length) {
+      const s = document.createElement('select');
+      s.id = 'modeMore'; s.setAttribute('aria-label', t('modeMore'));
+      [{ id: '', name: t('modeMore') }].concat(more).forEach((m) => { const o = document.createElement('option'); o.value = m.id; o.textContent = m.name; s.append(o); });
+      s.onchange = () => { if (s.value) mpSelect(s.value); };
+      kids.push(s);
+    }
+    seg.replaceChildren(...kids);
+  }
+  [...seg.children].filter((b) => b.tagName === 'BUTTON').forEach((b) => {
+    setAttr(b, 'aria-pressed', String(b.dataset.m === c.chosen));
+    setAttr(b, 'data-pending', b.dataset.m === c.applying ? '' : null);
+  });
+  const s = [...seg.children].find((b) => b.tagName === 'SELECT');
+  if (s) { const v2 = more.some((m) => m.id === c.chosen) ? c.chosen : ''; if (s.value !== v2) s.value = v2; setAttr(s, 'aria-pressed', String(v2 !== '')); }
+  const name = (id) => (items.find((m) => m.id === id) || { name: id }).name, line = $('modeLine');
+  const l = selError ? ['bad', selError] : c.applying ? ['pend', t('modeApplying', { m: name(c.applying) })]
+    : c.chosen === 'auto' && c.autoTo ? ['', t('modeAutoIs', { m: name(c.autoTo) })] : ['', ''];
+  if (line.textContent !== l[1]) line.textContent = l[1];
+  setAttr(line, 'class', `hint ${l[0]}`.trim());
+  if (line.hidden) line.hidden = false;   // the line keeps its height: the header does not jump when it fills
 }
 function mpButton(act, id, text, onclick, extra) {
   const b = mpEl('button', { type: 'button', className: 'b', 'data-act': act, 'data-id': id, ...extra }, text);
@@ -1988,13 +2065,13 @@ function mpPaintEdit() {
 }
 // A write with the page's guard header; the answer is the whole view on success, the service's text on a refusal.
 async function mpWrite(method, url, body) {
-  mpBusy = true;
+  mpBusy = true; mpGen++;
   $('modesCard').setAttribute('aria-busy', 'true');
   mpPaintTop();
   try {
     const r = await fetch(url, { method, headers: { 'X-Station': '1', 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
     if (r.ok) {
-      mpView = await r.json();
+      mpView = await r.json(); mpGen++;
       if (r.status === 202) await mpFollow();   // still switching: the panel says so and stays busy until it is done
       return { ok: true };
     }
@@ -2039,14 +2116,15 @@ async function mpSelect(choice) {
   const r = await mpWrite('POST', '/api/modes/select', { mode: choice });
   mpPress = null;
   mpMsg = r.ok ? null : { kind: 'bad', text: t('modesNotSaved', { e: r.text }) };
+  selError = r.ok ? '' : mpMsg.text;   // the header says it under its buttons too
   mpPaintTop(); mpPaintList();
-  if (r.ok) await load(true);   // the header's mode state follows at once
+  if (r.ok) await load(true);   // the plan chip follows at once
 }
 // A change the service answered 202 (still switching): the view is read again each second until it is done, at most 60 times.
 async function mpFollow() {
   for (let i = 0; i < 60 && mpView && (mpView.pending || mpView.switching); i++) {
     await new Promise((res) => setTimeout(res, 1000));
-    await mpRefresh();
+    await mpRefresh(true);
   }
 }
 async function mpHibernate(on) {
@@ -2150,15 +2228,23 @@ async function mpSaveRules() {
   mpPaintTop(); mpPaintList(); mpPaintRules();
 }
 // The view: the legacy engine answers 409 and the panel stays away; an unreachable service is said on the panel's line.
-async function mpRefresh() {
+// A read sent before a write went out (or while one is out) is dropped: it would paint the choice from before the press.
+async function mpRefresh(own) {
+  const gen = mpGen;
   let r;
   try { r = await fetch('/api/modes', { cache: 'no-store' }); } catch (e) {
     if (mpView) { mpMsg = { kind: 'bad', text: t('serviceDown', { e: e.message }), down: true }; mpPaintTop(); }
     return;
   }
-  if (r.status === 409) { mpView = null; $('modesCard').hidden = true; return; }
+  if (r.status === 409) { mpEngine = 'legacy'; mpView = null; $('modesCard').hidden = true; return; }
   if (!r.ok) return;
-  mpView = await r.json();
+  const view = await r.json();
+  if (!own && (gen !== mpGen || mpBusy)) return;
+  mpEngine = 'v2';
+  mpView = view;
+  // a change already running when the page opened (a reload mid-switch, the tray): followed each second, at most 60 times
+  mpChase = !own && (view.pending || view.switching) ? mpChase + 1 : 0;
+  if (mpChase > 0 && mpChase <= 60) setTimeout(() => mpRefresh(), 1000);
   if (mpMsg && mpMsg.down) mpMsg = null;
   $('modesCard').hidden = false;
   mpPaintTop(); mpPaintList(); mpPaintRules();
@@ -2178,9 +2264,13 @@ function mpToggle(open) {
 // --- end of the power modes panel ---
 $('modesMore').addEventListener('toggle', () => mpToggle($('modesMore').open));
 document.querySelectorAll('#langSeg button').forEach((b) => b.addEventListener('click', mpPaintAll));
-mpRefresh().then(() => { if ((window.location || {}).hash === '#modes' && mpView) $('modesMore').open = true; });   // the tray's "Open panel" lands here
+const modesRead = mpRefresh().then(() => { if ((window.location || {}).hash === '#modes' && mpView) $('modesMore').open = true; });   // the tray's "Open panel" lands here
 applyStatic();
-load().then(() => { settle(); schedule(); });   // a choice still applying from before the reload is followed too
+// the engine is known before the first paint: the header never shows the legacy state for a moment under v2
+window.addEventListener('resize', () => paintModesV2());
+modesRead.then(() => {
+load().then(() => { settle(); schedule(); });
+});   // a choice still applying from before the reload is followed too
 
 // Reading source and cloud sign-in (GET /api/cloud): its own requests and timer, apart from /api/now. The card stays hidden
 // when the service has no cloud controls (404). A sign-in waiting for the browser is followed every 2 s, else once a minute.
