@@ -868,9 +868,14 @@ no trigger, which it starts on demand (`schtasks /run`), and waits up to 10 s fo
    `POST /api/mode`. A choice runs off the tray thread.
 5. Explorer's restart (`TaskbarCreated`) adds the icon again; so does a taskbar that was not there yet when the
    service started at logon.
-6. Notifications are shell balloons (`NIF_INFO`), shown by Windows 10 and 11 as toasts with no app registration or
-   AUMID, respecting quiet time. A WinRT toast would need a Start-menu shortcut with an AUMID for an unpackaged exe
-   and the WinRT notification projection in the NativeAOT image. Without the icon there is nowhere to show them.
+6. Notifications are WinRT toasts under the app id `BluettiWatcher`, which the installer sets on the Start-menu
+   shortcut (`tools/shortcut.ps1`): Windows keeps them in the notification centre for three days, so a missed banner
+   leaves a trace. The WinRT notification projection is the one the Bluetooth reader already uses (+28 KB of exe). A
+   click opens the page by protocol activation: no COM activation server. Windows accepts a toast for an app id no
+   shortcut names and shows it nowhere, so each notice first asks the apps folder (`shell:AppsFolder\BluettiWatcher`,
+   about 15 ms); without the shortcut (a run without the installer) or when the toast fails, the notice is a shell
+   balloon (`NIF_INFO`), a banner kept nowhere; each change of the way is logged once. The notices still come from the
+   tray thread: with the icon closed there are none.
 7. Sources: each stored event (a hook on the store, so every writer's events count) by kind: `eco-on`, `mains-back`,
    `mode-changed`, `mode-dropped` (mode changes); `emergency-on`, `stop`, `hibernate-warning` (low battery);
    `action-failed`, `mode-refused`, `broker-stale` (failures); `grid-voltage-high` (faults). Mains lost and back follow

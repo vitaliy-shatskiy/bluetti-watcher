@@ -53,7 +53,9 @@ enabled and started, a bin that never passed the health check replaced by bin.ol
      interactive token, least privilege; security: Administrators, SYSTEM and the user full control (the unelevated
      service sets its time and enables it before a hibernation in a cut, wakeEveryMinutes > 0, and disables it on
      mains). Registered from XML through COM and read back; one that differs is deleted again
-  7. shortcuts "Bluetti Watcher" on the Desktop and in the Start menu: Chrome (else Edge) --app=http://127.0.0.1:<port>/
+  7. shortcuts "Bluetti Watcher" on the Desktop and in the Start menu: Chrome (else Edge) --app=http://127.0.0.1:<port>/;
+     the Start-menu one carries the app id BluettiWatcher (tools/shortcut.ps1), under which the service's notifications
+     are Windows toasts kept in the notification centre (without it: tray balloons, which Windows keeps nowhere)
   8. elevated only: the admin broker (above), then the old GPU cap tasks removed; not elevated: one line naming the
      elevated step (a broker already registered: its copy of the exe is stale until that step runs)
 
@@ -76,6 +78,7 @@ $repo = $PSScriptRoot
 . (Join-Path $repo 'tools\swap.ps1')
 . (Join-Path $repo 'tools\wake-task.ps1')
 . (Join-Path $repo 'tools\broker-task.ps1')
+. (Join-Path $repo 'tools\shortcut.ps1')
 $root = Join-Path $env:LOCALAPPDATA 'bluetti-watcher'
 $bin = Join-Path $root 'bin'
 $exe = Join-Path $bin 'BluettiWatcher.exe'
@@ -117,6 +120,8 @@ $browser = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:Pr
     Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 $places = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))
 $shortcuts = @($places | ForEach-Object { Join-Path $_ 'Bluetti Watcher.lnk' })
+# The notifications' app id: Windows reads it from a Start-menu shortcut only.
+$startShortcut = $shortcuts[1]
 $switch = Join-Path $root 'no-hibernate'
 $macPattern = '^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$'
 
@@ -243,7 +248,7 @@ Step "after the health check passed: remove $previous. A failed swap or no healt
 Step "copy the power-mode switch $powerModeFrom\*.ps1 to $powerModeTo (after the health check: the scripts forward to BluettiWatcher.exe power-mode)"
 if (Test-Path -LiteralPath $oldVenv) { Step "remove the 1.0.0 Python venv $oldVenv (after the health check; the built-in reader does not use it)" }
 Step "register the wake task '$script:WatcherWakeTask': disabled, WakeToRun, a time trigger the service sets, action $([Environment]::GetFolderPath('System'))\conhost.exe --headless cmd.exe /d /c exit 0 (a no-op) as $env:USERDOMAIN\$env:USERNAME, interactive token, least privilege; security: Administrators, SYSTEM, the user; read back after registering"
-Step "create the shortcuts $($shortcuts -join ' and ') -> $browser --app=$url"
+Step "create the shortcuts $($shortcuts -join ' and ') -> $browser --app=$url; $startShortcut with the app id $script:WatcherAppId (the notifications are Windows toasts under it)"
 if (-not $Apply) {
     Write-Output 'elevated part (the admin broker, power modes): runs after the service when this shell is elevated, else afterwards: install.ps1 -Broker -Apply in an elevated shell'
     Write-BrokerSteps 'elevated: '
@@ -325,13 +330,10 @@ $wakeTask = Register-WatcherWakeTask
 Write-Output "install: $($wakeTask.text)"
 
 # ---- 7. shortcuts
-$shell = New-Object -ComObject WScript.Shell
+# A failure is named, not fatal: the service runs, its notifications are then tray balloons.
 foreach ($lnk in $shortcuts) {
-    $s = $shell.CreateShortcut($lnk)
-    $s.TargetPath = $browser
-    $s.Arguments = "--app=$url"
-    $s.Description = 'Bluetti Watcher dashboard'
-    $s.Save()
+    try { Set-WatcherShortcut -Path $lnk -Browser $browser -Url $url -AppId $(if ($lnk -eq $startShortcut) { $script:WatcherAppId } else { '' }) }
+    catch { Write-Output "install: the shortcut $lnk could not be written ($($_.Exception.Message)); the notifications stay tray balloons until a run that writes it" }
 }
 
 # ---- 8. the admin broker, elevated only; then the old GPU cap tasks

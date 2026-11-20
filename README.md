@@ -137,7 +137,7 @@ The service shows its own notification-area icon (no second program): the charge
 amber on battery, grey when no fresh reading has come for `maxGapSec`. Hover for the watts in and out, the mode and the
 time left; click for a menu with Auto and every power mode (below), "Open panel" (this page in your browser) and
 "Exit tray" (removes the icon and its notifications until the service starts again; the service keeps running). Its
-notifications are Windows toasts for mains lost and back, the power mode changing, low battery, failed actions, an
+notifications are Windows toasts, kept in the notification centre, for mains lost and back, the power mode changing, low battery, failed actions, an
 admin broker older than the service, and station faults, warnings and over-temperature (V2 stations); switch
 each group in `notifications.json` ([configuration.md](docs/configuration.md#notifications-notificationsjson)). The
 notifications come from the icon: with the icon closed or `"tray": false` (or `--no-tray`) there are none.

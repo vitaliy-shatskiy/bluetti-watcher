@@ -223,5 +223,6 @@ Invoke-RestMethod -Method Put -Uri http://127.0.0.1:18940/api/settings/notificat
 Shows one Windows notification ("Test notification") whatever the switches say, headers per the guard above; the page's
 "Send a test notification" button in the modes panel. 200 `{ "sent": true }` once it is handed to the tray icon (the
 service log then says `notice: ModeChanges Test notification`); 503 when the service shows no tray icon (`tray` off, or
-not in the signed-in session). A notice is a shell balloon: Windows shows it for a few seconds and keeps no copy in the
-notification centre, and Do not disturb hides it.
+not in the signed-in session). A notice is a Windows toast that stays in the notification centre once its banner is gone
+(Do not disturb shows no banner, the centre still keeps it), when the installer's Start-menu shortcut carries the app id;
+without it a tray balloon, which Windows keeps nowhere.

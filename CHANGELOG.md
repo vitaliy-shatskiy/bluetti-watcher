@@ -20,6 +20,14 @@ The release notes on GitHub are this file's section for the tag.
   page, the catalogue and a disabled action never start it. OpenRGB.exe comes from the install folders or config.json
   `modes.openRgbPath`; without it the action is unavailable and says why. The built-in Eco lists it off.
 
+### Changed
+
+- Notifications stay in the Windows notification centre after their banner is gone: they are Windows toasts under the
+  app id `BluettiWatcher`, which `install.ps1` now sets on the Start-menu shortcut "Bluetti Watcher". A click opens the
+  page. Without that shortcut (a run without the installer, or an install before this version until `install.ps1`
+  runs again) they stay tray balloons, which Windows keeps nowhere; the log says which (`tray: notices are ...`).
+  The exe grows by 28 KB.
+
 ### Fixed
 
 - The mode-change notification comes once the mode's actions ran, not before them: a refresh-rate change blanks the

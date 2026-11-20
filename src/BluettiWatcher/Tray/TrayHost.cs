@@ -9,7 +9,8 @@ namespace BluettiWatcher.Tray;
 /// <summary>
 /// The notification-area icon, inside the service process: one thread with a hidden window and a blocking message loop
 /// (no timer). Other threads hand it a snapshot or a notice and post a message; the icon is rebuilt only when its picture
-/// changes. A notice is a shell balloon (NIF_INFO), which Windows 10 and 11 show as a toast with no app registration.
+/// changes. A notice is a Windows toast, kept in the notification centre, while the installer's Start-menu shortcut carries
+/// the app id (<see cref="Toasts"/>); else it is a shell balloon (NIF_INFO), a banner Windows keeps nowhere.
 /// The icon comes back when Explorer restarts (TaskbarCreated) and also when the taskbar was not there yet at start.
 /// "Exit tray" removes the icon and its notices until the next service start; the service keeps running.
 /// </summary>
@@ -31,6 +32,7 @@ internal sealed class TrayHost : ITrayView, IDisposable
     private readonly ManualResetEventSlim _ready = new();
     private readonly ConcurrentQueue<TrayNotice> _notices = new();
     private readonly Lock _gate = new();
+    private readonly NoticeSender _sender;
     private TraySnapshot? _pending;
     /// <summary>Set on the tray thread before <see cref="_ready"/>; read by other threads after it.</summary>
     private nint _hwnd;
@@ -51,6 +53,7 @@ internal sealed class TrayHost : ITrayView, IDisposable
         _panel = panel;
         _zone = zone;
         _log = log;
+        _sender = new NoticeSender(Toasts.Registered, n => Toasts.Show(n, panel), Balloon, log);
         _thread = new Thread(Run) { IsBackground = true, Name = "tray" };
         _thread.SetApartmentState(ApartmentState.STA);
     }
@@ -100,6 +103,7 @@ internal sealed class TrayHost : ITrayView, IDisposable
     {
         // Per-monitor DPI on this thread only: the icon is drawn at the taskbar's real size instead of a scaled 16 px one.
         SetThreadDpiAwarenessContext(PerMonitorAwareV2);
+        Toasts.ClaimAppId();
         _taskbarCreated = RegisterWindowMessage("TaskbarCreated");
         nint instance = GetModuleHandle(0);
         var self = GCHandle.Alloc(this);
@@ -162,7 +166,7 @@ internal sealed class TrayHost : ITrayView, IDisposable
                     if (next is not null) Apply(next);
                     return 0;
                 case NoticeMsg:
-                    while (_notices.TryDequeue(out var notice)) Balloon(notice);
+                    while (_notices.TryDequeue(out var notice)) _sender.Send(notice);
                     return 0;
                 case CloseMsg:
                     Close();
@@ -286,12 +290,13 @@ internal sealed class TrayHost : ITrayView, IDisposable
         }
     }
 
-    private unsafe void Balloon(TrayNotice n)
+    /// <summary>Shows the notice as a balloon of the icon; false (logged) when it was not shown.</summary>
+    private unsafe bool Balloon(TrayNotice n)
     {
         if (!_added)
         {
             _log($"tray: notice not shown (no icon): {n.Title}");
-            return;
+            return false;
         }
         var d = Data(NIF_INFO);
         Copy(n.Title, d.szInfoTitle, 64);
@@ -302,8 +307,9 @@ internal sealed class TrayHost : ITrayView, IDisposable
             NoticeLevel.Warning => NIIF_WARNING,
             _ => NIIF_INFO,
         };
-        if (Shell_NotifyIcon(NIM_MODIFY, &d)) _log($"notice: {n.Kind} {n.Title}");
-        else _log($"tray: notice not shown: {n.Title}");
+        if (Shell_NotifyIcon(NIM_MODIFY, &d)) return true;
+        _log($"tray: notice not shown: {n.Title}");
+        return false;
     }
 
     private void ShowMenu(int x, int y)

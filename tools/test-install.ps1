@@ -131,7 +131,7 @@ try {
     $rel = Join-Path $base 'release'
     foreach ($d in 'bin', 'tools', 'power-mode') { $null = New-Item -ItemType Directory -Path (Join-Path $rel $d) }
     Copy-Item -LiteralPath $installer -Destination $rel
-    foreach ($f in 'swap.ps1', 'wake-task.ps1', 'broker-task.ps1') { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $f) -Destination (Join-Path $rel 'tools') }
+    foreach ($f in 'swap.ps1', 'wake-task.ps1', 'broker-task.ps1', 'shortcut.ps1') { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $f) -Destination (Join-Path $rel 'tools') }
     [IO.File]::WriteAllText((Join-Path $rel 'bin\BluettiWatcher.exe'), 'stand-in')
     [IO.File]::WriteAllText((Join-Path $rel 'power-mode\power-mode.ps1'), '# stand-in')
     $r = Invoke-DryRun -Script (Join-Path $rel 'install.ps1') -Extra @('-Mac', 'AA:BB:CC:DD:EE:04', '-CapacityWh', '2048')
@@ -202,6 +202,23 @@ try {
     $r = Invoke-DryRun -Extra @('-Mac', 'AA:BB:CC:DD:EE:08', '-CapacityWh', '2048') -Env @{ PATH = "$fake;$env:PATH" }
     Check 'no Python needed: no python or venv in any line' ($r.Text -notmatch '(?i)python|venv|requirements\.lock') $r.Text
     Check 'no Python needed: nothing blocked by it' ($r.Text -notmatch 'blocked: .*(?i)python') $r.Text
+    Check 'shortcuts: the Start-menu one would carry the app id' ($r.Text -match 'Programs\\Bluetti Watcher\.lnk with the app id BluettiWatcher') $r.Text
+
+    # the shortcuts (tools/shortcut.ps1, on temp files): the Start-menu one carries the app id the service's toasts use
+    . (Join-Path $repo 'tools\shortcut.ps1')
+    $lnkDir = Join-Path $base 'shortcuts'
+    $null = New-Item -ItemType Directory -Path $lnkDir
+    $startLnk = Join-Path $lnkDir 'start.lnk'
+    $deskLnk = Join-Path $lnkDir 'desk.lnk'
+    $browserExe = Join-Path ([Environment]::GetFolderPath('Windows')) 'notepad.exe'
+    Set-WatcherShortcut -Path $startLnk -Browser $browserExe -Url 'http://127.0.0.1:18940/' -AppId $script:WatcherAppId
+    Set-WatcherShortcut -Path $deskLnk -Browser $browserExe -Url 'http://127.0.0.1:18940/'
+    Check 'shortcuts: the app id is set and reads back' ((Get-WatcherShortcutAppId $startLnk) -ceq 'BluettiWatcher') "$(Get-WatcherShortcutAppId $startLnk)"
+    Check 'shortcuts: without -AppId none is set' ($null -eq (Get-WatcherShortcutAppId $deskLnk)) "$(Get-WatcherShortcutAppId $deskLnk)"
+    $read = (New-Object -ComObject WScript.Shell).CreateShortcut($startLnk)
+    Check 'shortcuts: the target and the app-mode page stay' ($read.TargetPath -ieq $browserExe -and $read.Arguments -ceq '--app=http://127.0.0.1:18940/') "$($read.TargetPath) $($read.Arguments)"
+    $toastsSource = Get-Content -Raw -LiteralPath (Join-Path $repo 'src\BluettiWatcher\Tray\Toasts.cs')
+    Check 'shortcuts: the app id is the one the service toasts under' ($toastsSource -cmatch "AppId = `"$([regex]::Escape($script:WatcherAppId))`";")
     # the 1.0.0 venv's removal (the function out of install.ps1, run on temp folders only): a plain folder goes whole; a
     # junction or symlink at the venv, or inside it, is unlinked alone and what it points at stays; a file is refused
     $ast = [Management.Automation.Language.Parser]::ParseFile($installer, [ref] $null, [ref] $null)
