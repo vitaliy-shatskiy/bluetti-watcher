@@ -16,7 +16,7 @@
 
 <p><b>English</b> · <a href="README.uk.md">Українська</a></p>
 
-<p><a href="#quick-start">Install</a> · <a href="#how-it-works">How it works</a> · <a href="#features">Features</a> · <a href="#supported-hardware">Hardware</a> · <a href="#faq">FAQ</a> · <a href="docs/configuration.md">Configuration</a></p>
+<p><a href="#install">Install</a> · <a href="#what-happens-in-a-cut">What happens in a cut</a> · <a href="#power-modes">Power modes</a> · <a href="#supported-stations">Stations</a> · <a href="#faq">FAQ</a> · <a href="docs/configuration.md">Configuration</a></p>
 
 </div>
 
@@ -32,191 +32,162 @@ pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh 2048 -Apply
 > An independent project, not affiliated with or endorsed by BLUETTI. Download it only from
 > [this repository's releases](https://github.com/vitaliy-shatskiy/bluetti-watcher/releases/latest).
 
-In Ukraine scheduled and emergency outages are routine, and a desktop on a power station dies quietly when the battery
-runs out. Bluetti Watcher reads the station once a minute over Bluetooth LE and, when mains is lost, switches the PC
-to an energy-saving mode, raises an emergency at low battery and hibernates the PC before the station is empty. When
-mains comes back it puts everything back, and a small dashboard on `127.0.0.1` shows the battery, the load, the time
-left and the history.
-
-## How it works
+A desktop on a power station dies quietly when the battery runs out. Bluetti Watcher reads the station over Bluetooth LE
+once a minute. When mains is lost it switches the PC to a power-saving mode, warns at low battery and hibernates the PC
+before the station is empty; when mains is back it undoes every change. A dashboard on `127.0.0.1` and a tray icon show
+the battery, the load, the time left and the history.
 
 ```mermaid
 flowchart LR
-  S["BLUETTI station"] -- "Bluetooth LE, read only, every minute" --> W["BluettiWatcher.exe"]
+  S["BLUETTI station"] -- "Bluetooth LE, read only" --> W["Bluetti Watcher"]
   C["BLUETTI cloud (optional)"] -.-> W
   K["DTEK schedule (optional)"] -.-> W
-  W --> P["Power saver plan + GPU cap"]
-  W --> F["Flag file for other programs"]
+  W --> P["Power modes: plan, CPU, GPU, display, services, apps, RGB"]
   W --> H["Hibernate before empty"]
-  W --> D["Dashboard on 127.0.0.1"]
+  W --> F["Flag file for other programs"]
+  W --> D["Dashboard, tray, notifications"]
 ```
 
-<p align="center">
-  <a href="docs/media/explainer/explainer.mp4"><img src="docs/media/explainer/explainer.webp" alt="What happens in a power cut: mains lost, eco after 3 minutes, emergency at 20 %, stop at 10 %, hibernate at 5 %, mains back" width="820"></a>
-</p>
+## What you get
 
-## How it reacts
+- **Bluetooth reader built in**: 29 BLUETTI models, read only, nothing else to install.
+- **Power modes**: Normal, Eco, Max and your own, picked by Auto rules or by hand; every change undone on leaving.
+- **Safe hibernation**: levels act only on two agreeing readings; implausible jumps are rejected.
+- **Battery time learned from your station**: a loss model fitted to your past cuts, with a likely range.
+- **Dashboard** in English and Ukrainian: battery, load, time left, cut history, charts from 1 hour to 30 days; fits a phone.
+- **Tray icon and Windows notifications**: mains lost and back, mode changes, low battery, failures, station alarms.
+- **Optional**: BLUETTI cloud fallback, DTEK outage schedule (Kyiv region), wake during a cut, Claude Code integration.
+- **One NativeAOT exe**, a per-user scheduled task, no window, no elevation for the service.
+
+## What happens in a cut
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/flow-dark.svg">
   <img alt="Battery level through one power cut and what happens at each default threshold" src="docs/media/flow-light.svg" width="100%">
 </picture>
 
-| When | What happens |
+| When (defaults) | What happens |
 |---|---|
-| Mains lost for 3 minutes | Eco: the Windows Power saver plan, a GPU power cap on NVIDIA cards (if set up), the flag says eco |
-| Battery at 20 % | Emergency: the flag tells programs that read it to wind down |
-| Battery at 10 % | Stop: the flag's level says critical, a signal to save work and stop |
+| Mains lost for 3 minutes | Auto switches to Eco: the Windows Power saver plan plus the Eco actions you turned on |
+| Battery at 20 % | Emergency: the flag file tells programs that read it to wind down |
+| Battery at 10 % | Stop: the flag says critical, a signal to save work and stop |
 | Battery at 7 % | Hibernate warning |
 | Battery at 5 % | The PC hibernates, after a fresh reading agrees |
-| Mains back for 3 minutes | Every mode lifted, the previous power plan back |
+| Mains back for 3 minutes | Auto switches back to Normal; every setting Eco changed is restored |
 
-Every threshold is configurable. A level acts only after two agreeing readings; the full rules are in
-[docs/design.md](docs/design.md).
+Every threshold is configurable ([configuration.md](docs/configuration.md#mains-and-battery-levels)). At a high measured
+drain the levels are raised so the PC still hibernates in time. The rules in full: [docs/design.md](docs/design.md).
 
-## Quick start
+## Install
 
-Needs Windows 10 or 11 x64 with a Bluetooth LE adapter, PowerShell 7 (`pwsh`) and Chrome or Edge. The service uses
-the SQLite built into Windows (`winsqlite3.dll`) and needs version 3.24.0 or later: with an older one it does not start,
-and `service.log` names the version found.
+Needs Windows 10 or 11 x64 with a Bluetooth LE adapter, PowerShell 7 (`pwsh`), and Chrome or Edge for the dashboard
+shortcut. The service uses the SQLite built into Windows (`winsqlite3.dll`) and needs 3.24.0 or later; with an older one
+it does not start and `service.log` names the version found.
 
 1. Download `bluetti-watcher-<version>-win-x64.zip` and its `.sha256` from
-   [the latest release](https://github.com/vitaliy-shatskiy/bluetti-watcher/releases/latest), check the hash and
-   extract the zip:
+   [the latest release](https://github.com/vitaliy-shatskiy/bluetti-watcher/releases/latest), compare the hash, extract:
 
    ```powershell
    (Get-FileHash .\bluetti-watcher-*-win-x64.zip).Hash   # must equal the hash in the .sha256 file
    ```
 
-2. Find the station's Bluetooth address (the BLUETTI app, or Windows Settings > Bluetooth) and its battery capacity in Wh
-   (the spec sheet or the label; the battery time is computed from it).
+2. Find the station's Bluetooth address (the BLUETTI app or Windows Settings > Bluetooth) and its capacity in Wh (the
+   spec sheet; the time left is computed from it).
 3. In PowerShell 7, in the extracted folder:
 
    ```powershell
-   pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh <Wh>          # dry run: prints every step and what blocks it
+   pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh <Wh>          # dry run: every step and what blocks it
    pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh <Wh> -Apply   # install
    ```
 
-Everything lands in `%LOCALAPPDATA%\bluetti-watcher` (`bin\`, `power-mode\`, `config.json`, `station.db`,
-`service.log`). The installer registers the logon task `BluettiWatcher` (current user, no elevation), starts it, waits
-for `/api/health`, registers the wake task (disabled) and creates the `Bluetti Watcher` shortcut on the Desktop and in
-the Start menu.
+The installer writes `%LOCALAPPDATA%\bluetti-watcher` (`bin\`, `config.json`, `station.db`, `service.log`), registers the
+logon task `BluettiWatcher` (current user, not elevated), starts it and waits for `/api/health`, registers the wake task
+(disabled) and adds a `Bluetti Watcher` shortcut on the Desktop and in the Start menu.
 
-The power modes' actions that need administrator rights (services, scheduled tasks, the NVIDIA GPU power limit and
-profiles) run through the admin broker. Run the install from an elevated PowerShell and it sets the broker up too;
-from a normal one it installs the service and names the elevated step left, which you can run later, and again after
-every upgrade (`/api/health` and the tray say when it is due):
+Power-mode actions that need administrator rights (services, scheduled tasks, the NVIDIA power limit and profiles) go
+through the **admin broker**, a SYSTEM task that does only what its allow list names. Run the install from an elevated
+PowerShell and it sets the broker up too; from a normal one it installs the service and names the elevated step left:
 
 ```powershell
 pwsh -NoProfile -File install.ps1 -Broker -Apply   # elevated, in the extracted release folder
 ```
 
-## Features
+Without the broker the service runs fine; only the actions that need it report so.
 
-- Reads the station over Bluetooth LE, read only; optional fallback to the BLUETTI cloud when Bluetooth is silent.
-- Built-in Bluetooth reader, nothing else to install: all 29 supported models, IoT V1 (AC200L/M/PL, AC300, AC500, EB3A, EP500/P) and V2 (AC2A/P, AC50B, AC60/P, AC70/P, AC180/T/P, AP300, EL10, EL30V2, EL100V2, EP600, EP760, EP800, EP2000, Handsfree 1, PR30V2, PR100V2); a station that encrypts its Bluetooth link is read through the cloud fallback.
-- Eco, emergency, stop, hibernate warning and hibernation by mains state and battery level, all thresholds configurable.
-- Guards against bad readings: implausible jumps rejected, a longer confirmation after the station recalibrates.
-- AC200PL grid input voltage (register 77, [protocol notes](docs/bluetti-protocol.md)) stored with every reading: above
-  253 V one alert and your configured action, so an over-voltage on the input leaves a trace.
-- Dashboard in English and Ukrainian: battery ring coloured by your levels, time left, power cuts, battery stats for 30 days,
-  charts from 1 hour to 30 days. Fits a phone, a Full HD and a 2K screen.
-- Battery time learned from your own station: a loss model (idle draw plus a share of the load) fitted to past cuts, the
-  eco-mode saving counted early in a cut, and a likely range once 5 cuts are recorded (`fittedRuntime`, on by default).
-- Manual control on the page: Auto, Eco, Max.
-- Your own command when a mode begins (`actions`), and a flag file other programs can read.
-- Optional wake timer and DTEK planned-outage schedule (Kyiv region): an hour grid for today and tomorrow, checked against the station's own mains reading, and the hours already past show whether there really was power.
-- Tray icon: the charge as a number over a bar, green on mains and amber on battery; the tooltip gives watts, mode and
-  time left, a click opens Auto / Eco / Max, the panel and "Exit tray". Windows notifications for mains lost and back,
-  mode changes, low battery, failed actions and station alarms, each switchable (`--no-tray` turns both off).
-- One NativeAOT exe, a per-user scheduled task, no window.
+## Using it
 
-## Tray
+- **Dashboard**: the `Bluetti Watcher` shortcut, or `http://127.0.0.1:18940/`. The Power modes panel picks Auto or a
+  mode, edits modes and rules, and turns hibernation on or off.
+- **Tray icon**: the charge as digits over a bar, green on mains, amber on battery, grey with no fresh reading. The
+  tooltip gives the watts, the mode and the time left; a click opens Auto, every mode, "Open panel" and "Exit tray"
+  (hides the icon until the service restarts; the service keeps running).
+- **Notifications**: Windows toasts for mains lost and back, mode changes, low battery, failed actions, an admin broker
+  older than the service, and station faults, warnings and over-temperature. Each group can be switched off on the page
+  or in [`notifications.json`](docs/configuration.md#notifications-notificationsjson). No icon (`"tray": false` or
+  `--no-tray`) means no notifications.
+- **Flag file** `%ProgramData%\BluettiWatcher\power-mode.json`: the current mode and battery level for other programs
+  ([power-mode/README.md](power-mode/README.md)).
+- **Command line**: `BluettiWatcher.exe --help`, `--version`, `power-mode status`
+  ([all commands](docs/configuration.md#command-line)).
 
-The service shows its own notification-area icon (no second program): the charge in digits over a bar, green on mains,
-amber on battery, grey when no fresh reading has come for `maxGapSec`. Hover for the watts in and out, the mode and the
-time left; click for a menu with Auto and every power mode (below), "Open panel" (this page in your browser) and
-"Exit tray" (removes the icon and its notifications until the service starts again; the service keeps running). Its
-notifications are Windows toasts, kept in the notification centre, for mains lost and back, the power mode changing, low battery, failed actions, an
-admin broker older than the service, and station faults, warnings and over-temperature (V2 stations); switch
-each group in `notifications.json` ([configuration.md](docs/configuration.md#notifications-notificationsjson)). The
-notifications come from the icon: with the icon closed or `"tray": false` (or `--no-tray`) there are none.
-
-## Power modes
-
-A power mode is a named list of actions the service applies to this PC: Normal, Eco and Max are built in, and you can
-add your own on the page (Power modes panel) or through the API ([api.md](docs/api.md#power-modes-modesengine--v2)).
-Auto picks the mode by rules in order: mains off or on for a while, battery under a level, a planned outage within some
-minutes (with the DTEK module), a time window; a mode you choose holds until Auto. The actions: the power plan, the
-processor's maximum state and boost, the display-off timeout, the NVIDIA GPU power limit and a driver profile, the
-display refresh rate and brightness, services and scheduled tasks, apps and Phone Link closed, a command pair from
-your config (pause a backup on entering Eco, resume it on leaving), the RGB lighting off through OpenRGB (an OpenRGB
-profile you pick back on leaving), and a watcher that logs what keeps the GPU at full clock. Every change is journaled and undone when the mode is left, unless you changed that setting by hand meanwhile:
-then it is left as you set it. The built-in Eco lists the optional ones off; an existing install's `actions.eco` and
-`actions.normal` become Eco's command pair. Actions that need administrator rights go through the admin broker, a
-SYSTEM task with a default-deny allow list that `install.ps1` sets up in an elevated shell; run that step again after
-each upgrade (`/api/health` and the tray say when it is due). `"modes": { "engine": "legacy" }` keeps the old
-fixed eco ([configuration.md](docs/configuration.md#power-mode-and-actions)).
-
-## Screenshots
+<p align="center">
+  <a href="docs/demos/cli.mp4"><img src="docs/demos/cli.webp" alt="BluettiWatcher.exe --help, power-mode status and --version in PowerShell" width="820"></a>
+</p>
 
 | Ukrainian, desktop | English, phone |
 |---|---|
 | <img src="docs/media/screen-uk.png" alt="The dashboard in Ukrainian on a desktop, four hours into a cut" width="560"> | <img src="docs/media/screen-mobile.png" alt="The dashboard in English on a phone" width="220"> |
 
-## Supported hardware
+## Power modes
 
-- BLUETTI AC200PL: tested.
-- The other IoT V1 models, read over Bluetooth the same way (set `type` in the configuration): AC200L, AC200M, AC300,
-  AC500, EB3A, EP500, EP500P; untested. The AC300 gives the full reading (battery, AC and DC power, output mode,
-  inverter voltage and frequency); its battery packs are not read.
-- The IoT V2 models, read over Bluetooth too (set `type`): AC2A, AC2P, AC50B, AC60, AC60P, AC70, AC70P, AC180, AC180T,
-  AC180P, AP300, EL10, EL30V2, EL100V2, EP600, EP760, EP800, EP2000, Handsfree 1, PR30V2, PR100V2; untested. The EP600,
-  EP760, EP800 and EP2000 report the battery level only over Bluetooth, which cannot tell mains from battery: they are not
-  read over Bluetooth, and the cloud fallback answers (one log line says so). A station that encrypts its Bluetooth link
-  (it opens with a key exchange) is not read over Bluetooth, and not connected to again until the service restarts (`/api/health` shows `bluetoothEncrypted: true`); with the cloud fallback on ([Optional modules](#optional-modules)) the cloud
-  answers instead: battery, AC input and AC output.
+A power mode is a named list of actions applied to this PC. Normal, Eco and Max are built in; add your own on the page
+or through the [API](docs/api.md#power-modes-modesengine--v2). **Auto** picks a mode by rules checked in order: mains
+off or on for some time, battery under a level, a planned outage within some minutes (DTEK module), a time window. A
+mode you pick by hand holds until you choose Auto again.
 
+| Action | Needs the broker |
+|---|---|
+| Power plan; processor maximum state and boost; display-off timeout | no |
+| Display refresh rate and brightness | no |
+| NVIDIA GPU power limit and driver profile | yes |
+| Services and scheduled tasks stopped or disabled | yes |
+| Apps and Phone Link closed | no |
+| A command pair from `config.json` (for example pause a backup, resume it on leaving) | no |
+| RGB lighting off through [OpenRGB](https://openrgb.org/), a profile of your choice back on leaving | no |
+| A watcher that logs what keeps the GPU at full clock | no |
+
+Every change is journaled and undone when the mode is left, unless you changed that setting by hand in the meantime:
+then it stays as you set it. The built-in Eco uses the Power saver plan and lists the other actions switched off.
+`"modes": { "engine": "legacy" }` keeps the older fixed eco ([configuration.md](docs/configuration.md#power-mode-and-actions)).
+
+## Supported stations
+
+| Family | Models | Over Bluetooth |
+|---|---|---|
+| IoT V1 | AC200PL (tested), AC200L, AC200M, AC300, AC500, EB3A, EP500, EP500P | yes |
+| IoT V2 | AC2A, AC2P, AC50B, AC60, AC60P, AC70, AC70P, AC180, AC180T, AC180P, AP300, EL10, EL30V2, EL100V2, Handsfree 1, PR30V2, PR100V2 | yes |
+| IoT V2, battery level only | EP600, EP760, EP800, EP2000 | no: Bluetooth cannot tell mains from battery there, the cloud fallback reads them |
+
+Set `type` in `config.json` to your model. Only the AC200PL is tested on hardware. A station that encrypts its
+Bluetooth link is detected (`/api/health` shows `bluetoothEncrypted: true`), not connected to again until the service
+restarts, and read through the cloud fallback if it is on. Register maps: [docs/bluetti-protocol.md](docs/bluetti-protocol.md).
 A report helps: [station support](https://github.com/vitaliy-shatskiy/bluetti-watcher/issues/new?template=station_support.yml).
-
-Bluetti Watcher is an independent project, not affiliated with or endorsed by BLUETTI.
-
-## Safety and privacy
-
-- Read only toward the station: the Bluetooth reader can build one kind of request, a read (Modbus function 0x03)
-  under the control registers, and writes nothing else but that request and its notification subscription. No
-  setting on the station is ever changed.
-- The HTTP API listens on `127.0.0.1` only and refuses any request whose `Host` is not `127.0.0.1:<port>` or
-  `localhost:<port>`. The one write route (`POST /api/mode`) needs a custom header that other web pages cannot send.
-- Kill switch: an empty file `no-hibernate` in `%LOCALAPPDATA%\bluetti-watcher` turns hibernation off, checked on
-  every poll. A dry run (`--dry-run` or `"dryRun": true`) logs every power-mode command and hibernation instead.
-- Nothing leaves the PC unless you turn on one of two modules:
-  - Cloud fallback: the token refresh to `sso.bluettipower.com` and the device-list read from `gw.bluettipower.com`,
-    plus at most 40 reads a day of the station's power curve there to fill gaps in the history (`cloudHistory`).
-    The token stays in the data directory and is never logged.
-  - DTEK module: reads the public dataset on `raw.githubusercontent.com`. Only with `"site": true` it also reads the
-    distributor's site (`www.dtek-krem.com.ua`) as a browser would, subject to the site's terms; your address goes
-    there only if you set `city`, `street` and `house`.
-
-Reporting a vulnerability: [SECURITY.md](SECURITY.md).
 
 ## Optional modules
 
-- **Wake during a cut** (off by default): a PC hibernated in a cut wakes every `wakeEveryMinutes` to check whether
-  mains is back; no wake is armed near an empty battery. Run the check below once before turning it on.
-  Rules: [docs/design.md](docs/design.md#8-wake-during-a-cut).
-- **DTEK module** (Kyiv region, off by default): the next planned outage for your queue, the expected return and
-  whether the battery lasts. It never changes a power-mode decision.
-  `"dtekWatcher": { "enabled": true, "queues": ["GPV1.1"] }` (add `"site": true` to also read the distributor's website: faster plan edits, subject to its terms); details:
-  [docs/design.md](docs/design.md#11-dtek-module-planned-outages-kyiv-region).
-- **Cloud fallback** (unofficial, read only): when Bluetooth does not answer, the reading comes from the BLUETTI cloud.
-  Sign in on the dashboard with "Sign in to BLUETTI cloud" (or once with
-  `& "$env:LOCALAPPDATA\bluetti-watcher\bin\BluettiWatcher.exe" --cloud-login`); the dashboard shows the cloud's state
-  and asks for a new sign-in when BLUETTI refuses the saved token. The Reading source buttons (or `readingSource` in
-  config.json) pick Auto (Bluetooth, then the cloud), Bluetooth only (never the cloud) or Cloud only (never
-  Bluetooth). It may stop working if BLUETTI changes its API. Details: [docs/design.md](docs/design.md#4-cloud-fallback).
-- **Claude Code integration**: `BluettiWatcher.exe hook` tells each Claude Code session on the PC the power mode and battery
-  level, so sessions save work and avoid heavy jobs during a cut; no Node.js needed: [integrations/claude-code](integrations/claude-code/README.md).
+- **Cloud fallback** (unofficial, read only): when Bluetooth does not answer, the reading comes from the BLUETTI cloud's
+  live state, and gaps in the history are filled from its 5-minute history. Sign in on the dashboard ("Sign in to
+  BLUETTI cloud") or once with `BluettiWatcher.exe --cloud-login`. The Reading source buttons pick Auto (Bluetooth, then
+  the cloud), Bluetooth only or Cloud only. It may stop working if BLUETTI changes its API.
+  [Details](docs/design.md#4-cloud-fallback).
+- **DTEK module** (Kyiv region, off by default): the next planned outage for your queue, an hour grid for today and
+  tomorrow checked against the station's own mains reading, and whether the battery lasts. Enable with
+  `"dtekWatcher": { "enabled": true, "queues": ["GPV1.1"] }`. [Details](docs/design.md#11-dtek-module-planned-outages-kyiv-region).
+- **Wake during a cut** (off by default): a PC hibernated in a cut wakes every `wakeEveryMinutes` to check whether mains
+  is back; never near an empty battery. Run the check below once before turning it on.
+  [Details](docs/design.md#8-wake-during-a-cut).
+- **Claude Code integration**: `BluettiWatcher.exe hook` tells each Claude Code session the power mode and battery level,
+  so it saves work and avoids heavy jobs during a cut. [integrations/claude-code](integrations/claude-code/README.md).
 
 <details>
 <summary>Wake check: run once before setting <code>wakeEveryMinutes</code></summary>
@@ -230,121 +201,139 @@ $t = Get-ScheduledTask -TaskName BluettiWatcherWake; $t.Triggers[0].StartBoundar
 `powercfg /waketimers` must list the task before the PC goes down, and the PC must come back by itself about 4 minutes
 later (`powercfg /lastwake` names the source; `Disable-ScheduledTask -TaskName BluettiWatcherWake` turns it off). If it
 does not wake, RTC wake from hibernation is off in the firmware or "Allow wake timers" is off in the power plan. If it
-does: `"wakeEveryMinutes": 45` in `config.json` and a restart of the task. `install.ps1 -RemoveWake -Apply` removes
-the wake task.
+does: set `"wakeEveryMinutes": 45` in `config.json` and restart the task.
 
 </details>
 
+## Safety and privacy
+
+- **Read only toward the station.** The Bluetooth reader builds one kind of request, a Modbus read (function 0x03), and
+  writes nothing but that request and its notification subscription. The cloud client has no control call.
+- **Local only.** The HTTP API listens on `127.0.0.1` and refuses any `Host` other than `127.0.0.1:<port>` or
+  `localhost:<port>`. Every write route needs the header `X-Station: 1` and a same-origin `Origin`, which other web
+  pages cannot send ([api.md](docs/api.md#request-rules)).
+- **Off switches.** "Hibernation off" in the Power modes panel stops hibernation. `--dry-run` or `"dryRun": true` logs
+  every power-mode command and hibernation instead of running it.
+- **Nothing leaves the PC** unless you turn on a module:
+  - Cloud fallback: `sso.bluettipower.com` (sign-in, token refresh) and `gw.bluettipower.com` (device list, live state,
+    at most 40 history reads a day). The token stays in the data directory and is never logged.
+  - DTEK module: the public dataset on `raw.githubusercontent.com`; with `"site": true` also the distributor's website,
+    subject to its terms, which gets your address only if you set `city`, `street` and `house`.
+
+Reporting a vulnerability: [SECURITY.md](SECURITY.md).
+
 ## FAQ
 
-**Windows warns about the download, or PowerShell refuses `install.ps1` as not digitally signed.**
+<details>
+<summary><b>Windows warns about the download, or PowerShell refuses <code>install.ps1</code> as not signed.</b></summary>
+
 The release is not code-signed. Compare `(Get-FileHash <zip>).Hash` with the `.sha256` file from the same release, then
 unblock the extracted folder: `Get-ChildItem -Recurse | Unblock-File`.
 
-**Does it change any setting on the station?**
-No. It only reads; the Bluetooth reader can send nothing but read requests, and the cloud client never sends a
-control command.
+</details>
 
-**My station is not an AC200PL.**
-Set `type` to your model. All 29 models (IoT V1 and V2) are read over Bluetooth; an encrypted station, or a model not in the list, only through the cloud fallback
-([Supported hardware](#supported-hardware)). Please open a [station support](https://github.com/vitaliy-shatskiy/bluetti-watcher/issues/new?template=station_support.yml)
-issue either way.
+<details>
+<summary><b>Does it change any setting on the station?</b></summary>
 
-**Bluetooth does not answer.**
-Keep the station in range and close the BLUETTI app on your phone, which may hold the connection. `service.log` in the
-data directory names the first miss, the turn to "station silent" and every 15th miss after it; the cloud fallback
-covers the gaps.
+No. Bluetooth sends only read requests and the cloud client has no control call.
 
-**How do I stop a hibernation right now?**
-`New-Item "$env:LOCALAPPDATA\bluetti-watcher\no-hibernate"`. It is checked on every poll; delete the file to turn
-hibernation back on.
+</details>
 
-**Task Manager shows the service at about 1 to 2 MB of memory. Is that real?**
+<details>
+<summary><b>Bluetooth does not answer.</b></summary>
+
+Keep the station in range and close the BLUETTI app on your phone, which may hold the connection. `service.log` names
+the first miss, the turn to "station silent", every 15th miss after it, and the step a slow open hung in. The cloud
+fallback covers the gaps.
+
+</details>
+
+<details>
+<summary><b>How do I stop a hibernation right now?</b></summary>
+
+Turn "Hibernation off" in the Power modes panel; it applies at once. With the legacy engine, create an empty file
+`no-hibernate` in `%LOCALAPPDATA%\bluetti-watcher` instead.
+
+</details>
+
+<details>
+<summary><b>Task Manager shows the service at almost no memory. Is that real?</b></summary>
+
 Partly. After each poll the service hands its pages back to Windows (`trimWorkingSet`, on by default), so the "Memory"
-column (private working set) stays at about 1 to 2 MB while Bluetooth is read (under 1 MB without it); an open page
-raises it again until the next poll. The memory it has committed (private bytes, about 5 to 8 MB) does not change,
-and the pages fault back in at the next poll. `"trimWorkingSet": false` in config.json turns it off.
+column (private working set) stays small; the committed memory does not change and the pages come back at the next
+poll. `"trimWorkingSet": false` turns it off.
 
-**Other brands (EcoFlow, Jackery, ...)?**
+</details>
+
+<details>
+<summary><b>Other brands (EcoFlow, Jackery, ...)?</b></summary>
+
 No. The reader speaks the BLUETTI protocol only.
 
-## Install from source
-
-```powershell
-git clone https://github.com/vitaliy-shatskiy/bluetti-watcher.git
-cd bluetti-watcher
-pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh <Wh>          # dry run
-pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh <Wh> -Apply   # publishes NativeAOT, then installs as above
-```
-
-Needs the .NET SDK named in `global.json` and, for NativeAOT, the MSVC linker (Visual Studio Build Tools, "Desktop
-development with C++"); `-Fallback` builds a trimmed single-file exe without it. Development without installing:
-[CONTRIBUTING.md](CONTRIBUTING.md).
+</details>
 
 ## Configuration
 
-`%LOCALAPPDATA%\bluetti-watcher\config.json`; only `mac` is required. Every key, its default and an example:
-[docs/configuration.md](docs/configuration.md). The rules the service follows: [docs/design.md](docs/design.md). The
-HTTP API: [docs/api.md](docs/api.md). Restart the task after an edit:
+`%LOCALAPPDATA%\bluetti-watcher\config.json`; only `mac` is required. Every key and its default:
+[docs/configuration.md](docs/configuration.md). The HTTP API: [docs/api.md](docs/api.md). Restart the task after an edit:
 
 ```powershell
 Stop-ScheduledTask BluettiWatcher; Start-ScheduledTask BluettiWatcher
 ```
 
-The command line: `--help`, `--version` and the power-mode switch (`power-mode status` only reads the flag).
-
-<p align="center">
-  <a href="docs/demos/cli.mp4"><img src="docs/demos/cli.webp" alt="BluettiWatcher.exe --help, power-mode status and --version in PowerShell" width="820"></a>
-</p>
-
 ## Update and uninstall
 
 To update, run `install.ps1 -Apply` from the new release's folder. `config.json`, the history and the cloud token stay;
-the new exe is staged next to the running one and swapped in seconds, and a failed health check puts the previous
-version back. With the admin broker installed, run `install.ps1 -Broker -Apply` from an elevated PowerShell after the
-update too: the broker runs its own copy of the exe. What changed: [CHANGELOG.md](CHANGELOG.md).
-
-Going back from 1.7 to 1.6 or older: from 1.7 an eco's end task starts `bin\BluettiWatcherService.exe`, which older
-releases do not have, so after the swap that task cannot start and the eco does not end at its time. Leave eco before
-installing the older release (`power-mode.ps1 off`, step 2 below), or run it once after the swap: it ends the eco and
-removes that end task; an eco set after that registers its end task against the older exe.
+the new exe is swapped in within seconds, and a failed health check puts the previous one back. With the admin broker,
+also run `install.ps1 -Broker -Apply` from an elevated PowerShell: the broker runs its own copy of the exe, and
+`/api/health` and the tray say when that step is due. What changed: [CHANGELOG.md](CHANGELOG.md).
 
 <details>
 <summary>Uninstall</summary>
 
-In this order (the task restarts the exe after any exit until it is disabled, and a running service would set eco
-again; `power-mode.ps1` and the GPU task removal need the data directory's scripts, so they run before it is deleted):
+On mains, in this order:
+
+1. On the dashboard pick **Normal** in the Power modes panel, so every change a mode made is restored.
+2. Stop the service and remove its tasks and files:
 
 ```powershell
-# 1. stop the service and wait until the exe has exited
 Disable-ScheduledTask -TaskName BluettiWatcher | Out-Null
 Stop-ScheduledTask -TaskName BluettiWatcher
-Get-Process BluettiWatcher -ErrorAction SilentlyContinue | Wait-Process -Timeout 30
-
-# 2. leave eco: puts back the power plan and the GPU power limit eco changed and removes the eco end task
-pwsh -NoProfile -File "$env:LOCALAPPDATA\bluetti-watcher\power-mode\power-mode.ps1" off
-
-# 3. only if the GPU tasks were installed: from an elevated PowerShell
-pwsh -NoProfile -File "$env:LOCALAPPDATA\bluetti-watcher\power-mode\power-mode.ps1" gpu-task remove
-
-# 4. unregister the tasks (the end task is already gone after step 2; this clears a leftover)
+Get-Process BluettiWatcher, BluettiWatcherService -ErrorAction SilentlyContinue | Wait-Process -Timeout 30
+pwsh -NoProfile -File "$env:LOCALAPPDATA\bluetti-watcher\power-mode\power-mode.ps1" off   # resets the flag; legacy engine: restores its eco
 Unregister-ScheduledTask -TaskName BluettiWatcher -Confirm:$false
-Unregister-ScheduledTask -TaskName BluettiWatcherEcoEnd -Confirm:$false -ErrorAction SilentlyContinue
-pwsh -NoProfile -File install.ps1 -RemoveWake -Apply
-
-# 5. delete the files
+pwsh -NoProfile -File install.ps1 -RemoveWake -Apply                                    # from the release folder
 Remove-Item -Recurse "$env:LOCALAPPDATA\bluetti-watcher", "$env:ProgramData\BluettiWatcher"
 ```
 
-Step 2 prints `power mode: normal` and one line per thing it put back, for example `plan: High performance` and
-`gpu: power limit back to <W> W`; a line starting with `warn:` or `note:` means something stayed owed, so run it again
-before going on. When `config.json` sets `powerMode` names other than the defaults, set `POWER_MODE_FILE`,
-`POWER_MODE_MUTEX` and `POWER_MODE_TASK_PREFIX` to them first (and use `<taskPrefix>End` in step 4); the
-[power-mode README](power-mode/README.md#configuration) lists them.
+3. With the admin broker or the legacy GPU tasks, from an elevated PowerShell:
 
-Then delete the `Bluetti Watcher` shortcuts.
+```powershell
+Unregister-ScheduledTask -TaskName BluettiWatcherBroker -Confirm:$false -ErrorAction SilentlyContinue
+Get-ScheduledTask -TaskName 'BluettiWatcherEco*' -ErrorAction SilentlyContinue | Unregister-ScheduledTask -Confirm:$false
+Remove-Item -Recurse "$env:ProgramFiles\BluettiWatcher", "$env:ProgramData\BluettiWatcherBroker" -ErrorAction SilentlyContinue
+```
+
+4. Delete the `Bluetti Watcher` shortcuts.
+
+`power-mode.ps1 off` prints `power mode: normal` and one line per thing it put back; a line starting with `warn:` or
+`note:` means something is still owed, so run it again. With non-default `powerMode` names in `config.json`, set
+`POWER_MODE_FILE`, `POWER_MODE_MUTEX` and `POWER_MODE_TASK_PREFIX` first
+([power-mode README](power-mode/README.md#configuration)).
 
 </details>
+
+## Build from source
+
+```powershell
+git clone https://github.com/vitaliy-shatskiy/bluetti-watcher.git
+cd bluetti-watcher
+pwsh -NoProfile -File install.ps1 -Mac AA:BB:CC:DD:EE:FF -CapacityWh <Wh> -Apply   # publishes NativeAOT, then installs
+```
+
+Needs the .NET SDK named in `global.json` and, for NativeAOT, the MSVC linker (Visual Studio Build Tools, "Desktop
+development with C++"); `-Fallback` builds a trimmed single-file exe without it. Tests and development:
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
