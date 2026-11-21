@@ -125,6 +125,24 @@ public sealed class TrayNotificationTests : IDisposable
         Assert.Equal(["Battery critical"], _view.Notices.Select(n => n.Title));
     }
 
+    // All off silences every group at once; back on, each group keeps its own choice.
+    [Fact]
+    public void The_master_switch_off_shows_nothing_and_on_again_keeps_each_groups_choice()
+    {
+        var store = Store();
+        var tray = new TrayController(_view, store);
+        using (var some = JsonDocument.Parse("""{ "failures": false, "enabled": false }""")) Assert.Null(store.Update(some.RootElement));
+        tray.OnEvent("stop", "battery 9 %");
+        Assert.Empty(_view.Notices);
+        Assert.Contains("\"enabled\":false", System.Text.Encoding.UTF8.GetString(NotificationSettingsStore.ToJson(store.Current)), StringComparison.Ordinal);
+
+        using (var on = JsonDocument.Parse("""{ "enabled": true }""")) Assert.Null(store.Update(on.RootElement));
+        tray.OnEvent("action-failed", "eco-on failed");
+        tray.OnEvent("stop", "battery 9 %");
+        Assert.Equal(["Battery critical"], _view.Notices.Select(n => n.Title));
+        Assert.False(new NotificationSettingsStore(SettingsFile, _log.Add).Current.IsOn(NotificationKind.Failures));   // saved, read back
+    }
+
     [Fact]
     public void A_switch_change_applies_to_the_next_notice_without_a_restart()
     {
@@ -227,7 +245,7 @@ public sealed class TrayNotificationTests : IDisposable
     {
         var r = NotificationSettingsApi.Handle(Req("GET", null), Store(), Port);
         Assert.Equal(200, r.Status);
-        Assert.Equal("""{"mains":true,"modeChanges":true,"lowBattery":true,"failures":true,"faults":true,"overTemperature":true}""", Encoding.UTF8.GetString(r.Body));
+        Assert.Equal("""{"enabled":true,"mains":true,"modeChanges":true,"lowBattery":true,"failures":true,"faults":true,"overTemperature":true}""", Encoding.UTF8.GetString(r.Body));
     }
 
     [Fact]

@@ -1,9 +1,18 @@
 namespace BluettiWatcher.Tray;
 
-/// <summary>Which notification groups show; every group is on until switched off.</summary>
+/// <summary>
+/// Which notification groups show; every group is on until switched off. <see cref="Enabled"/> off silences them all and
+/// keeps each group's own choice for when it is on again.
+/// </summary>
 internal sealed record NotificationSettings(bool Mains = true, bool ModeChanges = true, bool LowBattery = true,
-    bool Failures = true, bool Faults = true, bool OverTemperature = true)
+    bool Failures = true, bool Faults = true, bool OverTemperature = true, bool Enabled = true)
 {
+    /// <summary>The JSON name of the switch over every group.</summary>
+    public const string EnabledKey = "enabled";
+
+    /// <summary>A notice of <paramref name="kind"/> shows: notifications on and its group on.</summary>
+    public bool Shows(NotificationKind kind) => Enabled && IsOn(kind);
+
     /// <summary>The JSON names, in the order the file and the API write them.</summary>
     public static readonly IReadOnlyList<(string Name, NotificationKind Kind)> Keys =
     [

@@ -308,6 +308,33 @@ public sealed partial class PageI18nTests
     }
 
     [Fact]
+    public void The_notifications_switch_turns_all_off_with_one_put_and_the_groups_show_only_when_on_and_opened()
+    {
+        var r = RunPanel("""
+            (async () => {
+              const sw = (k) => walk($('modesHib'), (x) => x.attrs['data-sw'] === k)[0];
+              mpNotif = null; mpPaintTop();
+              const unread = !!sw('enabled');
+              mpNotif = { enabled: true, mains: true, modeChanges: false, lowBattery: true, failures: true, faults: true, overTemperature: true };
+              mpPaintTop();
+              const on = { role: sw('enabled').attrs.role, checked: sw('enabled').attrs['aria-checked'], tag: sw('enabled').tagName, groups: !!sw('mains') };
+              A($('modesHib'), 'notif-which').onclick();
+              const opened = ['mains', 'modeChanges'].map((k) => sw(k).attrs['aria-checked']);
+              answers = [{ status: 200, body: { ...mpNotif, enabled: false } }];
+              await sw('enabled').onclick();
+              console.log(JSON.stringify({ unread, on, opened, put: fetches.at(-1), off: sw('enabled').attrs['aria-checked'], groupsOff: !!sw('mains') }));
+            })();
+            """);
+        Assert.False(r.GetProperty("unread").GetBoolean());   // nothing before the service's answer: never a guessed state
+        Assert.Equal("""{"role":"switch","checked":"true","tag":"BUTTON","groups":false}""", r.GetProperty("on").GetRawText());
+        Assert.Equal("""["true","false"]""", r.GetProperty("opened").GetRawText());
+        var put = r.GetProperty("put");
+        Assert.Equal(("PUT", "/api/settings/notifications", "1", """{"enabled":false}"""), (put.GetProperty("method").GetString(), put.GetProperty("url").GetString(), put.GetProperty("station").GetString(), put.GetProperty("body").GetString()));
+        Assert.Equal("false", r.GetProperty("off").GetString());
+        Assert.False(r.GetProperty("groupsOff").GetBoolean());
+    }
+
+    [Fact]
     public void Built_in_modes_cannot_be_deleted_and_a_user_mode_is_deleted_only_after_the_confirm()
     {
         var r = RunPanel("""

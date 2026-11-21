@@ -56,6 +56,6 @@ internal sealed class TrayController(ITrayView view, NotificationSettingsStore s
 
     private void Notify(TrayNotice? notice)
     {
-        if (notice is not null && settings.Current.IsOn(notice.Kind)) view.Notify(notice);
+        if (notice is not null && settings.Current.Shows(notice.Kind)) view.Notify(notice);
     }
 }

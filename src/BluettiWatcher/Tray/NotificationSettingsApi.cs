@@ -4,8 +4,8 @@ using BluettiWatcher.Http;
 namespace BluettiWatcher.Tray;
 
 /// <summary>
-/// GET /api/settings/notifications: the groups and whether each is on. PUT with a JSON object of booleans (any subset of
-/// the groups) switches them, behind <see cref="RequestGuard.WriteRefusal"/>, and answers the whole set. POST
+/// GET /api/settings/notifications: <c>enabled</c> (all on or off) and the groups, whether each is on. PUT with a JSON
+/// object of booleans (any subset of those names) switches them, behind <see cref="RequestGuard.WriteRefusal"/>, and answers the whole set. POST
 /// /api/settings/notifications/test, behind the same guard, shows one notification whatever the switches say.
 /// </summary>
 internal static class NotificationSettingsApi

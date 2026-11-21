@@ -64,6 +64,12 @@ internal sealed class NotificationSettingsStore
         var next = start;
         foreach (var p in body.EnumerateObject())
         {
+            if (string.Equals(p.Name, NotificationSettings.EnabledKey, StringComparison.Ordinal))
+            {
+                if (p.Value.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) { error = $"\"{p.Name}\" must be true or false"; return false; }
+                next = next with { Enabled = p.Value.GetBoolean() };
+                continue;
+            }
             var key = NotificationSettings.Keys.FirstOrDefault(k => string.Equals(k.Name, p.Name, StringComparison.Ordinal));
             if (key.Name is null) { error = $"unknown notification \"{p.Name}\" (known: {string.Join(", ", NotificationSettings.Keys.Select(k => k.Name))})"; return false; }
             if (p.Value.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) { error = $"\"{p.Name}\" must be true or false"; return false; }
@@ -80,6 +86,7 @@ internal sealed class NotificationSettingsStore
         using (var w = new Utf8JsonWriter(ms))
         {
             w.WriteStartObject();
+            w.WriteBoolean(NotificationSettings.EnabledKey, s.Enabled);
             foreach (var (name, kind) in NotificationSettings.Keys) w.WriteBoolean(name, s.IsOn(kind));
             w.WriteEndObject();
         }

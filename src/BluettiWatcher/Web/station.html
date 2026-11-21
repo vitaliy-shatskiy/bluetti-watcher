@@ -155,6 +155,14 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 .mp details.adv{margin:12px 0}.mp details.adv>summary{margin-bottom:0}.mp details.adv[open]>summary{margin-bottom:8px}
 .mp .enf{display:flex;flex-wrap:wrap;gap:6px 16px;margin:6px 0}
 #modesHib{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin:14px 0 0;padding-top:12px;border-top:1px solid var(--line);font-size:12px;color:var(--dim)}
+/* a switch: a track filled when on, its knob on the right; the label beside it */
+.mp .sw{display:inline-flex;align-items:center;gap:8px;min-height:24px;padding:0;border:0;background:none;color:var(--text);font:inherit;cursor:pointer}
+.mp .sw .tr{position:relative;flex:none;width:28px;height:16px;border-radius:8px;background:var(--line);transition:background .15s}
+.mp .sw .tr::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--dim);transition:left .15s,background .15s}
+.mp .sw[aria-checked=true] .tr{background:var(--accent)}
+.mp .sw[aria-checked=true] .tr::after{left:14px;background:#fff}
+.mp .sw:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+#modesHib .ntg{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px 20px;padding:4px 0 0}
 /* a number in the rules: typed or stepped with − and +, never the browser's spinner */
 .mp input[type=number]{appearance:textfield;-moz-appearance:textfield}.mp input[type=number]::-webkit-inner-spin-button,.mp input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .mp .step{display:inline-flex;align-items:center;background:var(--frame);border:1px solid var(--edge);border-radius:6px}
@@ -426,6 +434,14 @@ en: {
   modesHibOn: "Hibernation on",
   modesHibOff: "Hibernation off",
   modesTestNotice: "Send a test notification",
+  ntAll: "Notifications",
+  ntWhich: "Which ones",
+  ng_mains: "Mains lost and back",
+  ng_modeChanges: "A mode the program switched",
+  ng_lowBattery: "Low battery",
+  ng_failures: "Failed actions",
+  ng_faults: "Station faults",
+  ng_overTemperature: "Overheating",
   modesTestSent: "Test notification sent: it shows for a few seconds at the bottom right of the main screen",
   modesTestNotSent: "Not sent: check that the service is running and try again",
   modesList: "Modes",
@@ -905,6 +921,14 @@ uk: {
   modesHibOn: "Гібернацію увімкнено",
   modesHibOff: "Гібернацію вимкнено",
   modesTestNotice: "Надіслати тестове сповіщення",
+  ntAll: "Сповіщення",
+  ntWhich: "Які саме",
+  ng_mains: "Світло зникло й повернулося",
+  ng_modeChanges: "Режим, який змінила програма",
+  ng_lowBattery: "Низький заряд",
+  ng_failures: "Збої дій",
+  ng_faults: "Несправності станції",
+  ng_overTemperature: "Перегрів",
   modesTestSent: "Тестове сповіщення надіслано: воно видно кілька секунд унизу праворуч на головному екрані",
   modesTestNotSent: "Не надіслано: перевірте, що сервіс працює, і спробуйте знову",
   modesList: "Режими",
@@ -2122,8 +2146,14 @@ function mpPaintTop() {
     (v.problems || []).length ? mpEl('div', { className: 'bad' }, t('modesProblem')) : null);
   const hib = mpEl('input', { type: 'checkbox', checked: s.autoHibernate !== false, disabled: mpBusy, 'data-f': 'hibernate' });
   hib.onchange = () => mpHibernate(hib.checked);
+  // the notification switches show only once the service said how they stand: never a guessed state first
+  const n = mpNotif, all = !!n && n.enabled !== false;
   mpSet($('modesHib'), mpEl('label', { className: 'ck' }, hib, t('modesHibernate')),
-    mpButton('test-notice', '', t('modesTestNotice'), mpTestNotice));
+    n ? mpSwitch('enabled', t('ntAll'), all, () => mpNotifSet('enabled', !all)) : null,
+    all ? mpButton('notif-which', '', t('ntWhich'), () => { mpNotifOpen = !mpNotifOpen; mpPaintTop(); }, { 'aria-expanded': String(mpNotifOpen) }) : null,
+    mpButton('test-notice', '', t('modesTestNotice'), mpTestNotice),
+    all && mpNotifOpen ? mpEl('div', { className: 'ntg', role: 'group', 'aria-label': t('ntWhich') },
+      MP_NOTIF_GROUPS.map((k) => mpSwitch(k, t(`ng_${k}`), n[k] !== false, () => mpNotifSet(k, n[k] === false)))) : null);
   const msg = $('modesMsg');
   msg.textContent = mpMsg ? mpMsg.text : ''; msg.className = `msg ${mpMsg ? mpMsg.kind : ''}`.trim(); msg.hidden = !mpMsg;
   paintModesV2();
@@ -2403,6 +2433,34 @@ async function mpHibernate(on) {
   mpMsg = r.ok ? { kind: 'ok', text: t(on ? 'modesHibOn' : 'modesHibOff') } : { kind: 'bad', text: t('modesNotSaved', { e: r.text }) };
   mpPaintTop();   // the box shows the saved setting: a refused change springs back
 }
+// The notification switches (GET and PUT /api/settings/notifications): enabled over every group, each group its own;
+// null until the service answered. The tray and its toasts read the same file at once.
+var mpNotif = null, mpNotifOpen = false;
+const MP_NOTIF_GROUPS = ['mains', 'modeChanges', 'lowBattery', 'failures', 'faults', 'overTemperature'];
+function mpLoadNotif() {
+  return fetch('/api/settings/notifications', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+    .then((x) => { if (x) mpNotif = x; });
+}
+// A switch: a button with the switch role, its state by the track's fill and the knob's side; one click flips it.
+function mpSwitch(key, text, on, onclick) {
+  const b = mpEl('button', { type: 'button', className: 'sw', role: 'switch', 'aria-checked': String(!!on), 'data-sw': key },
+    mpEl('span', { className: 'tr', 'aria-hidden': 'true' }), text);
+  b.onclick = onclick;
+  return b;
+}
+// Shown at once; a refused change springs back and says why.
+async function mpNotifSet(key, on) {
+  const before = mpNotif;
+  mpNotif = { ...mpNotif, [key]: on };
+  mpPaintTop();
+  let why = null;
+  try {
+    const r = await fetch('/api/settings/notifications', { method: 'PUT', headers: { 'X-Station': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ [key]: on }) });
+    if (r.ok) mpNotif = await r.json(); else why = String(await r.text()).trim() || `HTTP ${r.status}`;
+  } catch (e) { why = t('serviceDown', { e: e.message }); }
+  if (why !== null) { mpNotif = before; mpMsg = { kind: 'bad', text: t('modesNotSaved', { e: why }) }; }
+  mpPaintTop();
+}
 // One notification whatever the switches say: a missing one is then Windows' (Do not disturb, the app's own switch).
 async function mpTestNotice() {
   let text;
@@ -2562,10 +2620,11 @@ var mpFirstRound = null;
 function mpStart() {
   const view = mpRefresh();
   mpFirstRound = Promise.all([mpLoadCat(), view]).then(() => mpPaintList());
+  mpLoadNotif().then(() => mpPaintTop());
   return view;
 }
 async function mpOpen() {
-  await Promise.all([mpLoadCat(), mpRefresh()]);
+  await Promise.all([mpLoadCat(), mpRefresh(), mpLoadNotif()]);
   mpPaintAll();
 }
 // Open: the catalogue once and the view each minute while the page is seen; closed: nothing is asked.
