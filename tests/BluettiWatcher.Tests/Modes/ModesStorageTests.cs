@@ -72,7 +72,7 @@ public sealed class ModesStorageTests : IDisposable
         Assert.Single(e.Problems);
         Assert.Equal(new Selection { Kind = SelectionKind.Manual, ManualModeId = "normal" }, e.Settings.Selection);
         Assert.Equal("normal", e.Snapshot.ModeId);   // mains off for an hour, yet nothing switches on its own
-        Assert.Empty(_m.Writes);
+        Assert.Equal("\"381b4222-f694-41f0-9685-ff5bb260df2e\"", _m.Text("plan"));   // Normal's own Balanced, never the journal's "high" restored
         Assert.True(File.Exists(JournalPath + ".corrupt-" + _clock.Now.ToUnixTimeSeconds()));
     }
 

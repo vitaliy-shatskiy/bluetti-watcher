@@ -26,7 +26,8 @@ internal static class BuiltInModes
 
     /// <summary>A fresh install (public defaults): Eco = Power saver; the GPU limit is listed but off; Max = High performance.</summary>
     public static ModesSettings Defaults(int mainsLostSec, int mainsBackSec) =>
-        Build(normalPlan: null, gpuCap: false, mainsLostSec, mainsBackSec, autoHibernate: true, enterCommand: "", leaveCommand: "");
+        // Normal sets Balanced: leaving Eco ends there even when the plan was changed by hand during Eco
+        Build(normalPlan: PowerModeSwitch.BalancedPlan, gpuCap: false, mainsLostSec, mainsBackSec, autoHibernate: true, enterCommand: "", leaveCommand: "");
 
     /// <summary>
     /// An install that ran the switch before: <c>returnPlan</c> becomes Normal's plan (<c>previous</c> = no plan action:

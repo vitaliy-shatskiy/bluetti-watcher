@@ -29,4 +29,14 @@ public sealed class BuiltInModesValidationTests : IDisposable
         Assert.Empty(problems);
         Assert.Equal(migrated, settings.Modes.Single(m => m.Id == BuiltInModes.Eco).Actions.Single(a => a.TypeId == BuiltInModes.GpuLimitType).Enabled);
     }
+
+    [Fact]
+    public void Defaults_Normal_SetsTheBalancedPlan()
+    {
+        // leaving Eco always ends on Balanced, even when the plan was changed by hand during Eco
+        var normal = BuiltInModes.Defaults(180, 180).Modes.Single(m => m.Id == BuiltInModes.Normal);
+
+        var plan = Assert.Single(normal.Actions);
+        Assert.Equal((BuiltInModes.PowerPlanType, true, PowerModeSwitch.BalancedPlan), (plan.TypeId, plan.Enabled, plan.Settings["plan"]?.GetValue<string>()));
+    }
 }

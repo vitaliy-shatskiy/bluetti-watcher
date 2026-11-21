@@ -61,13 +61,13 @@ public sealed class ModesServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Poll_MainsBackPastMainsBackSec_RestoresThePlanWithoutTheSwitchOff()
+    public async Task Poll_MainsBackPastMainsBackSec_EndsOnBalancedWithoutTheSwitchOff()
     {
         await Feed(Grid(80), Bat(80), Bat(79), Bat(79), Bat(78));
         await Feed(Grid(78), Grid(79), Grid(79), Grid(80));
 
         Assert.Equal("normal", _engine.Snapshot.ModeId);
-        Assert.Equal("\"high\"", _m.Text("plan"));
+        Assert.Equal("\"381b4222-f694-41f0-9685-ff5bb260df2e\"", _m.Text("plan"));   // Normal ends on Balanced, whatever the plan was before Eco
         Assert.DoesNotContain("off", _actions.Calls);
     }
 
