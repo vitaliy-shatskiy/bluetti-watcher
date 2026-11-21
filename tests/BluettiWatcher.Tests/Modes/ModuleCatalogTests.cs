@@ -11,7 +11,7 @@ public sealed class ModuleCatalogTests
         var ids = ModuleCatalog.Production(new StationConfig()).Select(m => m.Descriptor.TypeId).Order(StringComparer.Ordinal);
         Assert.Equal(
         [
-            "command.pair", "display.brightness", "display.offTimeout", "display.refreshRate", "gpu.idleWatcher", "gpu.powerLimit",
+            "command.pair", "display.brightness", "display.offTimeout", "display.refreshRate", "gpu.powerLimit",
             "nvidia.profile", "process.close", "rgb.lighting", "scheduledTask.state", "service.state", "windows.cpuPolicy", "windows.phoneLink", "windows.powerPlan",
         ], ids);
     }

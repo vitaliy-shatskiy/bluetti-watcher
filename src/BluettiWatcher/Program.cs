@@ -76,7 +76,7 @@ var bluetooth = new NativeBleReader(config, new WinRtBleConnector(), Log);
 // Power modes v2 (modes.engine = v2): settings and journal in the data directory; the journal is replayed before any write.
 if (!config.Modes.V2On && !string.Equals(config.Modes.Engine, BluettiWatcher.Modes.ModesConfig.Legacy, StringComparison.OrdinalIgnoreCase))
     Log($"CONFIG - modes.engine \"{config.Modes.Engine}\" is not legacy or v2: legacy is used");
-using var modes = config.Modes.V2On ? new BluettiWatcher.Modes.ModesEngine(config, new BluettiWatcher.Modes.ModuleRegistry(BluettiWatcher.Modes.ModuleCatalog.Production(config, runner, time, store.AddEvent, Log)),
+using var modes = config.Modes.V2On ? new BluettiWatcher.Modes.ModesEngine(config, new BluettiWatcher.Modes.ModuleRegistry(BluettiWatcher.Modes.ModuleCatalog.Production(config, runner, time, Log)),
     new BluettiWatcher.Modes.ModesStore(config.DataDir), new BluettiWatcher.Modes.ModeJournal(Path.Combine(config.DataDir, BluettiWatcher.Modes.ModeJournal.FileName)),
     new BluettiWatcher.Modes.SwitchFlagWordWriter(config, Log), time, Log, (kind, detail) => store.AddEvent(time.GetLocalNow(), kind, detail))
     {

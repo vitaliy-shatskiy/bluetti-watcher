@@ -70,6 +70,9 @@ internal sealed class ModeReconciler(ModuleRegistry registry, ModeJournal journa
                 default: _owned.Remove(r.Key); break;   // relinquished, restored, dropped
             }
         }
+        // a resource of a type this build removed has no module left to restore it with: let go, never a restore failure
+        foreach (var own in _owned.Values.Where(o => RetiredActions.TypeIds.Contains(o.TypeId)).ToList())
+            Close(own, JournalKind.Dropped, "the action type was removed");
         foreach (var own in _owned.Values.Where(o => o.At < bootAt).ToList())
         {
             if (registry.TryGet(own.TypeId, out var m) && m.Descriptor.Restoration == RestorationClass.Token)

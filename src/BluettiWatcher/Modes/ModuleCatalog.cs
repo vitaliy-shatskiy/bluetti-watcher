@@ -15,15 +15,14 @@ internal static class ModuleCatalog
 
     /// <summary>
     /// Every module on its Windows adapter. Building them touches nothing on the machine: the adapters read only when the
-    /// reconciler or the catalogue asks. <paramref name="addEvent"/> writes an event row, <paramref name="log"/> a log line.
+    /// reconciler or the catalogue asks. <paramref name="log"/> writes a log line.
     /// </summary>
     public static IReadOnlyList<IActionModule> Production(StationConfig config, IProcessRunner? runner = null, TimeProvider? time = null,
-        Action<DateTimeOffset, string, string>? addEvent = null, Action<string>? log = null)
+        Action<string>? log = null)
     {
         ArgumentNullException.ThrowIfNull(config);
         runner ??= new ProcessRunner();
         time ??= TimeProvider.System;
-        addEvent ??= (_, _, _) => { };
         log ??= _ => { };
         var paths = BrokerPaths.Default;
         var broker = new BrokerClient(paths, runner, time);
@@ -31,7 +30,7 @@ internal static class ModuleCatalog
         [
             .. PowerModules.All(new PowerSchemes(), new NvidiaSmi(runner), broker),
             .. ServicesAppsModules.All(broker, runner, Commands(config), time, log),
-            .. DisplayGpuModules.All(broker, runner, InspectorPath(paths), paths.Profiles, time, addEvent, log),
+            .. DisplayGpuModules.All(broker, InspectorPath(paths), paths.Profiles),
             new RgbLightingModule(new OpenRgbSdk(config.Modes.OpenRgbPath, time), log),
         ];
     }

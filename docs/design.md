@@ -393,7 +393,6 @@ The default engine (`legacy` keeps section 5). Code in `Modes/`; routes in [api.
    | `display.refreshRate` | reversible | monitor refresh rate (may crash a browser's GPU process) |
    | `display.brightness` | reversible | DDC/CI brightness |
    | `nvidia.profile` (broker) | compensatable | a Profile Inspector `.nip`, customised profiles exported first and restored on leaving |
-   | `gpu.idleWatcher` | token | nothing; logs processes holding an idle GPU in P0 |
    | `service.state` (broker) | reversible | a service's running state and start type |
    | `scheduledTask.state` | reversible | a task enabled or disabled (through the broker when it refuses the user) |
    | `process.close` | irreversible | apps closed (killed after a grace only with `kill`); system processes and this service never |
@@ -426,7 +425,7 @@ The default engine (`legacy` keeps section 5). Code in `Modes/`; routes in [api.
    (`modes-problem`). Compacted at start and past 5000 records, keeping owned state, the last mode and 200 records.
 7. **Settings** `modes.json`, versioned, replaced atomically. A first start after the switch was used migrates
    `returnPlan` and `gpuCap`; a fresh install gets Eco = Power saver with its GPU limit (`min`), a command pair,
-   services, Phone Link and the idle watcher listed but off, and Max = High performance. An unparseable file is
+   services and Phone Link listed but off, and Max = High performance. An unparseable file is
    moved aside; one from a newer build is left alone and defaults run in memory.
 8. **Flag:** the active mode's word goes through the switch's own flag code, so flag readers are unchanged. The
    station's eco and mains-back run no switch command under `v2`; the emergency and the battery report still do.

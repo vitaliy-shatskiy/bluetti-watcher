@@ -370,7 +370,6 @@ en: {
   af_command_pair_enter: "Runs «{v}» when the mode starts",
   af_command_pair_leave: "Runs «{v}» when the mode ends",
   af_windows_phoneLink: "Phone Link stops working in the background",
-  af_gpu_idleWatcher: "Watches for a graphics card stuck at high clocks while idle",
   af_display_refreshRate_monitors: "Monitor refresh rate: {v} Hz",
   dv_381b4222_f694_41f0_9685_ff5bb260df2e: "Balanced",
   dv_8c5e7fda_e8bf_4a96_9a85_a6e23a8c635c: "High performance",
@@ -391,7 +390,6 @@ en: {
   at_display_refreshRate: "Monitor refresh rate",
   at_display_brightness: "Monitor brightness",
   at_nvidia_profile: "NVIDIA driver profile",
-  at_gpu_idleWatcher: "GPU idle watcher",
   at_rgb_lighting: "RGB lighting off",
   modesHibernate: "Hibernate the PC when the battery reaches the hibernate level",
   modesHibOn: "Hibernation on",
@@ -822,7 +820,6 @@ uk: {
   af_command_pair_enter: "Запускає «{v}» на початку режиму",
   af_command_pair_leave: "Запускає «{v}» наприкінці режиму",
   af_windows_phoneLink: "Phone Link не працює у фоні",
-  af_gpu_idleWatcher: "Стежить, щоб відеокарта не працювала на високій частоті без навантаження",
   af_display_refreshRate_monitors: "Частота оновлення моніторів: {v} Гц",
   dv_381b4222_f694_41f0_9685_ff5bb260df2e: "Збалансована",
   dv_8c5e7fda_e8bf_4a96_9a85_a6e23a8c635c: "Висока продуктивність",
@@ -843,7 +840,6 @@ uk: {
   at_display_refreshRate: "Частота оновлення монітора",
   at_display_brightness: "Яскравість монітора",
   at_nvidia_profile: "Профіль драйвера NVIDIA",
-  at_gpu_idleWatcher: "Нагляд за простоєм GPU",
   at_rgb_lighting: "Вимкнення RGB-підсвітки",
   modesHibernate: "Переводити ПК у гібернацію, коли батарея сягає рівня гібернації",
   modesHibOn: "Гібернацію увімкнено",
@@ -1829,7 +1825,7 @@ if (window.matchMedia && matchMedia('(hover: none)').matches) document.addEventL
 let resizeTimer = null;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(show, 250); });
 // The action types the mode editor keeps under «More settings»: rare or technical ones (a page choice, not the service's).
-const ADVANCED_ACTIONS = new Set(['command.pair', 'gpu.idleWatcher', 'rgb.lighting', 'nvidia.profile']);
+const ADVANCED_ACTIONS = new Set(['command.pair', 'rgb.lighting', 'nvidia.profile']);
 // --- power modes panel ---
 // The Power modes panel (modes.engine v2, /api/modes): the mode in force and why, each action's state, the modes and the Auto
 // rules. Every settings form is generated from the catalogue's JSON Schemas and UI hints: no module is named here.

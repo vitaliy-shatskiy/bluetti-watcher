@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using BluettiWatcher.Io;
 using BluettiWatcher.Modes;
 using BluettiWatcher.Modes.Broker;
 using BluettiWatcher.Modes.Modules;
@@ -12,14 +11,14 @@ public sealed class DisplayGpuDescriptorTests
 {
     // Constructing the Windows adapters touches nothing: they reach the machine only when a module method runs.
     private static readonly IReadOnlyList<IActionModule> Modules = DisplayGpuModules.All(
-        new RefusingBroker(), new RefusingRunner(), null, Path.GetTempPath(), TimeProvider.System, (_, _, _) => { }, _ => { });
+        new RefusingBroker(), null, Path.GetTempPath());
 
     public static TheoryData<string> TypeIds() => [.. Modules.Select(m => m.Descriptor.TypeId)];
 
     [Fact]
-    public void The_group_has_the_four_modules_with_unique_type_ids()
+    public void The_group_has_the_three_modules_with_unique_type_ids()
     {
-        Assert.Equal(["display.refreshRate", "display.brightness", "nvidia.profile", "gpu.idleWatcher"], Modules.Select(m => m.Descriptor.TypeId));
+        Assert.Equal(["display.refreshRate", "display.brightness", "nvidia.profile"], Modules.Select(m => m.Descriptor.TypeId));
     }
 
     [Theory]
@@ -56,11 +55,5 @@ public sealed class DisplayGpuDescriptorTests
     private sealed class RefusingBroker : IAdminBroker
     {
         public Task<BrokerResult> RunAsync(string operation, JsonObject args, CancellationToken ct) => throw new InvalidOperationException("no broker in this test");
-    }
-
-    private sealed class RefusingRunner : IProcessRunner
-    {
-        public Task<ProcessResult> RunAsync(string exe, IReadOnlyList<string> args, TimeSpan timeout, CancellationToken ct, IReadOnlyDictionary<string, string>? env = null) =>
-            throw new InvalidOperationException("no process in this test");
     }
 }

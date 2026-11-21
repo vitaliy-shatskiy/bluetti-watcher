@@ -95,6 +95,7 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
             : BuiltInModes.Defaults(config.MainsLostSec, config.MainsBackSec), now);
         _settings = settings;
         if (problem is not null) Problem(problem);
+        DropRetiredActions();
         CarryNoHibernate();
         var load = journal.Load();
         if (load.Problem is null)
@@ -107,6 +108,17 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
         _settings = _settings with { Selection = new Selection { Kind = SelectionKind.Manual, ManualModeId = _settings.FallbackModeId } };
         SaveQuietly();
         Problem($"{load.Problem}: moved to {Path.GetFileName(aside)}; nothing restored, {_settings.FallbackModeId} held until Auto");
+    }
+
+    /// <summary>A saved action of a type this build removed is taken out and the file saved without it, said in one log line.</summary>
+    private void DropRetiredActions()
+    {
+        var (kept, dropped) = RetiredActions.Drop(_settings);
+        if (dropped == 0) return;
+        _settings = kept;
+        string types = string.Join(", ", RetiredActions.TypeIds.Order(StringComparer.Ordinal));
+        SaveQuietly();
+        log($"modes: {dropped.ToString(CultureInfo.InvariantCulture)} action(s) of a removed type dropped ({types})");
     }
 
     /// <summary>
