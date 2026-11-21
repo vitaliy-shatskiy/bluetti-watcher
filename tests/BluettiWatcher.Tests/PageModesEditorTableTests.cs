@@ -30,10 +30,11 @@ public sealed partial class PageI18nTests
             const ed = $('modesEdit');
             const values = walk(ed, (e) => e.tagName === 'INPUT' || e.tagName === 'TEXTAREA' || e.tagName === 'SELECT').map((e) => e.type === 'checkbox' ? String(e.checked) : e.value);
             const text = ed.textContent + ' ' + values.join(' ');
-            console.log(JSON.stringify({ object: text.includes('[object Object]'), names: ['WSearch', 'Spooler', 'DISPLAY1', 'GONE'].map((n) => values.includes(n)), hz: values.includes('75') }));
+            console.log(JSON.stringify({ object: text.includes('[object Object]'), names: ['WSearch', 'Spooler', 'GONE'].map((n) => values.includes(n)), only: ed.textContent.includes('Main monitor'), hz: values.includes('75') }));
             """);
         Assert.False(r.GetProperty("object").GetBoolean());
-        Assert.Equal("[true,true,true,true]", r.GetProperty("names").GetRawText());
+        Assert.Equal("[true,true,true]", r.GetProperty("names").GetRawText());
+        Assert.True(r.GetProperty("only").GetBoolean());   // the one monitor found here: its name as text, no list of one
         Assert.True(r.GetProperty("hz").GetBoolean());
     }
 

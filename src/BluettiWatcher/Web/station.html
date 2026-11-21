@@ -184,6 +184,10 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 .mp button.b:disabled{opacity:.45;cursor:default}
 .mp fieldset{border:1px solid var(--edge);border-radius:10px;padding:8px 12px 10px;margin:8px 0;min-width:0}
 .mp legend{padding:0 4px;font-weight:600}
+/* an action block's header: its title left, Remove and the on switch right */
+.mp .ah{display:flex;align-items:center;gap:12px;margin:0 0 6px}.mp .ah .t{flex:1;font-weight:600}
+.mp .plain{color:var(--text)}
+.mp .gpu .seg{display:inline-flex;margin-bottom:6px}
 .mp .f{display:grid;grid-template-columns:200px minmax(0,1fr);gap:4px 12px;align-items:center;margin:6px 0}
 .mp .f>.help,.mp .f>.ferr{grid-column:2}
 .mp .help{color:var(--dim);font-size:12px}
@@ -385,10 +389,12 @@ en: {
   dv_a1841308_3541_4fab_bc81_f71556f20b4a: "Power saver",
   fl_windows_powerPlan_plan: "Power plan",
   fl_gpu_powerLimit_gpu: "Graphics card",
-  fl_gpu_powerLimit_percent: "Limit, % of the usual",
-  fl_gpu_powerLimit_watts: "Limit, W",
-  fl_gpu_powerLimit_limit: "Lowest limit of the card",
-  fv_gpu_powerLimit_limit_min: "lowest",
+  gpuLimit: "Limit",
+  gpuMin: "Lowest",
+  gpuMinW: "Lowest ({w} W)",
+  gpuOwn: "Custom",
+  gpuRange: "from {min} to {max} W, usual {d} W",
+  unitW: "W",
   fl_service_state_services: "Services",
   fl_service_state_services_name: "Service",
   fl_service_state_services_running: "running",
@@ -470,7 +476,6 @@ en: {
   modesName: "Name",
   modesFlag: "Power-mode flag",
   modesActions: "Actions",
-  modesEnabled: "on",
   modesEnforce: "keep enforced",
   modesEnforceTip: "While the mode is active, a change made by hand is written back instead of being left as is",
   modesRemove: "Remove",
@@ -874,10 +879,12 @@ uk: {
   dv_a1841308_3541_4fab_bc81_f71556f20b4a: "Економія енергії",
   fl_windows_powerPlan_plan: "Схема живлення",
   fl_gpu_powerLimit_gpu: "Відеокарта",
-  fl_gpu_powerLimit_percent: "Ліміт, % від звичайного",
-  fl_gpu_powerLimit_watts: "Ліміт, Вт",
-  fl_gpu_powerLimit_limit: "Найнижчий ліміт картки",
-  fv_gpu_powerLimit_limit_min: "найнижчий",
+  gpuLimit: "Ліміт",
+  gpuMin: "Найнижчий",
+  gpuMinW: "Найнижчий ({w} Вт)",
+  gpuOwn: "Свій",
+  gpuRange: "від {min} до {max} Вт, звичайний {d} Вт",
+  unitW: "Вт",
   fl_service_state_services: "Служби",
   fl_service_state_services_name: "Служба",
   fl_service_state_services_running: "працює",
@@ -959,7 +966,6 @@ uk: {
   modesName: "Назва",
   modesFlag: "Прапорець режиму живлення",
   modesActions: "Дії",
-  modesEnabled: "увімкнено",
   modesEnforce: "утримувати",
   modesEnforceTip: "Поки режим активний, зміну, зроблену вручну, буде повернено, а не залишено як є",
   modesRemove: "Прибрати",
@@ -1918,6 +1924,65 @@ let resizeTimer = null;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(show, 250); });
 // The action types the mode editor keeps under «More settings»: rare or technical ones (a page choice, not the service's).
 const ADVANCED_ACTIONS = new Set(['command.pair', 'rgb.lighting', 'nvidia.profile']);
+// --- gpu limit editor ---
+// The GPU limit as one choice: the card's lowest limit, or one's own in watts, stepped by 10 within the card's range. An old
+// percent is shown in watts and saved as it is until it is edited. The card by its name; a list only when there are several.
+const GPU_MIN = 'min';
+function gpuLimitForm(s, e, ek, errs, used) {
+  const cards = ((e.discovery && e.discovery.gpus) || []).map((g) => ({ id: String(g.id), name: String(g.label || g.id).replace(/(\s*\([^()]*\))+$/, ''), n: g.numbers || {} }));
+  if (s.gpu === undefined && cards.length) s.gpu = cards[0].id;
+  const box = mpEl('div', { className: 'gpu' });
+  const paint = () => {
+    const card = cards.find((c) => c.id === String(s.gpu)) || { id: String(s.gpu), name: t('modesMissing', { v: s.gpu }), n: {} };
+    const { min, max } = card.n, def = card.n.default, known = [min, max, def].every(Number.isFinite);
+    const own = s.limit !== GPU_MIN, cid = 'mf' + (++mpSeq), wid = 'mf' + (++mpSeq);
+    let cardCtl;
+    if (cards.length > 1) {
+      cardCtl = mpEl('select', { id: cid, 'data-f': ek + '.gpu', value: card.id }, cards.map((c) => mpEl('option', { value: c.id }, c.name)));
+      cardCtl.onchange = () => { s.gpu = cardCtl.value; paint(); };
+    } else cardCtl = mpEl('span', { id: cid, className: 'plain', 'data-f': ek + '.gpu' }, card.name);
+    const shown = s.watts !== undefined ? s.watts : s.percent !== undefined && Number.isFinite(def) ? Math.round(s.percent * def / 100) : undefined;
+    const choose = (toOwn) => {
+      if (toOwn === own) return;
+      delete s.percent; delete s.watts; delete s.limit;
+      if (toOwn) { if (Number.isFinite(def)) s.watts = def; } else s.limit = GPU_MIN;
+      paint();
+    };
+    const seg = mpEl('div', { className: 'seg', role: 'group', 'aria-labelledby': wid + 'l' },
+      mpButton('gpu-min', '', Number.isFinite(min) ? t('gpuMinW', { w: Math.round(min) }) : t('gpuMin'), () => choose(false), { className: '', 'aria-pressed': String(!own) }),
+      mpButton('gpu-own', '', t('gpuOwn'), () => choose(true), { className: '', 'aria-pressed': String(own) }));
+    let watts = null;
+    if (own) {
+      const input = mpEl('input', { id: wid, type: 'text', inputMode: 'numeric', maxLength: 5, 'data-f': ek + '.watts', value: shown === undefined ? '' : String(shown),
+        'aria-labelledby': wid + 'l', 'aria-describedby': known ? wid + 'h' : null });
+      input.oninput = () => {
+        const x = Number(String(input.value).replace(',', '.'));
+        delete s.percent; delete s.limit;
+        if (String(input.value).trim() === '' || !Number.isFinite(x)) delete s.watts; else s.watts = x;
+      };
+      const bump = (d) => () => {
+        let y = (Number(String(input.value).replace(',', '.')) || def || 0) + d;
+        if (Number.isFinite(min)) y = Math.max(min, y);
+        if (Number.isFinite(max)) y = Math.min(max, y);
+        input.value = String(Math.round(y)); input.oninput();
+      };
+      watts = mpEl('div', { className: 'row' },
+        mpEl('span', { className: 'step' }, mpButton('gpu-less', '', '−', bump(-10), { className: '', 'aria-label': t('modesLess'), title: t('modesLess') }), input,
+          mpButton('gpu-more', '', '+', bump(10), { className: '', 'aria-label': t('modesMoreN'), title: t('modesMoreN') })),
+        mpEl('span', { className: 'dim' }, t('unitW')));
+      if (known) watts = [watts, mpEl('div', { className: 'help', id: wid + 'h' }, t('gpuRange', { min: Math.round(min), max: Math.round(max), d: Math.round(def) }))];
+    }
+    const errsOf = ['gpu', 'watts', 'percent', 'limit'].map((k) => mpErr(`${ek}.${k}`, errs, used, `${wid}e${k}`));
+    mpSet(box,
+      mpEl('div', { className: 'f' }, mpEl('span', {}, t('fl_gpu_powerLimit_gpu')), cardCtl, errsOf[0]),
+      mpEl('div', { className: 'f' }, mpEl('span', { id: wid + 'l' }, t('gpuLimit')), mpEl('div', {}, seg, watts), errsOf.slice(1)));
+  };
+  paint();
+  return [box];
+}
+// An action type with an editor of its own (by type id); every other type gets the form its schema gives.
+const ACTION_EDITORS = { 'gpu.powerLimit': gpuLimitForm };
+// --- end of the gpu limit editor ---
 // --- power modes panel ---
 // The Power modes panel (modes.engine v2, /api/modes): the mode in force and why, each action's state, the modes and the Auto
 // rules. Every settings form is generated from the catalogue's JSON Schemas and UI hints: no module is named here.
@@ -2002,13 +2067,15 @@ function mpTable(f, s, obj, entry, aria, id) {
     const tid = entry && entry.descriptor && entry.descriptor.typeId, label = mpWord('fl', tid, `${f.path}.${name}`, ps.title || name), ty = mpTypes(ps)[0], cur = row[name];
     const put = (x) => { if (x === undefined) delete row[name]; else row[name] = x; };
     if (ty === 'boolean') {
-      const c = mpEl('input', { type: 'checkbox', checked: cur === true, 'aria-label': label });
-      c.onchange = () => put(c.checked);
-      return mpEl('label', { className: 'ck' }, c, label);
+      return mpEl('label', { className: 'ck' }, mpSwitchField({ 'aria-label': label }, cur === true, put), label);
     }
     const found = first && list ? mpOptions({}, { list }, entry) : ps.enum ? ps.enum.map((v) => ({ id: String(v), label: mpWord('fv', tid, `${f.path}.${name}.${v}`, String(v)) })) : null;
     if (found) {
       const v = cur === undefined ? '' : String(cur), opts = found.slice();
+      // the saved value is the only one offered: its name as text, nothing written
+      if (opts.length === 1 && v === opts[0].id) {
+        return mpEl('span', { className: 'plain', 'aria-label': label }, opts[0].label);
+      }
       if (v && !opts.some((o) => o.id === v)) opts.push({ id: v, label: t('modesMissing', { v }) });
       const c = mpEl('select', { 'aria-label': label, value: v }, v === '' ? mpEl('option', { value: '' }, t('modesPick')) : null, opts.map((o) => mpEl('option', { value: o.id }, o.label)));
       c.onchange = () => put(mpCoerce(ps, c.value));
@@ -2028,7 +2095,7 @@ function mpTable(f, s, obj, entry, aria, id) {
 // A discovered item the page has its own word for (a Windows plan by its GUID) takes it; an enum value its fv_ word.
 function mpOptions(s, hint, entry, path) {
   const list = hint.discovery || hint.list, tid = entry && entry.descriptor && entry.descriptor.typeId;
-  if (list) return ((entry && entry.discovery && entry.discovery[list]) || []).map((x) => ({ id: String(x.id), label: ((k) => (t(k) !== k ? t(k) : x.label || String(x.id)))('dv_' + String(x.id).replace(/\W/g, '_')) }));
+  if (list) return ((entry && entry.discovery && entry.discovery[list]) || []).map((x) => ({ id: String(x.id), label: ((k) => (t(k) !== k ? t(k) : String(x.label || x.id).replace(/(\s*\([^()]*\))+$/, '')))('dv_' + String(x.id).replace(/\W/g, '_')) }));   // the service's trailing notes are English for its log
   return (s.enum || []).map((v) => ({ id: String(v), label: mpWord('fv', tid, `${path}.${v}`, (hint.labels && hint.labels[v]) || String(v)) }));
 }
 // An input's text as the JSON value its schema wants; undefined = the field is left out. A value that fits no type is sent as
@@ -2071,7 +2138,9 @@ function mpField(f, hints, obj, entry, ek, errs, used) {
   if (obj[f.name] === undefined && w === 'check' && f.required) obj[f.name] = false;
   if (w === 'slider' && typeof obj[f.name] !== 'number') obj[f.name] = s.minimum;
   const set = (x) => { if (x === undefined) delete obj[f.name]; else obj[f.name] = x; };
-  const v = obj[f.name], label = f.label + (f.required ? ' *' : '');
+  // required is said to assistive tech (aria-required), never by an asterisk
+  const v = obj[f.name], label = f.label;
+  let plain = false;
   const help = f.help ? mpEl('div', { className: 'help', id: id + 'h' }, f.help) : null, err = mpErr(key, errs, used, id + 'e');
   const aria = { 'data-f': key, 'aria-describedby': [help && id + 'h', err && id + 'e'].filter(Boolean).join(' ') || null,
     'aria-invalid': err ? 'true' : null, 'aria-required': f.required ? 'true' : null };
@@ -2084,8 +2153,8 @@ function mpField(f, hints, obj, entry, ek, errs, used) {
     const opts = mpOptions(s.items || {}, f.hint, entry, f.path), chosen = Array.isArray(v) ? v.map(String) : [];
     // a chosen id not discovered here stays listed and chosen: a save never drops it unseen
     for (const c of chosen) if (!opts.some((o) => o.id === c)) opts.push({ id: c, label: t('modesMissing', { v: c }) });
-    const boxes = opts.map((o) => mpEl('input', { type: 'checkbox', value: o.id, checked: chosen.includes(o.id), 'data-f': `${key}[]` }));
-    boxes.forEach((b) => { b.onchange = () => set(boxes.filter((x) => x.checked).map((x) => mpCoerce(s.items || {}, x.value))); });
+    const write = () => set(boxes.filter((x) => x.getAttribute('aria-checked') === 'true').map((x) => mpCoerce(s.items || {}, x.value)));
+    const boxes = opts.map((o) => mpSwitchField({ value: o.id, 'data-f': `${key}[]` }, chosen.includes(o.id), write));
     control = mpEl('div', { ...aria, className: 'multi', role: 'group', 'aria-labelledby': id + 'l' }, opts.map((o, i) => mpEl('label', {}, boxes[i], o.label)));
   } else if (w === 'table') {
     control = mpTable(f, s, obj, entry, aria, id);
@@ -2096,11 +2165,16 @@ function mpField(f, hints, obj, entry, ek, errs, used) {
     const opts = mpOptions(s, f.hint, entry, f.path), cur = v === undefined ? '' : String(v);
     // a stored value not offered here (a plan deleted since) stays chosen and marked: never replaced unseen
     if (cur && !opts.some((o) => o.id === cur)) opts.push({ id: cur, label: t('modesMissing', { v: cur }) });
-    control = mpEl('select', { ...aria, id, value: cur }, cur === '' ? mpEl('option', { value: '' }, t('modesPick')) : null, opts.map((o) => mpEl('option', { value: o.id }, o.label)));
-    control.onchange = () => set(mpCoerce(s, control.value));
+    if (opts.length === 1 && cur === opts[0].id) {
+      // the saved value is the only one offered: its name as text (an empty value keeps the list: empty may mean none)
+      control = mpEl('span', { ...aria, id, className: 'plain' }, opts[0].label);
+      plain = true;
+    } else {
+      control = mpEl('select', { ...aria, id, value: cur }, cur === '' ? mpEl('option', { value: '' }, t('modesPick')) : null, opts.map((o) => mpEl('option', { value: o.id }, o.label)));
+      control.onchange = () => set(mpCoerce(s, control.value));
+    }
   } else if (w === 'check') {
-    control = mpEl('input', { ...aria, id, type: 'checkbox', checked: v === true });
-    control.onchange = () => set(control.checked);
+    control = mpSwitchField({ ...aria, id }, v === true, set);
   } else if (w === 'slider') {
     const out = mpEl('output', { htmlFor: id }, mpUnit(v, f.units));
     control = mpEl('input', { ...aria, id, type: 'range', min: s.minimum, max: s.maximum, step: f.hint.step || (mpTypes(s).includes('integer') ? 1 : 'any'), value: String(v) });
@@ -2114,7 +2188,7 @@ function mpField(f, hints, obj, entry, ek, errs, used) {
     control.oninput = () => set(mpCoerce(s, control.value));
   }
   const unit = f.units && w !== 'slider' ? mpEl('span', { className: 'dim' }, f.units) : null;
-  const head = w === 'multi' ? mpEl('span', { id: id + 'l' }, label) : mpEl('label', { htmlFor: id }, label);
+  const head = w === 'multi' || plain ? mpEl('span', { id: id + 'l' }, label) : mpEl('label', { htmlFor: id }, label);
   return mpEl('div', { className: 'f' }, head, mpEl('div', { className: 'row' }, control, extra, unit), help, err);
 }
 // The service's 400 text ("actions[0].settings.plan: required; name: ...") by field: a{i}.<path>, r{i}.<field>, else the path.
@@ -2317,10 +2391,11 @@ function mpText(key, labelKey, value, onInput, errs, used, extra) {
 function mpActionBox(a, i, errs, used) {
   const e = mpModule(a.typeId), ek = 'a' + i;
   if (!a.settings || typeof a.settings !== 'object') a.settings = {};
-  const on = mpEl('input', { type: 'checkbox', checked: a.enabled !== false, 'data-f': ek + '.enabled' });
-  on.onchange = () => { a.enabled = on.checked; };
-  const body = e ? mpForm(e.descriptor.settingsSchema || {}, e.descriptor.uiHints || {}, a.settings, e, ek, errs, used, '')
-    : mpEl('div', { className: 'help' }, t('modesUnknownType'));
+  const titleId = 'mf' + (++mpSeq);
+  const on = mpSwitchField({ 'data-f': ek + '.enabled', 'aria-labelledby': titleId }, a.enabled !== false, (x) => { a.enabled = x; });
+  const body = !e ? mpEl('div', { className: 'help' }, t('modesUnknownType'))
+    : typeof ACTION_EDITORS !== 'undefined' && ACTION_EDITORS[a.typeId] ? ACTION_EDITORS[a.typeId](a.settings, e, ek, errs, used)
+      : mpForm(e.descriptor.settingsSchema || {}, e.descriptor.uiHints || {}, a.settings, e, ek, errs, used, '');
   // an entry the broker's policy lacks (the save's warnings): what to run, elevated, to allow it, with a copy button
   const warns = ((mpDraft && mpDraft.warns) || []).filter((w) => w.action === i).map((w) => {
     const copy = mpButton('copy-command', i, t('modesCopy'), () => {
@@ -2331,10 +2406,11 @@ function mpActionBox(a, i, errs, used) {
   });
   const rest = Object.keys(errs).filter((k) => (k === ek || k.startsWith(ek + '.')) && !used.has(k))
     .map((k) => { used.add(k); return mpEl('div', { className: 'ferr', 'data-err': k }, mpRest(k.slice(ek.length + 1), errs[k])); });
-  return mpEl('fieldset', { 'data-f': ek }, mpEl('legend', {}, mpTitle(a.typeId)),
+  // the block's header: its title left, Remove and the on switch right
+  return mpEl('fieldset', { 'data-f': ek, 'aria-labelledby': titleId },
+    mpEl('div', { className: 'ah' }, mpEl('span', { className: 't', id: titleId }, mpTitle(a.typeId)),
+      mpButton('remove-action', i, t('modesRemove'), () => { mpDraft.mode.actions.splice(i, 1); mpDraft.errs = {}; mpPaintEdit(); }), on),
     e && !e.available ? mpEl('div', { className: 'warn' }, t('modesUnavailable', { r: e.unavailableReason || '' })) : null,
-    mpEl('div', { className: 'row' }, mpEl('label', { className: 'ck' }, on, t('modesEnabled')), mpEl('span', { className: 'sp' }),
-      mpButton('remove-action', i, t('modesRemove'), () => { mpDraft.mode.actions.splice(i, 1); mpDraft.errs = {}; mpPaintEdit(); })),
     warns, body, rest);
 }
 // The mode editor, rebuilt only on a change of shape (open, an action added or removed, a refused save); typing never rebuilds it.
@@ -2356,11 +2432,8 @@ function mpPaintEdit() {
   const adv = (a) => typeof ADVANCED_ACTIONS !== 'undefined' && ADVANCED_ACTIONS.has(a.typeId);
   const boxes = m.actions.map((a, i) => (adv(a) ? null : mpActionBox(a, i, errs, used)));
   const advBoxes = m.actions.map((a, i) => (adv(a) ? mpActionBox(a, i, errs, used) : null));
-  const enforce = m.actions.map((a, i) => {
-    const c = mpEl('input', { type: 'checkbox', checked: !!a.enforce, 'data-f': `a${i}.enforce` });
-    c.onchange = () => { a.enforce = c.checked; };
-    return mpEl('label', { className: 'ck' }, c, mpTitle(a.typeId));
-  });
+  const enforce = m.actions.map((a, i) => mpEl('label', { className: 'ck' },
+    mpSwitchField({ 'data-f': `a${i}.enforce` }, !!a.enforce, (x) => { a.enforce = x; }), mpTitle(a.typeId)));
   const mods = (mpCat && mpCat.modules) || [];
   const pick = mpEl('select', { 'data-f': 'add-type', 'aria-label': t('modesActionType') },
     mods.map((x) => mpEl('option', { value: x.descriptor.typeId }, x.available ? mpTitle(x.descriptor.typeId) : t('modesUnavailable', { r: mpTitle(x.descriptor.typeId) }))));
@@ -2463,6 +2536,12 @@ function mpSwitch(key, on, onclick, disabled) {
   const b = mpEl('button', { type: 'button', className: 'sw', role: 'switch', id: `ms-${key}`, 'aria-labelledby': `ms-${key}-l`,
     'aria-checked': String(!!on), 'data-sw': key, disabled: !!disabled }, mpEl('span', { className: 'tr' }));
   b.onclick = onclick;
+  return b;
+}
+// The editor's switch: flips itself and reports the new state; named by its label (for its id) or an aria attribute.
+function mpSwitchField(attrs, on, onChange) {
+  const b = mpEl('button', { type: 'button', className: 'sw', role: 'switch', 'aria-checked': String(!!on), ...attrs }, mpEl('span', { className: 'tr' }));
+  b.onclick = () => { const next = b.getAttribute('aria-checked') !== 'true'; b.setAttribute('aria-checked', String(next)); onChange(next); };
   return b;
 }
 // One settings row: the name (a label for a switch, plain text before a button), an optional text button, the control.

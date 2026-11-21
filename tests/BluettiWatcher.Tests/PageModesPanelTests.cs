@@ -101,6 +101,15 @@ public sealed partial class PageI18nTests
         return page[a..b];
     }
 
+    /// <summary>The GPU limit's own editor: a block of its own outside the panel, which names no module.</summary>
+    private static string GpuEditor()
+    {
+        string page = Page().Replace("\r\n", "\n", StringComparison.Ordinal);
+        int a = page.IndexOf("// --- gpu limit editor ---", StringComparison.Ordinal), b = page.IndexOf("// --- end of the gpu limit editor ---", StringComparison.Ordinal);
+        Assert.True(a >= 0 && b > a, "the gpu limit editor block is not where the test reads it");
+        return page[a..b] + "\n";
+    }
+
     /// <summary>The panel's script with the fake DOM, the stubs and the fixtures, then <paramref name="test"/>; its console.log output parsed.</summary>
     private static JsonElement RunPanel(string test)
     {
@@ -123,7 +132,7 @@ public sealed partial class PageI18nTests
               watts: [d('watts').type, d('watts').min, d('watts').max, d('watts').step, help && help.textContent, walk(root, (x) => x.className === 'dim' && x.textContent === 'W').length],
               mode: [d('mode').tagName, d('mode').children.map((o) => o.value), d('mode').value, d('mode').attrs['aria-required'] || null, lab('mode')],
               name: [d('name').type, d('name').maxLength, lab('name')],
-              on: [d('on').type, d('on').checked],
+              on: [d('on').attrs.role, d('on').attrs['aria-checked']],
               services: [d('services').attrs.role, walk(root, (x) => x.attrs['data-f'] === 'a0.services[]').map((b) => b.value + '=' + walk(d('services'), (l) => l.tagName === 'LABEL' && l.children.includes(b))[0].textContent), byId(root, d('services').attrs['aria-labelledby']).textContent],
               apps: d('apps').tagName, limit: [d('limit').tagName, d('limit').type],
               inner: [d('inner').tagName, d('inner.depth').type, d('inner.depth').min, d('inner.depth').step, lab('inner.depth')],
@@ -132,9 +141,9 @@ public sealed partial class PageI18nTests
         Assert.Equal("""["a0.level","a0.watts","a0.mode","a0.name","a0.on","a0.services","a0.apps","a0.limit","a0.inner","a0.inner.depth"]""", r.GetProperty("order").GetRawText());
         Assert.Equal("""["range",10,90,1,"50","50 %"]""", r.GetProperty("level").GetRawText());
         Assert.Equal("""["number",0,300,"any","Board limit",1]""", r.GetProperty("watts").GetRawText());
-        Assert.Equal("""["SELECT",["low","high"],"low","true","mode *"]""", r.GetProperty("mode").GetRawText());
+        Assert.Equal("""["SELECT",["low","high"],"low","true","mode"]""", r.GetProperty("mode").GetRawText());   // required is said to assistive tech, never by an asterisk
         Assert.Equal("""["text",20,"Name"]""", r.GetProperty("name").GetRawText());
-        Assert.Equal("""["checkbox",true]""", r.GetProperty("on").GetRawText());
+        Assert.Equal("""["switch","true"]""", r.GetProperty("on").GetRawText());
         Assert.Equal("""["group",["s1=Search","s2=Spooler"],"Services"]""", r.GetProperty("services").GetRawText());
         Assert.Equal("\"TEXTAREA\"", r.GetProperty("apps").GetRawText());
         Assert.Equal("""["INPUT","text"]""", r.GetProperty("limit").GetRawText());
@@ -152,8 +161,8 @@ public sealed partial class PageI18nTests
             const put = (k, v, ev) => { const c = F(root, 'a0.' + k); c.value = v; c[ev || 'oninput'](); };
             put('level', '70'); put('watts', '12,5'); const w1 = s.watts; put('watts', ''); const wGone = !('watts' in s);
             put('mode', 'high', 'onchange');
-            F(root, 'a0.on').checked = false; F(root, 'a0.on').onchange();
-            const boxes = walk(root, (x) => x.attrs['data-f'] === 'a0.services[]'); boxes[1].checked = true; boxes[1].onchange();
+            F(root, 'a0.on').onclick();
+            const boxes = walk(root, (x) => x.attrs['data-f'] === 'a0.services[]'); boxes[1].onclick();
             put('apps', 'a\n\n b '); put('limit', '42'); const l1 = s.limit; put('limit', 'min'); put('inner.depth', '3');
             console.log(JSON.stringify({ s, w1, wGone, l1, int: mpCoerce({ type: 'integer' }, '1.5'), bool: mpCoerce({ type: ['boolean', 'string'] }, 'true'), str: mpCoerce({ type: 'string' }, '42') }));
             """);
@@ -182,15 +191,83 @@ public sealed partial class PageI18nTests
             const all = mpModule('test.all'), s2 = { mode: 'low', services: ['s9', 's1'] }, r2 = new El('div');
             r2.append(...mpForm(all.descriptor.settingsSchema, all.descriptor.uiHints, s2, all, 'a1', {}, new Set(), ''));
             const sel = F(r1, 'a0.plan'), boxes = walk(r2, (x) => x.attrs['data-f'] === 'a1.services[]');
-            boxes[0].onchange();
+            const shown = boxes.map((b) => [b.value, b.attrs['aria-checked'] === 'true']);
+            boxes[0].onclick(); boxes[0].onclick();
             console.log(JSON.stringify({ options: sel.children.map((o) => [o.value, o.textContent]), value: sel.value, s1,
-              boxes: boxes.map((b) => [b.value, b.checked]), s2: s2.services }));
+              boxes: shown, s2: s2.services }));
             """);
         Assert.Equal("""[["p1","Balanced"],["p2","Saver"],["gone-guid","modesMissing{\"v\":\"gone-guid\"}"]]""", r.GetProperty("options").GetRawText());
         Assert.Equal("gone-guid", r.GetProperty("value").GetString());
         Assert.Equal("""{"plan":"gone-guid"}""", r.GetProperty("s1").GetRawText());
         Assert.Equal("""[["s1",true],["s2",false],["s9",true]]""", r.GetProperty("boxes").GetRawText());
         Assert.Equal("""["s1","s9"]""", r.GetProperty("s2").GetRawText());
+    }
+
+    [Fact]
+    public void The_editor_has_no_browser_checkbox_no_asterisk_and_each_block_a_switch_in_its_header()
+    {
+        var r = RunPanel("""
+            mpEditMode('eco');
+            const ed = $('modesEdit');
+            const blocks = walk(ed, (x) => x.tagName === 'FIELDSET' && /^a\d+$/.test(x.attrs['data-f'] || ''));
+            console.log(JSON.stringify({
+              native: walk(ed, (x) => x.tagName === 'INPUT' && x.type === 'checkbox').length,
+              stars: walk(ed, (x) => x.tagName === 'LABEL' || x.tagName === 'LEGEND' || x.tagName === 'SPAN').filter((x) => /\*\s*$/.test(x.textContent)).length,
+              heads: blocks.map((b) => { const h = b.children[0], sw = walk(h, (x) => x.attrs.role === 'switch')[0]; return [h.className, !!sw && sw.attrs['data-f'], !!sw && byId(ed, sw.attrs['aria-labelledby']) === walk(h, (x) => x.className === 't')[0]]; }) }));
+            """);
+        Assert.Equal(0, r.GetProperty("native").GetInt32());
+        Assert.Equal(0, r.GetProperty("stars").GetInt32());
+        Assert.Equal("""[["ah","a0.enabled",true]]""", r.GetProperty("heads").GetRawText());
+    }
+
+    [Fact]
+    public void The_gpu_limit_is_one_choice_in_watts_and_an_old_percent_stays_as_it_is_until_edited()
+    {
+        var r = RunPanel(GpuEditor() + """
+            const e = { descriptor: { typeId: 'gpu.powerLimit', settingsSchema: { type: 'object', properties: {} }, uiHints: {} }, available: true,
+              discovery: { gpus: [{ id: '0', label: 'NVIDIA GeForce RTX 4080 (150..400 W, default 340 W)', numbers: { min: 150, max: 400, default: 340 } }] } };
+            const s = { gpu: '0', percent: 70 }, root = new El('div');
+            root.append(...gpuLimitForm(s, e, 'a1', {}, new Set()));
+            const pressed = () => ['gpu-min', 'gpu-own'].map((k) => A(root, k).attrs['aria-pressed']);
+            const look = { selects: walk(root, (x) => x.tagName === 'SELECT').length, card: F(root, 'a1.gpu').textContent, min: A(root, 'gpu-min').textContent,
+              pressed: pressed(), watts: F(root, 'a1.watts').value, hint: walk(root, (x) => x.className === 'help')[0].textContent, untouched: JSON.stringify(s) };
+            A(root, 'gpu-more').onclick();
+            const stepped = JSON.stringify(s);
+            A(root, 'gpu-min').onclick();
+            const lowest = [JSON.stringify(s), pressed(), !!F(root, 'a1.watts')];
+            A(root, 'gpu-own').onclick();
+            console.log(JSON.stringify({ look, stepped, lowest, own: [JSON.stringify(s), F(root, 'a1.watts').value] }));
+            """);
+        Assert.Equal("""{"selects":0,"card":"NVIDIA GeForce RTX 4080","min":"gpuMinW{\"w\":150}","pressed":["false","true"],"watts":"238","hint":"gpuRange{\"min\":150,\"max\":400,\"d\":340}","untouched":"{\"gpu\":\"0\",\"percent\":70}"}""", r.GetProperty("look").GetRawText());
+        Assert.Equal("""{"gpu":"0","watts":248}""", r.GetProperty("stepped").GetString());
+        Assert.Equal("""["{\"gpu\":\"0\",\"limit\":\"min\"}",["true","false"],false]""", r.GetProperty("lowest").GetRawText());
+        Assert.Equal("""["{\"gpu\":\"0\",\"watts\":340}","340"]""", r.GetProperty("own").GetRawText());
+    }
+
+    [Fact]
+    public void A_table_cell_whose_saved_value_is_the_only_choice_is_its_name_as_text_without_the_services_notes()
+    {
+        var r = RunPanel("""
+            const e = { descriptor: { typeId: 'test.rows', settingsSchema: { type: 'object', properties: { monitors: { type: 'array', items: { type: 'object', properties: { monitor: { type: 'string' }, hz: { type: 'integer' } } } } } },
+              uiHints: { monitors: { list: 'monitors' } } }, available: true, discovery: { monitors: [{ id: 'm1', label: 'LC27G7xT (2560x1440, 240 Hz; offers 60, 240 Hz)' }] } };
+            const s = { monitors: [{ monitor: 'm1', hz: 120 }, { hz: 60 }] }, root = new El('div');
+            root.append(...mpForm(e.descriptor.settingsSchema, e.descriptor.uiHints, s, e, 'a0', {}, new Set(), ''));
+            console.log(JSON.stringify({ selects: walk(root, (x) => x.tagName === 'SELECT').length, plain: walk(root, (x) => x.className === 'plain').map((x) => x.textContent), s }));
+            """);
+        Assert.Equal("""{"selects":1,"plain":["LC27G7xT"],"s":{"monitors":[{"monitor":"m1","hz":120},{"hz":60}]}}""", r.GetRawText());   // the saved one as text; an empty row keeps its list; nothing written
+    }
+
+    [Fact]
+    public void An_empty_value_with_one_choice_offered_stays_empty_and_keeps_its_list()
+    {
+        var r = RunPanel("""
+            const e = { descriptor: { typeId: 'test.cmd', settingsSchema: { type: 'object', required: ['leave', 'enter'], properties: { leave: { type: 'string' }, enter: { type: 'string' } } },
+              uiHints: { leave: { list: 'cmds' }, enter: { list: 'cmds' } } }, available: true, discovery: { cmds: [{ id: 'eco', label: 'eco (pwsh.exe)' }] } };
+            const s = { leave: '', enter: 'eco' }, root = new El('div');
+            root.append(...mpForm(e.descriptor.settingsSchema, e.descriptor.uiHints, s, e, 'a0', {}, new Set(), ''));
+            console.log(JSON.stringify({ leave: F(root, 'a0.leave').tagName, enter: [F(root, 'a0.enter').tagName, F(root, 'a0.enter').textContent], s }));
+            """);
+        Assert.Equal("""{"leave":"SELECT","enter":["SPAN","eco"],"s":{"leave":"","enter":"eco"}}""", r.GetRawText());   // empty means none here: never filled in on its own
     }
 
     [Fact]
@@ -240,8 +317,8 @@ public sealed partial class PageI18nTests
               ed = $('modesEdit'); F(ed, 'add-type').value = 'test.all'; A(ed, 'add-action').onclick();
               ed = $('modesEdit');
               const p = F(ed, 'a0.plan'); p.value = 'p2'; p.onchange();
-              const enf = F(ed, 'a1.enforce'); enf.checked = true; enf.onchange();
-              const off = F(ed, 'a0.enabled'); off.checked = false; off.onchange();
+              F(ed, 'a1.enforce').onclick();
+              F(ed, 'a0.enabled').onclick();
               answers = [{ status: 200, body: VIEW }];
               await mpSaveMode();
               console.log(JSON.stringify({ id, req: fetches[0], catDefault: mpModule('test.plan').descriptor.defaultSettings, closed: $('modesEdit').hidden && mpDraft === null, msg: mpMsg }));
