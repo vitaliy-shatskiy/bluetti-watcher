@@ -143,8 +143,6 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 .mp .row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .mp .sp{flex:1}
 .mp .chips{margin:10px 0 4px}
-#modesSel button[aria-pressed=true]{background:var(--accent);color:#fff}
-#modesSel button[data-pending]{outline:1px dashed var(--accent);outline-offset:-1px;color:var(--text)}
 /* one block per mode: its name, what it does as plain lines, one button to set it up; the editor opens inside the block */
 .mp .mode{padding:12px 0;border-top:1px solid var(--line)}
 .mp .mode .mh{display:flex;align-items:center;gap:12px}
@@ -253,7 +251,6 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 <div class="card" id="stationCard" hidden><details open><summary data-i18n="stationOwn"></summary><div id="stationBody"></div></details></div>
 
 <div class="card mp" id="modesCard" hidden><details id="modesMore"><summary data-i18n="modesTitle"></summary>
-  <div class="row"><div class="seg" id="modesSel" role="group" data-i18n-aria="modesChoose"></div><span class="s" id="modesNow"></span></div>
   <div class="chips" id="modesStatus" role="status" aria-live="polite"></div>
   <div class="msg" id="modesMsg" role="status" aria-live="polite" hidden></div>
   <div id="modesList"></div><div id="modesEdit" hidden></div><div id="modesRules"></div><div id="modesHib"></div></details></div>
@@ -346,11 +343,6 @@ en: {
   stNone: "none",
   stTemps: "Temperatures (ambient, inverter, solar)",
   modesTitle: "Power modes",
-  modesChoose: "Power mode",
-  modesNowAuto: "{m} picked by Auto rule {n}: {c}",
-  modesNowKept: "{m} stays: no Auto rule matches",
-  modesNowManual: "{m} held until you pick Auto",
-  modesSwitching: "Switching to {m}: its actions are running…",
   modesEmergency: "battery emergency: the station's protection comes first",
   fail_failed: "Could not apply «{a}»: {r}",
   fail_restore_failed: "Could not put back «{a}»: {r}",
@@ -367,13 +359,52 @@ en: {
   af_gpu_powerLimit_percent: "Graphics card: {v} % of its usual power",
   af_service_state_services_running_false: "Stops: {v}",
   af_service_state_services_running_true: "Starts: {v}",
-  af_command_pair_enter: "Runs «{v}» when the mode starts",
-  af_command_pair_leave: "Runs «{v}» when the mode ends",
+  af_command_pair_enter: "Command on enter: {v}",
+  af_command_pair_leave: "Command on leave: {v}",
   af_windows_phoneLink: "Phone Link stops working in the background",
   af_display_refreshRate_monitors: "Monitor refresh rate: {v} Hz",
   dv_381b4222_f694_41f0_9685_ff5bb260df2e: "Balanced",
   dv_8c5e7fda_e8bf_4a96_9a85_a6e23a8c635c: "High performance",
   dv_a1841308_3541_4fab_bc81_f71556f20b4a: "Power saver",
+  fl_windows_powerPlan_plan: "Power plan",
+  fl_gpu_powerLimit_gpu: "Graphics card",
+  fl_gpu_powerLimit_percent: "Limit, % of the usual",
+  fl_gpu_powerLimit_watts: "Limit, W",
+  fl_gpu_powerLimit_limit: "Lowest limit of the card",
+  fv_gpu_powerLimit_limit_min: "lowest",
+  fl_service_state_services: "Services",
+  fl_service_state_services_name: "Service",
+  fl_service_state_services_running: "running",
+  fl_service_state_services_startType: "Start type",
+  fv_service_state_services_startType_unchanged: "unchanged",
+  fv_service_state_services_startType_manual: "manual",
+  fv_service_state_services_startType_automatic: "automatic",
+  fl_command_pair_name: "Name (unique in the mode)",
+  fl_command_pair_enter: "Command on enter (empty = none)",
+  fl_command_pair_leave: "Command on leave (empty = none)",
+  fl_display_refreshRate_monitors: "Refresh rate per monitor",
+  fh_display_refreshRate_monitors: "A refresh-rate change can crash a browser's graphics process: it draws without the graphics card until the browser restarts",
+  fl_display_refreshRate_monitors_monitor: "Monitor",
+  fl_display_refreshRate_monitors_hz: "Hz",
+  fl_display_brightness_monitors: "Brightness per monitor, %",
+  fl_display_brightness_monitors_monitor: "Monitor",
+  fl_display_brightness_monitors_percent: "%",
+  fl_windows_cpuPolicy_plan: "Plan",
+  fl_windows_cpuPolicy_maxStateAc: "Maximum processor state on mains, %",
+  fl_windows_cpuPolicy_maxStateDc: "Maximum processor state on battery, %",
+  fl_windows_cpuPolicy_boostAc: "Boost mode on mains",
+  fl_windows_cpuPolicy_boostDc: "Boost mode on battery",
+  fl_display_offTimeout_acMinutes: "On mains, minutes (0 = never)",
+  fl_display_offTimeout_dcMinutes: "On battery, minutes (0 = never)",
+  fl_process_close_apps: "Apps to close",
+  fl_process_close_graceSec: "Seconds to wait after asking them to close",
+  fl_process_close_kill: "End what is still running after the wait (unsaved work is lost)",
+  fl_scheduledTask_state_tasks: "Scheduled tasks",
+  fl_scheduledTask_state_tasks_path: "Task",
+  fl_scheduledTask_state_tasks_enabled: "enabled",
+  fl_nvidia_profile_file: "Profile file",
+  fl_rgb_lighting_devices: "Devices to turn off (none = all)",
+  fl_rgb_lighting_profile: "OpenRGB profile to load on leave (empty = the lighting stays off)",
   whyBroker: "the admin broker did not take the change: reinstall it from an elevated PowerShell",
   whyRetry: "next try at {at}",
   whyLog: "details in the service log",
@@ -453,11 +484,6 @@ en: {
   modesDown: "Move down",
   modesAddRule: "Add rule",
   uPct: "%",
-  rdMainsOff: "mains off for {n} min",
-  rdMainsOn: "mains on for {n} min",
-  rdSoc: "battery under {n} %",
-  rdCut: "outage within {n} min",
-  rdTime: "{a}–{b}",
   ck_mainsOffFor: "mains off for",
   ck_mainsOnFor: "mains on for",
   ck_socBelow: "battery under",
@@ -796,11 +822,6 @@ uk: {
   stNone: "немає",
   stTemps: "Температури (довкілля, інвертор, сонячний)",
   modesTitle: "Режими живлення",
-  modesChoose: "Режим живлення",
-  modesNowAuto: "{m} обрано правилом Авто {n}: {c}",
-  modesNowKept: "{m} лишається: жодне правило Авто не підходить",
-  modesNowManual: "{m} утримується, доки не оберете Авто",
-  modesSwitching: "Перемикання на {m}: дії режиму виконуються…",
   modesEmergency: "аварійний заряд: спершу захист станції",
   fail_failed: "Не вдалося застосувати «{a}»: {r}",
   fail_restore_failed: "Не вдалося повернути «{a}»: {r}",
@@ -817,13 +838,52 @@ uk: {
   af_gpu_powerLimit_percent: "Відеокарта: {v} % звичайної потужності",
   af_service_state_services_running_false: "Зупиняє: {v}",
   af_service_state_services_running_true: "Запускає: {v}",
-  af_command_pair_enter: "Запускає «{v}» на початку режиму",
-  af_command_pair_leave: "Запускає «{v}» наприкінці режиму",
+  af_command_pair_enter: "Команда на вході: {v}",
+  af_command_pair_leave: "Команда на виході: {v}",
   af_windows_phoneLink: "Phone Link не працює у фоні",
   af_display_refreshRate_monitors: "Частота оновлення моніторів: {v} Гц",
   dv_381b4222_f694_41f0_9685_ff5bb260df2e: "Збалансована",
   dv_8c5e7fda_e8bf_4a96_9a85_a6e23a8c635c: "Висока продуктивність",
   dv_a1841308_3541_4fab_bc81_f71556f20b4a: "Економія енергії",
+  fl_windows_powerPlan_plan: "Схема живлення",
+  fl_gpu_powerLimit_gpu: "Відеокарта",
+  fl_gpu_powerLimit_percent: "Ліміт, % від звичайного",
+  fl_gpu_powerLimit_watts: "Ліміт, Вт",
+  fl_gpu_powerLimit_limit: "Найнижчий ліміт картки",
+  fv_gpu_powerLimit_limit_min: "найнижчий",
+  fl_service_state_services: "Служби",
+  fl_service_state_services_name: "Служба",
+  fl_service_state_services_running: "працює",
+  fl_service_state_services_startType: "Тип запуску",
+  fv_service_state_services_startType_unchanged: "без змін",
+  fv_service_state_services_startType_manual: "вручну",
+  fv_service_state_services_startType_automatic: "автоматично",
+  fl_command_pair_name: "Назва (унікальна в режимі)",
+  fl_command_pair_enter: "Команда на вході (порожньо = немає)",
+  fl_command_pair_leave: "Команда на виході (порожньо = немає)",
+  fl_display_refreshRate_monitors: "Частота оновлення кожного монітора",
+  fh_display_refreshRate_monitors: "Зміна частоти може зламати графічний процес браузера: до його перезапуску він малює без відеокарти",
+  fl_display_refreshRate_monitors_monitor: "Монітор",
+  fl_display_refreshRate_monitors_hz: "Гц",
+  fl_display_brightness_monitors: "Яскравість кожного монітора, %",
+  fl_display_brightness_monitors_monitor: "Монітор",
+  fl_display_brightness_monitors_percent: "%",
+  fl_windows_cpuPolicy_plan: "Схема",
+  fl_windows_cpuPolicy_maxStateAc: "Максимальний стан процесора від мережі, %",
+  fl_windows_cpuPolicy_maxStateDc: "Максимальний стан процесора від батареї, %",
+  fl_windows_cpuPolicy_boostAc: "Режим прискорення від мережі",
+  fl_windows_cpuPolicy_boostDc: "Режим прискорення від батареї",
+  fl_display_offTimeout_acMinutes: "Від мережі, хв (0 = ніколи)",
+  fl_display_offTimeout_dcMinutes: "Від батареї, хв (0 = ніколи)",
+  fl_process_close_apps: "Програми, які закрити",
+  fl_process_close_graceSec: "Скільки секунд чекати після прохання закритися",
+  fl_process_close_kill: "Завершити те, що ще працює після очікування (незбережене пропаде)",
+  fl_scheduledTask_state_tasks: "Завдання планувальника",
+  fl_scheduledTask_state_tasks_path: "Завдання",
+  fl_scheduledTask_state_tasks_enabled: "увімкнено",
+  fl_nvidia_profile_file: "Файл профілю",
+  fl_rgb_lighting_devices: "Пристрої, які вимкнути (жодного = усі)",
+  fl_rgb_lighting_profile: "Профіль OpenRGB на виході (порожньо = підсвітка лишається вимкненою)",
   whyBroker: "адмін-брокер не прийняв зміну: перевстановіть його в PowerShell від імені адміністратора",
   whyRetry: "наступна спроба о {at}",
   whyLog: "подробиці в журналі сервісу",
@@ -903,11 +963,6 @@ uk: {
   modesDown: "Нижче",
   modesAddRule: "Додати правило",
   uPct: "%",
-  rdMainsOff: "мережі немає {n} хв",
-  rdMainsOn: "мережа є {n} хв",
-  rdSoc: "заряд нижче {n} %",
-  rdCut: "відключення протягом {n} хв",
-  rdTime: "{a}–{b}",
   ck_mainsOffFor: "мережі немає",
   ck_mainsOnFor: "мережа є",
   ck_socBelow: "заряд нижче",
@@ -1876,12 +1931,14 @@ const mpTypes = (s) => (s && s.type !== undefined ? [].concat(s.type) : []);
 const mpModes = () => (mpView && mpView.settings && mpView.settings.modes) || [];
 const mpSlug = (name) => String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '').slice(0, 32).replace(/-+$/, '');
 // The fields of an object schema: each hint's order first (hints are keyed by the dotted path from the settings root), then the schema's own order.
-function mpFields(schema, hints, prefix) {
+// A field's or a value's word in the page's language (fl_<type>_<path>, fh_ for its help, fv_<type>_<path>_<value>), else the catalogue's English.
+const mpWord = (kind, tid, path, fallback) => { const k = `_${String(tid || '').replace(/\W/g, '_')}_${String(path).replace(/\W/g, '_')}`; return t(k) !== k ? t(k) : fallback; };
+function mpFields(schema, hints, prefix, tid) {
   const props = (schema && schema.properties) || {}, req = (schema && schema.required) || [];
   return Object.keys(props).map((name, i) => {
     const path = prefix ? `${prefix}.${name}` : name, hint = (hints && hints[path]) || {}, s = props[name] || {};
     return { name, path, schema: s, hint, required: req.includes(name), order: Number.isFinite(hint.order) ? hint.order : 1e6 + i,
-      label: hint.label || s.title || name, help: hint.help || s.description || '', units: hint.units || hint.unit || '' };
+      label: mpWord('fl', tid, path, hint.label || s.title || name), help: mpWord('fh', tid, path, hint.help || s.description || ''), units: hint.units || hint.unit || '' };
   }).sort((a, b) => a.order - b.order);
 }
 // The widget a field gets: a discovery list or an enum = a select (several = a checkbox list), a slider only with both bounds.
@@ -1905,14 +1962,14 @@ function mpTable(f, s, obj, entry, aria, id) {
   if (!Array.isArray(obj[f.name])) obj[f.name] = [];
   const rows = obj[f.name], box = mpEl('div', { ...aria, id, className: 'tbl', role: 'group', 'aria-labelledby': id + 'l' });
   const cell = (row, [name, ps], first) => {
-    const label = ps.title || name, ty = mpTypes(ps)[0], cur = row[name];
+    const tid = entry && entry.descriptor && entry.descriptor.typeId, label = mpWord('fl', tid, `.${name}`, ps.title || name), ty = mpTypes(ps)[0], cur = row[name];
     const put = (x) => { if (x === undefined) delete row[name]; else row[name] = x; };
     if (ty === 'boolean') {
       const c = mpEl('input', { type: 'checkbox', checked: cur === true, 'aria-label': label });
       c.onchange = () => put(c.checked);
       return mpEl('label', { className: 'ck' }, c, label);
     }
-    const found = first && list ? mpOptions({}, { list }, entry) : ps.enum ? ps.enum.map((v) => ({ id: String(v), label: String(v) })) : null;
+    const found = first && list ? mpOptions({}, { list }, entry) : ps.enum ? ps.enum.map((v) => ({ id: String(v), label: mpWord('fv', tid, `.${name}.${v}`, String(v)) })) : null;
     if (found) {
       const v = cur === undefined ? '' : String(cur), opts = found.slice();
       if (v && !opts.some((o) => o.id === v)) opts.push({ id: v, label: t('modesMissing', { v }) });
@@ -1931,10 +1988,11 @@ function mpTable(f, s, obj, entry, aria, id) {
   paint();
   return box;
 }
-function mpOptions(s, hint, entry) {
-  const list = hint.discovery || hint.list;
-  if (list) return ((entry && entry.discovery && entry.discovery[list]) || []).map((x) => ({ id: String(x.id), label: x.label || String(x.id) }));
-  return (s.enum || []).map((v) => ({ id: String(v), label: (hint.labels && hint.labels[v]) || String(v) }));
+// A discovered item the page has its own word for (a Windows plan by its GUID) takes it; an enum value its fv_ word.
+function mpOptions(s, hint, entry, path) {
+  const list = hint.discovery || hint.list, tid = entry && entry.descriptor && entry.descriptor.typeId;
+  if (list) return ((entry && entry.discovery && entry.discovery[list]) || []).map((x) => ({ id: String(x.id), label: ((k) => (t(k) !== k ? t(k) : x.label || String(x.id)))('dv_' + String(x.id).replace(/\W/g, '_')) }));
+  return (s.enum || []).map((v) => ({ id: String(v), label: mpWord('fv', tid, `.${v}`, (hint.labels && hint.labels[v]) || String(v)) }));
 }
 // An input's text as the JSON value its schema wants; undefined = the field is left out. A value that fits no type is sent as
 // typed, so the service names the field instead of the page guessing.
@@ -1966,7 +2024,7 @@ function mpErr(key, errs, used, id) {
 }
 const mpUnit = (x, u) => (u ? `${x} ${u}` : String(x));
 function mpForm(schema, hints, obj, entry, ek, errs, used, prefix) {
-  return mpFields(schema, hints, prefix).map((f) => mpField(f, hints, obj, entry, ek, errs, used));
+  return mpFields(schema, hints, prefix, entry && entry.descriptor && entry.descriptor.typeId).map((f) => mpField(f, hints, obj, entry, ek, errs, used));
 }
 // One settings field: its label, the widget its schema and hint give, units, help, and the service's problem with it. The
 // inputs write into obj at once, so a repaint never loses an edit; what the form shows (a default included) is what it saves.
@@ -1986,7 +2044,7 @@ function mpField(f, hints, obj, entry, ek, errs, used) {
   }
   let control, extra = null;
   if (w === 'multi') {
-    const opts = mpOptions(s.items || {}, f.hint, entry), chosen = Array.isArray(v) ? v.map(String) : [];
+    const opts = mpOptions(s.items || {}, f.hint, entry, f.path), chosen = Array.isArray(v) ? v.map(String) : [];
     // a chosen id not discovered here stays listed and chosen: a save never drops it unseen
     for (const c of chosen) if (!opts.some((o) => o.id === c)) opts.push({ id: c, label: t('modesMissing', { v: c }) });
     const boxes = opts.map((o) => mpEl('input', { type: 'checkbox', value: o.id, checked: chosen.includes(o.id), 'data-f': `${key}[]` }));
@@ -1998,7 +2056,7 @@ function mpField(f, hints, obj, entry, ek, errs, used) {
     control = mpEl('textarea', { ...aria, id, rows: 3, value: Array.isArray(v) ? v.join('\n') : '' });
     control.oninput = () => set(control.value.split('\n').map((x) => mpCoerce(s.items || {}, x.trim())).filter((x) => x !== undefined));
   } else if (w === 'select') {
-    const opts = mpOptions(s, f.hint, entry), cur = v === undefined ? '' : String(v);
+    const opts = mpOptions(s, f.hint, entry, f.path), cur = v === undefined ? '' : String(v);
     // a stored value not offered here (a plan deleted since) stays chosen and marked: never replaced unseen
     if (cur && !opts.some((o) => o.id === cur)) opts.push({ id: cur, label: t('modesMissing', { v: cur }) });
     control = mpEl('select', { ...aria, id, value: cur }, cur === '' ? mpEl('option', { value: '' }, t('modesPick')) : null, opts.map((o) => mpEl('option', { value: o.id }, o.label)));
@@ -2039,16 +2097,6 @@ function mpProblems(text) {
   return out;
 }
 const mpRest = (k, v) => (k ? `${k}: ${v}` : v);
-function mpRuleText(c) {
-  c = c || {};
-  const n = (x) => fmt(x, Number.isInteger(Number(x)) ? 0 : 1);
-  if (c.kind === 'mainsOffFor') return t('rdMainsOff', { n: n(c.seconds / 60) });
-  if (c.kind === 'mainsOnFor') return t('rdMainsOn', { n: n(c.seconds / 60) });
-  if (c.kind === 'socBelow') return t('rdSoc', { n: n(c.percent) });
-  if (c.kind === 'cutWithin') return t('rdCut', { n: n(c.minutes) });
-  if (c.kind === 'timeWindow') return t('rdTime', { a: c.from, b: c.to });
-  return String(c.kind || '');
-}
 // The service's detail is English for its log: the page says only what it can word itself (the broker, the next try in local time).
 function mpWhy(detail) {
   const d = String(detail || ''), retry = /next try at (\d{1,2}):(\d{2}) UTC/.exec(d), out = [];
@@ -2062,24 +2110,11 @@ function mpFailLine(title, a) {
   return mpEl('div', { className: a.status === 'unsupported' ? 'warn' : 'bad', 'data-st': a.status },
     t(`fail_${String(a.status).replace(/-/g, '_')}`, { a: title, r: mpWhy(a.detail) || t('whyLog') }));
 }
-// The selector (Auto + every mode), why the active mode is in force, each action's state, the hibernate setting, the last write.
+// What went wrong (the switch is the header's), the hibernate setting, the last write.
 function mpPaintTop() {
   const v = mpView;
   if (!v) return;
-  const s = v.settings || {}, sel = s.selection || {}, modes = mpModes();
-  const chosen = mpPress || (sel.kind === 'manual' ? sel.manualModeId : 'auto');
-  mpSet($('modesSel'), [{ id: 'auto', name: t('modeAuto') }].concat(modes).map((m) => {
-    const b = mpEl('button', { type: 'button', 'data-m': m.id, 'aria-pressed': String(m.id === chosen), disabled: mpBusy, 'data-pending': mpPress === m.id }, modeName(m));
-    b.onclick = () => mpSelect(m.id);
-    return b;
-  }));
-  const active = modes.find((m) => m.id === v.activeModeId), name = active ? modeName(active) : v.activeModeId || '–';
-  const rule = sel.autoRule !== null && sel.autoRule !== undefined ? (s.rules || [])[sel.autoRule] : null, now = $('modesNow');
-  now.textContent = sel.kind === 'manual' ? t('modesNowManual', { m: name })
-    : rule ? t('modesNowAuto', { m: name, n: sel.autoRule + 1, c: mpRuleText(rule.condition) }) : t('modesNowKept', { m: name });
-  // a change still running (the write answered 202): the mode it goes to, never the old one as if nothing happened
-  const to = v.switching || (v.pending ? (mpPress || chosen) : null);
-  if (to) { const m = modes.find((x) => x.id === to); now.textContent = t('modesSwitching', { m: m ? modeName(m) : to === 'auto' ? t('modeAuto') : to }); }
+  const s = v.settings || {};
   // only what went wrong; the service's problems are English for its log: one line in the page's language says there is one
   mpSet($('modesStatus'), v.emergency ? mpEl('div', { className: 'bad' }, t('modesEmergency')) : null,
     (v.actions || []).filter((a) => MP_FAILED.includes(a.status)).map((a) => mpFailLine(mpTitle(a.typeId), a)),

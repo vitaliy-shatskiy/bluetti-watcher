@@ -13,7 +13,7 @@ public sealed partial class PageI18nTests
         + "zoneR,zoneA,arc,ticks,pct,wh,trend,load,spark,loadSub,left,leftSub,cutK,cut,cutSub,cutSub2,reach,volt,voltSub,today,todaySub,todaySub2,"
         + "dtekCard,dtekChip,dtekPill,dtekGrid,dtekMore,dtekBody,dtekNote,rangeSeg,chart,count,battCard,battTitle,battKpis,hours,cycles,loadStats,cuts,"
         + "srcCard,cloudChip,srcSeg,srcResetBox,srcReset,cloudSignIn,cloudSignOut,cloudLine,cloudLink,rows,stationCard,stationBody,modesCard,modesMore,"
-        + "modesSel,modesNow,modesStatus,modesMsg,modesList,modesEdit,modesRules,modesHib";   // 1.10.6: the modes panel's settings row moved to its end
+        + "modesStatus,modesMsg,modesList,modesEdit,modesRules,modesHib";   // 1.10.6: no switch of its own in the modes panel, its settings row at the end
     private const string Headings1104 = "dtekTitle,dtekDetails,batteryAndLoad,energyPerHour,cyclesTitle,loadRangeTitle,powerCuts,srcTitle,lastReadings,stationOwn,modesTitle";
     private const string Tiles1104 = "loadNow,timeLeft,thisCut,reaches,output,today";
 

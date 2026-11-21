@@ -422,36 +422,23 @@ public sealed partial class PageI18nTests
     }
 
     [Fact]
-    public void The_selector_marks_the_choice_says_why_the_mode_is_in_force_and_posts_a_pick()
+    public void A_pick_posts_once_and_a_second_press_while_one_is_out_sends_nothing()
     {
         var r = RunPanel("""
             (async () => {
-              mpPaintTop();
-              const sel = () => walk($('modesSel'), (x) => x.tagName === 'BUTTON');
-              const auto = { ms: sel().map((b) => b.attrs['data-m']), texts: sel().map((b) => b.textContent), pressed: sel().map((b) => b.attrs['aria-pressed']), line: $('modesNow').textContent };
               const MANUAL = JSON.parse(JSON.stringify(VIEW)); MANUAL.activeModeId = 'quiet'; MANUAL.settings.selection = { kind: 'manual', manualModeId: 'quiet', autoModeId: 'eco', autoRule: null };
               let release; const sent = [];
               fetch = (u, o) => { sent.push([u, o.method, o.headers['X-Station'], o.body]); return new Promise((res) => { release = () => res({ ok: true, status: 200, json: () => Promise.resolve(MANUAL) }); }); };
-              const p = sel()[3].onclick();
-              const during = { pending: sel().map((b) => 'data-pending' in b.attrs), disabled: sel().map((b) => b.disabled) };
-              const again = sel()[1].onclick();
+              const p = mpSelect('quiet');
+              const again = mpSelect('normal');
               release(); await p; await again;
-              console.log(JSON.stringify({ auto, during, sent, loads, pressed: sel().map((b) => b.attrs['aria-pressed']), line: $('modesNow').textContent }));
+              console.log(JSON.stringify({ sent, loads, now: mpView.settings.selection.manualModeId }));
             })();
             """);
-        var auto = r.GetProperty("auto");
-        Assert.Equal("""["auto","normal","eco","quiet"]""", auto.GetProperty("ms").GetRawText());
-        Assert.Equal("""["modeAuto","modeNormal","modeEco","Quiet"]""", auto.GetProperty("texts").GetRawText());
-        Assert.Equal("""["true","false","false","false"]""", auto.GetProperty("pressed").GetRawText());
-        Assert.Equal("""modesNowAuto{"m":"modeEco","n":1,"c":"rdMainsOff{\"n\":\"3\"}"}""", auto.GetProperty("line").GetString());
-        Assert.Equal("[false,false,false,true]", r.GetProperty("during").GetProperty("pending").GetRawText());
-        Assert.Equal("[true,true,true,true]", r.GetProperty("during").GetProperty("disabled").GetRawText());
         Assert.Equal("""[["/api/modes/select","POST","1","{\"mode\":\"quiet\"}"]]""", r.GetProperty("sent").GetRawText());   // a second press while one is out sends nothing
         Assert.Equal(1, r.GetProperty("loads").GetInt32());   // the header follows at once
-        Assert.Equal("""["false","false","false","true"]""", r.GetProperty("pressed").GetRawText());
-        Assert.Equal("""modesNowManual{"m":"Quiet"}""", r.GetProperty("line").GetString());
+        Assert.Equal("quiet", r.GetProperty("now").GetString());
     }
-
     [Fact]
     public void The_hibernate_toggle_puts_the_setting_and_a_refused_change_springs_back()
     {
@@ -506,7 +493,7 @@ public sealed partial class PageI18nTests
         Assert.DoesNotContain("plans", panel, StringComparison.Ordinal);
         var (en, uk) = Dictionaries(page);
         // keys the panel picks through a map or a variable (literal t('...') calls are covered by the whole-page test)
-        string[] keys = ["fwNormal", "fwEco", "fwEmergency", "modesHyst", "modesFrom", "modesTo", "rdMainsOff", "rdMainsOn", "rdSoc", "rdCut", "rdTime", "uPct", "uMin"];
+        string[] keys = ["fwNormal", "fwEco", "fwEmergency", "modesHyst", "modesFrom", "modesTo", "uPct", "uMin"];
         Assert.DoesNotContain(keys, k => !en.Contains(k) || !uk.Contains(k));
     }
 
