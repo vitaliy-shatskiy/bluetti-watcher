@@ -2551,9 +2551,21 @@ async function mpRefresh(own) {
   $('modesCard').hidden = false;
   mpPaintTop(); mpPaintList(); mpPaintRules();
 }
+// The catalogue the blocks' lines are worded from; the service answers it from its last build at once.
+function mpLoadCat() {
+  return fetch('/api/modes/catalogue', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+    .then((cat) => { mpCat = cat || { modules: [] }; });
+}
+// The first data round at load: the view and the catalogue asked together, the blocks painted once both are in. The
+// header and the page's first read follow the view alone: the returned promise.
+var mpFirstRound = null;
+function mpStart() {
+  const view = mpRefresh();
+  mpFirstRound = Promise.all([mpLoadCat(), view]).then(() => mpPaintList());
+  return view;
+}
 async function mpOpen() {
-  const [cat] = await Promise.all([fetch('/api/modes/catalogue', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null), mpRefresh()]);
-  mpCat = cat || { modules: [] };
+  await Promise.all([mpLoadCat(), mpRefresh()]);
   mpPaintAll();
 }
 // Open: the catalogue once and the view each minute while the page is seen; closed: nothing is asked.
@@ -2566,7 +2578,7 @@ function mpToggle(open) {
 // --- end of the power modes panel ---
 $('modesMore').addEventListener('toggle', () => mpToggle($('modesMore').open));
 document.querySelectorAll('#langSeg button').forEach((b) => b.addEventListener('click', mpPaintAll));
-const modesRead = mpRefresh().then(() => { if ((window.location || {}).hash === '#modes' && mpView) $('modesMore').open = true; });   // the tray's "Open panel" lands here
+const modesRead = mpStart().then(() => { if ((window.location || {}).hash === '#modes' && mpView) $('modesMore').open = true; });   // the tray's "Open panel" lands here
 applyStatic();
 // the engine is known before the first paint: the header never shows the legacy state for a moment under v2
 window.addEventListener('resize', () => paintModesV2());

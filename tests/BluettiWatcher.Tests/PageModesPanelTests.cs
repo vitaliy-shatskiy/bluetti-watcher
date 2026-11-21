@@ -291,6 +291,23 @@ public sealed partial class PageI18nTests
     }
 
     [Fact]
+    public void The_first_data_round_at_load_asks_the_view_and_the_catalogue_together_and_paints_the_blocks()
+    {
+        var r = RunPanel("""
+            (async () => {
+              mpCat = null; mpView = null;
+              const orig = fetch; fetch = (u, o) => (String(u).includes('catalogue') ? Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(JSON.parse(JSON.stringify(CAT))) }) : orig(u, o));
+              await mpStart(); await mpFirstRound;
+              await Promise.resolve();
+              const lis = walk($('modesList'), (x) => x.tagName === 'LI').length;
+              console.log(JSON.stringify({ blocks: walk($('modesList'), (x) => x.className === 'mode').length, lis }));
+            })();
+            """);
+        Assert.True(r.GetProperty("blocks").GetInt32() > 0);   // painted in the first round, panel closed or open
+        Assert.True(r.GetProperty("lis").GetInt32() > 0);
+    }
+
+    [Fact]
     public void Built_in_modes_cannot_be_deleted_and_a_user_mode_is_deleted_only_after_the_confirm()
     {
         var r = RunPanel("""
