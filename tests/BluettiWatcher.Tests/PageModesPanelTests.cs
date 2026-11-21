@@ -225,7 +225,7 @@ public sealed partial class PageI18nTests
     {
         var r = RunPanel(GpuEditor() + """
             const e = { descriptor: { typeId: 'gpu.powerLimit', settingsSchema: { type: 'object', properties: {} }, uiHints: {} }, available: true,
-              discovery: { gpus: [{ id: '0', label: 'NVIDIA GeForce RTX 4080 (150..400 W, default 340 W)', numbers: { min: 150, max: 400, default: 340 } }] } };
+              discovery: { gpus: [{ id: '0', label: 'Demo GPU (150..400 W, default 320 W)', numbers: { min: 150, max: 400, default: 320 } }] } };
             const s = { gpu: '0', percent: 70 }, root = new El('div');
             root.append(...gpuLimitForm(s, e, 'a1', {}, new Set()));
             const pressed = () => ['gpu-min', 'gpu-own'].map((k) => A(root, k).attrs['aria-pressed']);
@@ -238,10 +238,10 @@ public sealed partial class PageI18nTests
             A(root, 'gpu-own').onclick();
             console.log(JSON.stringify({ look, stepped, lowest, own: [JSON.stringify(s), F(root, 'a1.watts').value] }));
             """);
-        Assert.Equal("""{"selects":0,"card":"NVIDIA GeForce RTX 4080","min":"gpuMinW{\"w\":150}","pressed":["false","true"],"watts":"238","hint":"gpuRange{\"min\":150,\"max\":400,\"d\":340}","untouched":"{\"gpu\":\"0\",\"percent\":70}"}""", r.GetProperty("look").GetRawText());
-        Assert.Equal("""{"gpu":"0","watts":248}""", r.GetProperty("stepped").GetString());
+        Assert.Equal("""{"selects":0,"card":"Demo GPU","min":"gpuMinW{\"w\":150}","pressed":["false","true"],"watts":"224","hint":"gpuRange{\"min\":150,\"max\":400,\"d\":320}","untouched":"{\"gpu\":\"0\",\"percent\":70}"}""", r.GetProperty("look").GetRawText());
+        Assert.Equal("""{"gpu":"0","watts":234}""", r.GetProperty("stepped").GetString());
         Assert.Equal("""["{\"gpu\":\"0\",\"limit\":\"min\"}",["true","false"],false]""", r.GetProperty("lowest").GetRawText());
-        Assert.Equal("""["{\"gpu\":\"0\",\"watts\":340}","340"]""", r.GetProperty("own").GetRawText());
+        Assert.Equal("""["{\"gpu\":\"0\",\"watts\":320}","320"]""", r.GetProperty("own").GetRawText());
     }
 
     [Fact]
