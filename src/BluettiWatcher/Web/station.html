@@ -145,15 +145,22 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 .mp .chips{margin:10px 0 4px}
 #modesSel button[aria-pressed=true]{background:var(--accent);color:#fff}
 #modesSel button[data-pending]{outline:1px dashed var(--accent);outline-offset:-1px;color:var(--text)}
-.mp .item{display:flex;align-items:center;gap:10px;padding:7px 4px;border-top:1px solid var(--line)}
-.mp .item .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mp .item .act{color:var(--ok);font-weight:600;font-size:12px}
-.mp .chip .st{color:var(--dim)}.mp .chip.ok .st{color:#9bd59f}.mp .chip.warn .st{color:#efc36f}.mp .chip.bad .st{color:#ef9191}.mp .chip>span:first-of-type{color:var(--text)}
-#modesHib{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin:10px 0}
+/* one block per mode: its name, what it does as plain lines, one button to set it up; the editor opens inside the block */
+.mp .mode{padding:12px 0;border-top:1px solid var(--line)}
+.mp .mode .mh{display:flex;align-items:center;gap:12px}
+.mp .mode .nm{font-size:14px;font-weight:600}
+.mp .act{color:var(--ok);font-weight:600;font-size:12px}
+.mp .mode ul{margin:6px 0 0;padding:0;list-style:none;color:var(--dim)}.mp .mode li{padding:2px 0}
+.mp .mode #modesEdit{margin-top:10px;padding:4px 16px 12px;border:1px solid var(--edge);border-radius:10px;background:var(--frame)}
+.mp #modesStatus>div{margin:4px 0}
+.mp .auto{line-height:34px}.mp .auto b{font-weight:600}
+.mp details.adv{margin:12px 0}.mp details.adv>summary{margin-bottom:0}.mp details.adv[open]>summary{margin-bottom:8px}
+.mp .enf{display:flex;flex-wrap:wrap;gap:6px 16px;margin:6px 0}
+#modesHib{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin:14px 0 0;padding-top:12px;border-top:1px solid var(--line);font-size:12px;color:var(--dim)}
 /* a number in the rules: typed or stepped with − and +, never the browser's spinner */
 .mp input[type=number]{appearance:textfield;-moz-appearance:textfield}.mp input[type=number]::-webkit-inner-spin-button,.mp input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .mp .step{display:inline-flex;align-items:center;background:var(--frame);border:1px solid var(--edge);border-radius:6px}
-.mp .rules .step input[type=text]{border:0;background:none;width:48px;text-align:center}
+.mp span.step input[type=text]{border:0;background:none;width:48px;text-align:center;font-variant-numeric:tabular-nums}
 .mp .step button{all:unset;cursor:pointer;width:24px;height:26px;line-height:26px;text-align:center;color:var(--dim);font-size:15px}
 .mp .step button:hover{color:var(--text)}.mp .step button:focus-visible{outline:1px solid var(--accent)}
 .mp .rules .cm{margin-left:-8px}
@@ -248,8 +255,8 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 <div class="card mp" id="modesCard" hidden><details id="modesMore"><summary data-i18n="modesTitle"></summary>
   <div class="row"><div class="seg" id="modesSel" role="group" data-i18n-aria="modesChoose"></div><span class="s" id="modesNow"></span></div>
   <div class="chips" id="modesStatus" role="status" aria-live="polite"></div>
-  <div id="modesHib"></div><div class="msg" id="modesMsg" role="status" aria-live="polite" hidden></div>
-  <div id="modesList"></div><div id="modesEdit" hidden></div><div id="modesRules"></div></details></div>
+  <div class="msg" id="modesMsg" role="status" aria-live="polite" hidden></div>
+  <div id="modesList"></div><div id="modesEdit" hidden></div><div id="modesRules"></div><div id="modesHib"></div></details></div>
 </main><div id="tip"></div>
 <script>
 // Every visible text of the page, per language. A key used anywhere below must exist in both (a test checks).
@@ -345,7 +352,29 @@ en: {
   modesNowManual: "{m} held until you pick Auto",
   modesSwitching: "Switching to {m}: its actions are running…",
   modesEmergency: "battery emergency: the station's protection comes first",
-  modesChipWhy: "{s} ({r})",
+  fail_failed: "Could not apply «{a}»: {r}",
+  fail_restore_failed: "Could not put back «{a}»: {r}",
+  fail_unsupported: "«{a}» does not work on this PC",
+  modesSetUp: "Set up",
+  modesPutsBack: "Puts back what the other modes changed",
+  modesAdvanced: "More settings",
+  modesMoreRules: "More rules",
+  autoWhenOff: ", when the power is out longer than",
+  autoWhenOn: ", when the power is back for",
+  af_windows_powerPlan_plan: "Power plan: {v}",
+  af_gpu_powerLimit_limit_min: "Graphics card: its lowest power limit",
+  af_gpu_powerLimit_watts: "Graphics card: up to {v} W",
+  af_gpu_powerLimit_percent: "Graphics card: {v} % of its usual power",
+  af_service_state_services_running_false: "Stops: {v}",
+  af_service_state_services_running_true: "Starts: {v}",
+  af_command_pair_enter: "Runs «{v}» when the mode starts",
+  af_command_pair_leave: "Runs «{v}» when the mode ends",
+  af_windows_phoneLink: "Phone Link stops working in the background",
+  af_gpu_idleWatcher: "Watches for a graphics card stuck at high clocks while idle",
+  af_display_refreshRate_monitors: "Monitor refresh rate: {v} Hz",
+  dv_381b4222_f694_41f0_9685_ff5bb260df2e: "Balanced",
+  dv_8c5e7fda_e8bf_4a96_9a85_a6e23a8c635c: "High performance",
+  dv_a1841308_3541_4fab_bc81_f71556f20b4a: "Power saver",
   whyBroker: "the admin broker did not take the change: reinstall it from an elevated PowerShell",
   whyRetry: "next try at {at}",
   whyLog: "details in the service log",
@@ -364,7 +393,6 @@ en: {
   at_nvidia_profile: "NVIDIA driver profile",
   at_gpu_idleWatcher: "GPU idle watcher",
   at_rgb_lighting: "RGB lighting off",
-  modesNoActions: "this mode changes nothing",
   modesHibernate: "Hibernate the PC when the battery reaches the hibernate level",
   modesHibOn: "Hibernation on",
   modesHibOff: "Hibernation off",
@@ -376,7 +404,6 @@ en: {
   fwNormal: "normal",
   fwEco: "eco",
   fwEmergency: "emergency",
-  modesEdit: "Edit",
   modesDelete: "Delete",
   modesDeleteAsk: "Delete the mode {n}?",
   modesDeleted: "Mode {n} deleted",
@@ -777,7 +804,29 @@ uk: {
   modesNowManual: "{m} утримується, доки не оберете Авто",
   modesSwitching: "Перемикання на {m}: дії режиму виконуються…",
   modesEmergency: "аварійний заряд: спершу захист станції",
-  modesChipWhy: "{s} ({r})",
+  fail_failed: "Не вдалося застосувати «{a}»: {r}",
+  fail_restore_failed: "Не вдалося повернути «{a}»: {r}",
+  fail_unsupported: "«{a}» не працює на цьому ПК",
+  modesSetUp: "Налаштувати",
+  modesPutsBack: "Повертає те, що змінили інші режими",
+  modesAdvanced: "Додатково",
+  modesMoreRules: "Більше правил",
+  autoWhenOff: ", коли світла немає довше",
+  autoWhenOn: ", коли світло є",
+  af_windows_powerPlan_plan: "Схема живлення: {v}",
+  af_gpu_powerLimit_limit_min: "Відеокарта: найнижчий ліміт потужності",
+  af_gpu_powerLimit_watts: "Відеокарта: до {v} Вт",
+  af_gpu_powerLimit_percent: "Відеокарта: {v} % звичайної потужності",
+  af_service_state_services_running_false: "Зупиняє: {v}",
+  af_service_state_services_running_true: "Запускає: {v}",
+  af_command_pair_enter: "Запускає «{v}» на початку режиму",
+  af_command_pair_leave: "Запускає «{v}» наприкінці режиму",
+  af_windows_phoneLink: "Phone Link не працює у фоні",
+  af_gpu_idleWatcher: "Стежить, щоб відеокарта не працювала на високій частоті без навантаження",
+  af_display_refreshRate_monitors: "Частота оновлення моніторів: {v} Гц",
+  dv_381b4222_f694_41f0_9685_ff5bb260df2e: "Збалансована",
+  dv_8c5e7fda_e8bf_4a96_9a85_a6e23a8c635c: "Висока продуктивність",
+  dv_a1841308_3541_4fab_bc81_f71556f20b4a: "Економія енергії",
   whyBroker: "адмін-брокер не прийняв зміну: перевстановіть його в PowerShell від імені адміністратора",
   whyRetry: "наступна спроба о {at}",
   whyLog: "подробиці в журналі сервісу",
@@ -796,7 +845,6 @@ uk: {
   at_nvidia_profile: "Профіль драйвера NVIDIA",
   at_gpu_idleWatcher: "Нагляд за простоєм GPU",
   at_rgb_lighting: "Вимкнення RGB-підсвітки",
-  modesNoActions: "цей режим нічого не змінює",
   modesHibernate: "Переводити ПК у гібернацію, коли батарея сягає рівня гібернації",
   modesHibOn: "Гібернацію увімкнено",
   modesHibOff: "Гібернацію вимкнено",
@@ -808,7 +856,6 @@ uk: {
   fwNormal: "звичайний",
   fwEco: "еко",
   fwEmergency: "аварійний",
-  modesEdit: "Змінити",
   modesDelete: "Видалити",
   modesDeleteAsk: "Видалити режим {n}?",
   modesDeleted: "Режим {n} видалено",
@@ -1781,6 +1828,8 @@ if (window.matchMedia && matchMedia('(hover: none)').matches) document.addEventL
 // a new width redraws the charts at it (a quarter second after the last resize event)
 let resizeTimer = null;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(show, 250); });
+// The action types the mode editor keeps under «More settings»: rare or technical ones (a page choice, not the service's).
+const ADVANCED_ACTIONS = new Set(['command.pair', 'gpu.idleWatcher', 'rgb.lighting', 'nvidia.profile']);
 // --- power modes panel ---
 // The Power modes panel (modes.engine v2, /api/modes): the mode in force and why, each action's state, the modes and the Auto
 // rules. Every settings form is generated from the catalogue's JSON Schemas and UI hints: no module is named here.
@@ -1789,6 +1838,7 @@ var mpCat = null;       // the last GET /api/modes/catalogue answer
 var mpDraft = null;     // the mode being edited { create, mode, errs, msg, idTouched }; null = no editor
 var mpRules = [];       // the Auto rules shown: a copy the inputs edit
 var mpRulesDirty = false, mpRuleErrs = {}, mpRulesMsg = '', mpRuleBtns = [];
+var mpRulesMore = false; // the full rule list asked for, past the one-sentence Auto
 var mpMsg = null;       // the last write's outcome on the panel's line { kind, text, down }
 var mpBusy = false;     // a write is out: another waits for it
 var mpPress = null;     // the selector choice a press is sending (the header's or the panel's), until the change is done
@@ -1800,7 +1850,6 @@ var mpSeq = 0;          // ids pairing labels with their controls
 var mpTimer = null;     // the minute refresh while the panel is open
 const MP_PROPS = new Set(['className', 'textContent', 'value', 'checked', 'disabled', 'hidden', 'title', 'id', 'htmlFor', 'type', 'min', 'max', 'step', 'rows', 'maxLength', 'inputMode', 'onclick', 'onchange', 'oninput']);
 const MP_FLAG = { normal: 'fwNormal', eco: 'fwEco', emergency: 'fwEmergency' };
-const MP_TONE = { applied: 'ok', satisfied: 'ok', relinquished: 'warn', failed: 'bad', 'restore-failed': 'bad' };
 // Each rule kind's fields: [name, unit key (none = HH:mm text), min, max, step, stored units per shown unit]; hysteresis may be
 // left out. Seconds are shown and typed as minutes.
 const MP_KINDS = {
@@ -2011,12 +2060,11 @@ function mpWhy(detail) {
   if (retry) { const at = new Date(); at.setUTCHours(Number(retry[1]), Number(retry[2]), 0, 0); out.push(t('whyRetry', { at: `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` })); }
   return out.length ? out.join('; ') : d ? t('whyLog') : '';
 }
-// An action's state: its name, then the state word in the state's colour.
-function mpChip(title, a) {
-  const word = t(`st_${String(a.status || 'unknown').replace(/-/g, '_')}`);
-  const why = a.detail && ['failed', 'restore-failed', 'unsupported'].includes(a.status) ? mpWhy(a.detail) : '';
-  return mpEl('span', { className: `chip ${MP_TONE[a.status] || ''}`.trim(), 'data-st': a.status },
-    mpEl('i'), mpEl('span', {}, title), mpEl('span', { className: 'st' }, why ? t('modesChipWhy', { s: word, r: why }) : word));
+// An action that did not work, as one line in the user's words with what to do; a working action says nothing.
+const MP_FAILED = ['failed', 'restore-failed', 'unsupported'];
+function mpFailLine(title, a) {
+  return mpEl('div', { className: a.status === 'unsupported' ? 'warn' : 'bad', 'data-st': a.status },
+    t(`fail_${String(a.status).replace(/-/g, '_')}`, { a: title, r: mpWhy(a.detail) || t('whyLog') }));
 }
 // The selector (Auto + every mode), why the active mode is in force, each action's state, the hibernate setting, the last write.
 function mpPaintTop() {
@@ -2036,11 +2084,11 @@ function mpPaintTop() {
   // a change still running (the write answered 202): the mode it goes to, never the old one as if nothing happened
   const to = v.switching || (v.pending ? (mpPress || chosen) : null);
   if (to) { const m = modes.find((x) => x.id === to); now.textContent = t('modesSwitching', { m: m ? modeName(m) : to === 'auto' ? t('modeAuto') : to }); }
-  const chips = (v.actions || []).map((a) => mpChip(mpTitle(a.typeId), a));
-  // the service's problems are English for its log: one line in the page's language says there is one
-  mpSet($('modesStatus'), v.emergency ? mpEl('span', { className: 'chip bad' }, mpEl('i'), mpEl('span', {}, t('modesEmergency'))) : null,
-    chips, (v.restores || []).map((r) => mpChip(`${mpTitle(r.typeId)} (${r.key})`, r)),
-    chips.length ? null : mpEl('span', { className: 'dim' }, t('modesNoActions')), (v.problems || []).length ? mpEl('div', { className: 'bad' }, t('modesProblem')) : null);
+  // only what went wrong; the service's problems are English for its log: one line in the page's language says there is one
+  mpSet($('modesStatus'), v.emergency ? mpEl('div', { className: 'bad' }, t('modesEmergency')) : null,
+    (v.actions || []).filter((a) => MP_FAILED.includes(a.status)).map((a) => mpFailLine(mpTitle(a.typeId), a)),
+    (v.restores || []).filter((r) => MP_FAILED.includes(r.status)).map((r) => mpFailLine(mpTitle(r.typeId), r)),
+    (v.problems || []).length ? mpEl('div', { className: 'bad' }, t('modesProblem')) : null);
   const hib = mpEl('input', { type: 'checkbox', checked: s.autoHibernate !== false, disabled: mpBusy, 'data-f': 'hibernate' });
   hib.onchange = () => mpHibernate(hib.checked);
   mpSet($('modesHib'), mpEl('label', { className: 'ck' }, hib, t('modesHibernate')),
@@ -2106,25 +2154,73 @@ function mpButton(act, id, text, onclick, extra) {
   b.onclick = onclick;
   return b;
 }
+// A key the page's dictionary has (t() gives a missing key back as is).
+const mpKnown = (k) => t(k) !== k;
+// A setting's value as a person reads it: a discovered item's label without its trailing "(...)" notes (or the page's own word
+// for it), else the value with the field's units.
+function mpValueText(e, hint, v) {
+  const list = hint && (hint.discovery || hint.list), x = String(v), own = 'dv_' + x.replace(/\W/g, '_');
+  if (mpKnown(own)) return t(own);
+  const found = list && ((e && e.discovery && e.discovery[list]) || []).find((o) => String(o.id) === x);
+  if (found) return String(found.label || found.id).replace(/(\s*\([^()]*\))+$/, '');
+  return hint && (hint.units || hint.unit) ? `${x} ${hint.units || hint.unit}` : x;
+}
+// What an action does, as plain lines. The wording is the page dictionary's, keyed by the action type and setting name
+// (af_<type>, af_<type>_<field>, af_<type>_<field>_<value>, a list of rows by its yes/no column); a type it has no words
+// for is named with its values as the catalogue gives them.
+function mpLines(a) {
+  const e = mpModule(a.typeId), base = 'af_' + String(a.typeId).replace(/\W/g, '_'), set = a.settings || {}, out = [];
+  const schema = (e && e.descriptor.settingsSchema) || {}, hints = (e && e.descriptor.uiHints) || {};
+  if (mpKnown(base)) out.push(t(base));
+  for (const [name, ps] of Object.entries(schema.properties || {})) {
+    const v = set[name], k = `${base}_${name}`;
+    if (v === undefined || v === null || v === '') continue;
+    if (Array.isArray(v)) {
+      const ip = (ps.items && ps.items.properties) || {}, cols = Object.keys(ip), flag = cols.find((c) => mpTypes(ip[c]).includes('boolean'));
+      const lab = (r) => (r && typeof r === 'object' ? cols.filter((c) => c !== flag && typeof r[c] !== 'boolean' && ip[c] && !ip[c].enum).map((c, i) => (i === 0 ? mpValueText(e, hints[`${name}.${c}`] || hints[name], r[c]) : r[c])).join(' ') : mpValueText(e, hints[name], r));
+      if (flag) for (const yes of [false, true]) {
+        const rows = v.filter((r) => !!(r && r[flag]) === yes), kk = `${k}_${flag}_${yes}`;
+        if (rows.length && mpKnown(kk)) out.push(t(kk, { v: rows.map(lab).join(', ') }));
+      }
+      else if (v.length && mpKnown(k)) out.push(t(k, { v: v.map(lab).join(', ') }));
+    } else if (mpKnown(`${k}_${String(v).replace(/\W/g, '_')}`)) out.push(t(`${k}_${String(v).replace(/\W/g, '_')}`));
+    else if (mpKnown(k)) out.push(t(k, { v: mpValueText(e, hints[name], v) }));
+  }
+  if (out.length) return out;
+  const vals = Object.keys(schema.properties || {}).map((n) => set[n]).filter((x) => x !== undefined && x !== '' && x !== null && typeof x !== 'object');
+  return [vals.length ? `${mpTitle(a.typeId)}: ${vals.map((x) => mpValueText(e, null, x)).join(', ')}` : mpTitle(a.typeId)];
+}
+// The editor's box, kept by reference: it moves into the block of the mode being edited.
+var mpEditBox = null;
+const mpEditEl = () => mpEditBox || (mpEditBox = $('modesEdit'));
+// One block per mode: its name, «Active» on the one in force, what it does line by line, one button to set it up.
 function mpPaintList() {
   const v = mpView;
   if (!v) return;
-  mpSet($('modesList'), mpEl('h3', {}, t('modesList')), mpModes().map((m) => mpEl('div', { className: 'item' },
-    mpEl('span', { className: 'nm' }, modeName(m)),
-    m.id === v.activeModeId ? mpEl('span', { className: 'act' }, t('modesActive')) : null,
-    mpButton('edit', m.id, t('modesEdit'), () => mpEditMode(m.id)),
-    m.builtIn ? null : mpButton('delete', m.id, t('modesDelete'), () => mpDeleteMode(m.id)))),
-  mpEl('div', { className: 'row', style: 'margin-top:8px' }, mpButton('new', '', t('modesNew'), mpNewMode)));
+  const d = mpDraft, box = mpEditEl();
+  mpSet($('modesList'), mpEl('h3', {}, t('modesList')), mpModes().map((m) => {
+    const on = (m.actions || []).filter((a) => a.enabled !== false), here = d && !d.create && d.mode.id === m.id;
+    return mpEl('div', { className: 'mode', 'data-mode': m.id },
+      mpEl('div', { className: 'mh' }, mpEl('span', { className: 'nm' }, modeName(m)),
+        m.id === v.activeModeId ? mpEl('span', { className: 'act' }, t('modesActive')) : null, mpEl('span', { className: 'sp' }),
+        here ? null : mpButton('edit', m.id, t('modesSetUp'), () => mpEditMode(m.id)),
+        m.builtIn ? null : mpButton('delete', m.id, t('modesDelete'), () => mpDeleteMode(m.id))),
+      here ? null : mpEl('ul', {}, (on.length ? on.flatMap(mpLines) : [t('modesPutsBack')]).map((x) => mpEl('li', {}, x))),
+      here ? box : null);
+  }),
+  d && d.create ? box : null,
+  mpEl('div', { className: 'row', style: 'margin-top:8px' }, mpButton('new', '', t('modesNew'), mpNewMode)),
+  d ? null : box);
 }
 function mpEditMode(id) {
   const m = mpModes().find((x) => x.id === id);
   if (!m) return;
   mpDraft = { create: false, mode: mpClone(m), errs: {}, msg: '' };
-  mpPaintEdit();
+  mpPaintEdit(); mpPaintList();
 }
 function mpNewMode() {
   mpDraft = { create: true, mode: { id: '', name: '', flagWord: 'normal', actions: [] }, errs: {}, msg: '', idTouched: false };
-  mpPaintEdit();
+  mpPaintEdit(); mpPaintList();
 }
 function mpAddAction(typeId) {
   const e = mpModule(typeId);
@@ -2145,8 +2241,6 @@ function mpActionBox(a, i, errs, used) {
   if (!a.settings || typeof a.settings !== 'object') a.settings = {};
   const on = mpEl('input', { type: 'checkbox', checked: a.enabled !== false, 'data-f': ek + '.enabled' });
   on.onchange = () => { a.enabled = on.checked; };
-  const enf = mpEl('input', { type: 'checkbox', checked: !!a.enforce, 'data-f': ek + '.enforce' });
-  enf.onchange = () => { a.enforce = enf.checked; };
   const body = e ? mpForm(e.descriptor.settingsSchema || {}, e.descriptor.uiHints || {}, a.settings, e, ek, errs, used, '')
     : mpEl('div', { className: 'help' }, t('modesUnknownType'));
   // an entry the broker's policy lacks (the save's warnings): what to run, elevated, to allow it, with a copy button
@@ -2161,14 +2255,13 @@ function mpActionBox(a, i, errs, used) {
     .map((k) => { used.add(k); return mpEl('div', { className: 'ferr', 'data-err': k }, mpRest(k.slice(ek.length + 1), errs[k])); });
   return mpEl('fieldset', { 'data-f': ek }, mpEl('legend', {}, mpTitle(a.typeId)),
     e && !e.available ? mpEl('div', { className: 'warn' }, t('modesUnavailable', { r: e.unavailableReason || '' })) : null,
-    mpEl('div', { className: 'row' }, mpEl('label', { className: 'ck' }, on, t('modesEnabled')),
-      mpEl('label', { className: 'ck', title: t('modesEnforceTip') }, enf, t('modesEnforce')), mpEl('span', { className: 'sp' }),
+    mpEl('div', { className: 'row' }, mpEl('label', { className: 'ck' }, on, t('modesEnabled')), mpEl('span', { className: 'sp' }),
       mpButton('remove-action', i, t('modesRemove'), () => { mpDraft.mode.actions.splice(i, 1); mpDraft.errs = {}; mpPaintEdit(); })),
     warns, body, rest);
 }
 // The mode editor, rebuilt only on a change of shape (open, an action added or removed, a refused save); typing never rebuilds it.
 function mpPaintEdit() {
-  const box = $('modesEdit'), d = mpDraft;
+  const box = mpEditEl(), d = mpDraft;
   if (!d) { mpSet(box); box.hidden = true; return; }
   box.hidden = false;
   const m = d.mode, errs = d.errs || {}, used = new Set();
@@ -2181,18 +2274,30 @@ function mpPaintEdit() {
   const flag = mpEl('select', { id: flagId, 'data-f': 'flagWord', value: m.flagWord, 'aria-describedby': flagErr ? flagId + 'e' : null },
     Object.keys(MP_FLAG).map((w) => mpEl('option', { value: w }, t(MP_FLAG[w]))));
   flag.onchange = () => { m.flagWord = flag.value; };
-  const boxes = m.actions.map((a, i) => mpActionBox(a, i, errs, used));
+  // the actions an everyday edit needs first; the rare and technical ones, «keep enforced» and the flag under one «More settings»
+  const adv = (a) => typeof ADVANCED_ACTIONS !== 'undefined' && ADVANCED_ACTIONS.has(a.typeId);
+  const boxes = m.actions.map((a, i) => (adv(a) ? null : mpActionBox(a, i, errs, used)));
+  const advBoxes = m.actions.map((a, i) => (adv(a) ? mpActionBox(a, i, errs, used) : null));
+  const enforce = m.actions.map((a, i) => {
+    const c = mpEl('input', { type: 'checkbox', checked: !!a.enforce, 'data-f': `a${i}.enforce` });
+    c.onchange = () => { a.enforce = c.checked; };
+    return mpEl('label', { className: 'ck' }, c, mpTitle(a.typeId));
+  });
   const mods = (mpCat && mpCat.modules) || [];
   const pick = mpEl('select', { 'data-f': 'add-type', 'aria-label': t('modesActionType') },
-    mods.map((x) => mpEl('option', { value: x.descriptor.typeId }, x.available ? x.descriptor.title : t('modesUnavailable', { r: x.descriptor.title }))));
+    mods.map((x) => mpEl('option', { value: x.descriptor.typeId }, x.available ? mpTitle(x.descriptor.typeId) : t('modesUnavailable', { r: mpTitle(x.descriptor.typeId) }))));
   const top = Object.keys(errs).filter((k) => !used.has(k)).map((k) => mpEl('div', { className: 'ferr', 'data-err': k }, mpRest(k, errs[k])));
+  const advOpen = !!flagErr || m.actions.some((a, i) => adv(a) && Object.keys(errs).some((k) => k === 'a' + i || k.startsWith(`a${i}.`)));
   mpSet(box, mpEl('h3', {}, d.create ? t('modesNew') : t('modesEditTitle', { n: modeName(m) })), top,
-    idField && idField.row, nameField.row, mpEl('div', { className: 'f' }, mpEl('label', { htmlFor: flagId }, t('modesFlag')), flag, flagErr),
-    mpEl('h3', {}, t('modesActions')), boxes,
+    idField && idField.row, nameField.row, boxes,
     mods.length ? mpEl('div', { className: 'row' }, pick, mpButton('add-action', '', t('modesAddAction'), () => mpAddAction(pick.value)))
       : mpEl('div', { className: 'dim' }, t('modesNoModules')),
+    mpEl('details', { className: 'adv', open: advOpen }, mpEl('summary', {}, t('modesAdvanced')),
+      mpEl('div', { className: 'f' }, mpEl('label', { htmlFor: flagId }, t('modesFlag')), flag, flagErr),
+      enforce.length ? mpEl('div', { className: 'help' }, t('modesEnforceTip')) : null, enforce.length ? mpEl('div', { className: 'enf', title: t('modesEnforce') }, enforce) : null,
+      advBoxes),
     mpEl('div', { className: 'row', style: 'margin-top:12px' }, mpEl('span', { className: 'sp' }),
-      mpButton('cancel-mode', '', t('modesCancel'), () => { mpDraft = null; mpPaintEdit(); }),
+      mpButton('cancel-mode', '', t('modesCancel'), () => { mpDraft = null; mpPaintEdit(); mpPaintList(); }),
       mpButton('save-mode', '', t('modesSave'), mpSaveMode, { className: 'b pri' })),
     d.msg ? mpEl('div', { className: 'msg bad' }, d.msg) : null);
 }
@@ -2285,32 +2390,47 @@ function mpArrow(d) {
   svg.append(path);
   return svg;
 }
+// One value of a rule condition. HH:mm and numbers are typed text: a time input would show the browser's 12-hour clock in an
+// English locale, a number input its spinner; a number steps with the − and + beside it, in shown units (minutes for seconds).
+function mpRuleField(c, ek, [name, unit, min, max, , scale = 1], errs, used, aria) {
+  const id = 'mf' + (++mpSeq), err = mpErr(`${ek}.${name}`, errs, used, id + 'e');
+  const shown = c[name] === undefined || c[name] === null ? '' : unit ? String(Math.round(c[name] / scale * 100) / 100) : String(c[name]);
+  const input = mpEl('input', { id, type: 'text', inputMode: unit ? 'decimal' : 'numeric', maxLength: unit ? 8 : 5,
+    placeholder: unit ? null : 'HH:mm', value: shown, 'data-f': `${ek}.${name}`,
+    'aria-label': aria, 'aria-invalid': err ? 'true' : null, 'aria-describedby': err ? id + 'e' : null });
+  input.oninput = () => {
+    const x = Number(String(input.value).replace(',', '.'));
+    if (!unit) c[name] = input.value.trim();
+    else if (String(input.value).trim() === '' || !Number.isFinite(x)) delete c[name];
+    else c[name] = Math.round(x * scale * 100) / 100;
+    mpRulesTouched();
+  };
+  const bump = (d) => () => { const x = Number(String(input.value).replace(',', '.')) || 0; input.value = String(Math.min(max / scale, Math.max(min / scale, Math.round(x) + d))); input.oninput(); };
+  const box = unit ? mpEl('span', { className: 'step' }, mpEl('button', { type: 'button', 'aria-label': t('modesLess'), title: t('modesLess'), onclick: bump(-1) }, '−'), input,
+    mpEl('button', { type: 'button', 'aria-label': t('modesMoreN'), title: t('modesMoreN'), onclick: bump(1) }, '+')) : input;
+  return { id, box, err };
+}
+// The usual Auto: one rule for mains off and one for mains back, in either order. It reads as one sentence with the minutes
+// editable in place; any other set of rules gets the full list.
+const mpRulesSimple = (rules) => rules.length === 2 && rules.every((r) => r.condition) && ['mainsOffFor', 'mainsOnFor'].every((k) => rules.some((r) => r.condition.kind === k));
+function mpRulesSentence(modes, errs, used) {
+  const nameOf = (id) => { const m = modes.find((x) => x.id === id); return m ? modeName(m) : t('modesMissing', { v: id }); };
+  return mpEl('div', { className: 'auto' }, mpRules.map((r, i) => {
+    const off = r.condition.kind === 'mainsOffFor', f = MP_KINDS[r.condition.kind][0];
+    const { box, err } = mpRuleField(r.condition, 'r' + i, f, errs, used, t(off ? 'autoWhenOff' : 'autoWhenOn'));
+    return mpEl('span', { 'data-f': 'r' + i }, mpEl('b', {}, nameOf(r.modeId)), t(off ? 'autoWhenOff' : 'autoWhenOn'), ' ', box, ' ', t('uMin'), i === 0 ? '; ' : '', err);
+  }));
+}
 function mpRuleRow(r, i, count, modes, errs, used) {
   const ek = 'r' + i;
   if (!r.condition || !MP_KINDS[r.condition.kind]) r.condition = { kind: 'mainsOffFor', ...MP_KIND_START.mainsOffFor };
   const c = r.condition;
   const kind = mpEl('select', { 'data-f': ek + '.kind', 'aria-label': t('modesRuleKind'), value: c.kind }, Object.keys(MP_KINDS).map((k) => mpEl('option', { value: k }, t(`ck_${k}`))));
   kind.onchange = () => { r.condition = { kind: kind.value, ...MP_KIND_START[kind.value] }; mpRulesDirty = true; mpPaintRules(); };
-  const parts = MP_KINDS[c.kind].map(([name, unit, min, max, , scale = 1]) => {
-    const id = 'mf' + (++mpSeq), err = mpErr(`${ek}.${name}`, errs, used, id + 'e');
-    const lab = { hysteresis: 'modesHyst', from: 'modesFrom', to: 'modesTo' }[name];
-    // HH:mm and numbers as typed text: a time input would show the browser's 12-hour clock in an English locale, a number
-    // input its spinner; a number steps with the − and + beside it
-    const shown = c[name] === undefined || c[name] === null ? '' : unit ? String(Math.round(c[name] / scale * 100) / 100) : String(c[name]);
-    const input = mpEl('input', { id, type: 'text', inputMode: unit ? 'decimal' : 'numeric', maxLength: unit ? 8 : 5,
-      placeholder: unit ? null : 'HH:mm', value: shown, 'data-f': `${ek}.${name}`,
-      'aria-label': lab ? null : t(`ck_${c.kind}`), 'aria-invalid': err ? 'true' : null, 'aria-describedby': err ? id + 'e' : null });
-    input.oninput = () => {
-      const x = Number(String(input.value).replace(',', '.'));
-      if (!unit) c[name] = input.value.trim();
-      else if (String(input.value).trim() === '' || !Number.isFinite(x)) delete c[name];
-      else c[name] = Math.round(x * scale * 100) / 100;
-      mpRulesTouched();
-    };
-    const bump = (d) => () => { const x = Number(String(input.value).replace(',', '.')) || 0; input.value = String(Math.min(max / scale, Math.max(min / scale, Math.round(x) + d))); input.oninput(); };
-    const box = unit ? mpEl('span', { className: 'step' }, mpEl('button', { type: 'button', 'aria-label': t('modesLess'), title: t('modesLess'), onclick: bump(-1) }, '−'), input,
-      mpEl('button', { type: 'button', 'aria-label': t('modesMoreN'), title: t('modesMoreN'), onclick: bump(1) }, '+')) : input;
-    return mpEl('span', { className: 'row' }, lab ? mpEl('label', { htmlFor: id }, t(lab)) : null, box, unit ? mpEl('span', { className: 'dim' }, t(unit)) : null, err);
+  const parts = MP_KINDS[c.kind].map((f) => {
+    const lab = { hysteresis: 'modesHyst', from: 'modesFrom', to: 'modesTo' }[f[0]];
+    const { id, box, err } = mpRuleField(c, ek, f, errs, used, lab ? null : t(`ck_${c.kind}`));
+    return mpEl('span', { className: 'row' }, lab ? mpEl('label', { htmlFor: id }, t(lab)) : null, box, f[1] ? mpEl('span', { className: 'dim' }, t(f[1])) : null, err);
   });
   const modeErrId = 'mf' + (++mpSeq) + 'e', modeErr = mpErr(ek + '.modeId', errs, used, modeErrId);
   const mode = mpEl('select', { 'data-f': ek + '.modeId', 'aria-label': t('modesRuleTo'), value: r.modeId, 'aria-invalid': modeErr ? 'true' : null, 'aria-describedby': modeErr ? modeErrId : null },
@@ -2339,15 +2459,18 @@ function mpPaintRules() {
   const v = mpView;
   if (!v) return;
   if (!mpRulesDirty) mpRules = mpClone((v.settings && v.settings.rules) || []);
-  const modes = mpModes(), used = new Set(), errs = mpRuleErrs;
-  const rows = mpRules.map((r, i) => mpRuleRow(r, i, mpRules.length, modes, errs, used));
+  const modes = mpModes(), used = new Set(), errs = mpRuleErrs, simple = !mpRulesMore && mpRulesSimple(mpRules);
+  const body = simple ? mpRulesSentence(modes, errs, used) : null;
+  const rows = simple ? [] : mpRules.map((r, i) => mpRuleRow(r, i, mpRules.length, modes, errs, used));
   const rest = Object.keys(errs).filter((k) => !used.has(k)).map((k) => mpEl('div', { className: 'ferr', 'data-err': k }, mpRest(k, errs[k])));
   const undo = mpButton('undo-rules', '', t('modesCancel'), () => { mpRulesDirty = false; mpRuleErrs = {}; mpRulesMsg = ''; mpPaintRules(); }, { disabled: !mpRulesDirty });
   const save = mpButton('save-rules', '', t('modesSave'), mpSaveRules, { className: 'b pri', disabled: !mpRulesDirty });
   mpRuleBtns = [undo, save];
-  mpSet($('modesRules'), mpEl('h3', {}, t('modesRules')), rest,
-    rows.length ? mpEl('ol', { className: 'rules' }, rows) : mpEl('div', { className: 'dim' }, t('modesNoRules')),
-    mpEl('div', { className: 'row', style: 'margin-top:8px' }, mpButton('add-rule', '', t('modesAddRule'), mpRuleAdd), mpEl('span', { className: 'sp' }), undo, save),
+  mpSet($('modesRules'), mpEl('h3', {}, t(simple ? 'modeAuto' : 'modesRules')), rest,
+    simple ? body : rows.length ? mpEl('ol', { className: 'rules' }, rows) : mpEl('div', { className: 'dim' }, t('modesNoRules')),
+    mpEl('div', { className: 'row', style: 'margin-top:8px' },
+      simple ? mpButton('more-rules', '', t('modesMoreRules'), () => { mpRulesMore = true; mpPaintRules(); }) : mpButton('add-rule', '', t('modesAddRule'), mpRuleAdd),
+      mpEl('span', { className: 'sp' }), undo, save),
     mpRulesMsg ? mpEl('div', { className: 'msg bad' }, mpRulesMsg) : null);
 }
 function mpRuleAdd() {

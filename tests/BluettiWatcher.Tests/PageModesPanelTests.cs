@@ -299,11 +299,35 @@ public sealed partial class PageI18nTests
     }
 
     [Fact]
+    public void Each_mode_says_what_it_does_in_plain_lines_and_opens_its_editor_in_place()
+    {
+        var r = RunPanel("""
+            const WORDS = { af_test_plan_plan: 'Plan is {v}', dv_p2: 'Saver here', af_test_all_mode_low: 'Runs low' };
+            t = (k, p) => { let s = WORDS[k] ?? k; if (p) for (const x of Object.keys(p)) s = s.split(`{${x}}`).join(String(p[x])); return s; };
+            mpView.settings.modes[1].actions = [{ typeId: 'test.plan', enabled: true, settings: { plan: 'p2' } }, { typeId: 'test.all', enabled: true, settings: { mode: 'low' } },
+              { typeId: 'test.plan', enabled: false, settings: { plan: 'p1' } }];
+            mpPaintList();
+            const lines = (id) => walk($('modesList'), (x) => x.tagName === 'LI' && walk($('modesList'), (b) => b.attrs['data-mode'] === id)[0].children.some((u) => u.children && u.children.includes(x))).map((x) => x.textContent);
+            const before = { normal: lines('normal'), eco: lines('eco'), quiet: lines('quiet') };
+            A($('modesList'), 'edit', 'eco').onclick();
+            const block = walk($('modesList'), (b) => b.attrs['data-mode'] === 'eco')[0];
+            console.log(JSON.stringify({ before, inPlace: block.children.includes($('modesEdit')), shown: !$('modesEdit').hidden, editHidden: !A(block, 'edit', 'eco') }));
+            """);
+        var before = r.GetProperty("before");
+        Assert.Equal("""["modesPutsBack"]""", before.GetProperty("normal").GetRawText());   // no actions: everything back
+        Assert.Equal("""["Plan is Saver here","Runs low"]""", before.GetProperty("eco").GetRawText());   // a switched-off action says nothing
+        Assert.Equal("""["x.gone"]""", before.GetProperty("quiet").GetRawText());   // a type with no words: its name
+        Assert.True(r.GetProperty("inPlace").GetBoolean());
+        Assert.True(r.GetProperty("shown").GetBoolean());
+        Assert.True(r.GetProperty("editHidden").GetBoolean());
+    }
+
+    [Fact]
     public void Rules_reorder_change_kind_and_save_as_one_ordered_list_with_problems_at_their_rows()
     {
         var r = RunPanel("""
             (async () => {
-              mpPaintRules();
+              mpRulesMore = true; mpPaintRules();
               let box = $('modesRules');
               const savedOff = A(box, 'save-rules').disabled;
               A(box, 'down', 0).onclick();
@@ -338,7 +362,7 @@ public sealed partial class PageI18nTests
     }
 
     [Fact]
-    public void A_mains_rule_is_shown_and_stepped_in_minutes_and_saved_in_seconds()
+    public void The_usual_auto_rules_read_as_one_sentence_in_minutes_and_save_in_seconds()
     {
         var r = RunPanel("""
             (async () => {
@@ -349,13 +373,16 @@ public sealed partial class PageI18nTests
               const typed = F($('modesRules'), 'r1.seconds'); typed.value = '1,5'; typed.oninput();
               await mpSaveRules();
               const body = JSON.parse(fetches[0].body);
-              console.log(JSON.stringify({ shown, after: s.value, seconds: body.map((x) => x.condition.seconds), text: row.textContent }));
+              const list = !!A($('modesRules'), 'down', 0); A($('modesRules'), 'more-rules').onclick();
+              console.log(JSON.stringify({ shown, after: s.value, seconds: body.map((x) => x.condition.seconds), text: row.textContent, list, more: !!A($('modesRules'), 'down', 0) }));
             })();
             """);
         Assert.Equal("""["text","3"]""", r.GetProperty("shown").GetRawText());   // 180 s as 3 min, no spinner
         Assert.Equal("5", r.GetProperty("after").GetString());
         Assert.Equal("[300,90]", r.GetProperty("seconds").GetRawText());
-        Assert.StartsWith("modesIf", r.GetProperty("text").GetString(), StringComparison.Ordinal);   // the row reads as a sentence
+        Assert.StartsWith("modeEcoautoWhenOff", r.GetProperty("text").GetString(), StringComparison.Ordinal);   // «Еко, коли світла немає довше 5 хв»
+        Assert.False(r.GetProperty("list").GetBoolean());   // no rule builder for the usual two rules
+        Assert.True(r.GetProperty("more").GetBoolean());    // the full list behind «More rules»
         Assert.Contains("uMin", r.GetProperty("text").GetString(), StringComparison.Ordinal);
     }
 
@@ -375,23 +402,23 @@ public sealed partial class PageI18nTests
     }
 
     [Fact]
-    public void Status_chips_say_each_action_state_with_its_reason()
+    public void Only_what_failed_is_said_as_one_line_with_what_to_do()
     {
         var r = RunPanel("""
             mpPaintTop();
-            const first = walk($('modesStatus'), (x) => x.attrs['data-st']).map((c) => [c.attrs['data-st'], c.className, c.children[1].textContent, c.children[2].textContent]);
-            const problems = walk($('modesStatus'), (x) => x.className === 'bad').map((x) => x.textContent);
+            const first = walk($('modesStatus'), (x) => x.attrs['data-st']).map((c) => [c.attrs['data-st'], c.className, c.textContent]);
+            const problems = walk($('modesStatus'), (x) => x.className === 'bad' && !x.attrs['data-st']).map((x) => x.textContent);
             mpView.emergency = true; mpView.actions = []; mpView.restores = []; mpPaintTop();
             const why = mpWhy('the broker refused: the request folder C:\\x cannot be written; next try at 22:34 UTC');
             console.log(JSON.stringify({ first, problems, second: $('modesStatus').textContent, why }));
             """);
-        Assert.Equal("""[["applied","chip ok","Plan","st_applied"],["failed","chip bad","Everything","modesChipWhy{\"s\":\"st_failed\",\"r\":\"whyLog\"}"],["relinquished","chip warn","Plan","st_relinquished"],["unsupported","chip","x.gone","modesChipWhy{\"s\":\"st_unsupported\",\"r\":\"whyLog\"}"],["satisfied","chip ok","Plan","st_satisfied"],["restore-failed","chip bad","Everything (gpu/0/powerLimit)","modesChipWhy{\"s\":\"st_restore_failed\",\"r\":\"whyLog\"}"]]""",
+        Assert.Equal("""[["failed","bad","fail_failed{\"a\":\"Everything\",\"r\":\"whyLog\"}"],["unsupported","warn","fail_unsupported{\"a\":\"x.gone\",\"r\":\"whyLog\"}"],["restore-failed","bad","fail_restore_failed{\"a\":\"Everything\",\"r\":\"whyLog\"}"]]""",
             r.GetProperty("first").GetRawText());
         Assert.Equal("""["modesProblem"]""", r.GetProperty("problems").GetRawText());   // the server's English stays in its log
         Assert.StartsWith("whyBroker; whyRetry{", r.GetProperty("why").GetString(), StringComparison.Ordinal);
         Assert.DoesNotContain("UTC", r.GetProperty("why").GetString(), StringComparison.Ordinal);
         Assert.DoesNotContain("C:", r.GetProperty("why").GetString(), StringComparison.Ordinal);
-        Assert.Equal("modesEmergencymodesNoActionsmodesProblem", r.GetProperty("second").GetString());
+        Assert.Equal("modesEmergencymodesProblem", r.GetProperty("second").GetString());
     }
 
     [Fact]
