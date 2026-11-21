@@ -154,7 +154,14 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 .mp .auto{line-height:34px}.mp .auto b{font-weight:600}
 .mp details.adv{margin:12px 0}.mp details.adv>summary{margin-bottom:0}.mp details.adv[open]>summary{margin-bottom:8px}
 .mp .enf{display:flex;flex-wrap:wrap;gap:6px 16px;margin:6px 0}
-#modesHib{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin:14px 0 0;padding-top:12px;border-top:1px solid var(--line);font-size:12px;color:var(--dim)}
+#modesHib{margin:14px 0 0;padding-top:6px;border-top:1px solid var(--line);font-size:13px}
+/* a settings row: the name left, the control right, every control in one column */
+#modesHib .sr{display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:16px;max-width:520px;min-height:36px}
+#modesHib .sr .nm{display:flex;align-items:center;gap:12px;color:var(--text)}
+#modesHib .sr label{cursor:pointer}
+#modesHib .sr.sub{padding-left:20px;min-height:30px}
+#modesHib .sr.sub .nm{color:var(--dim)}
+#modesHib .lk{background:none;border:0;padding:2px 0;min-height:24px;color:var(--accent);font:inherit;font-size:12px;cursor:pointer}
 /* a switch: a track filled when on, its knob on the right; the label beside it */
 .mp .sw{display:inline-flex;align-items:center;gap:8px;min-height:24px;padding:0;border:0;background:none;color:var(--text);font:inherit;cursor:pointer}
 .mp .sw .tr{position:relative;flex:none;width:28px;height:16px;border-radius:8px;background:var(--line);transition:background .15s}
@@ -162,7 +169,6 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 .mp .sw[aria-checked=true] .tr{background:var(--accent)}
 .mp .sw[aria-checked=true] .tr::after{left:14px;background:#fff}
 .mp .sw:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
-#modesHib .ntg{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px 20px;padding:4px 0 0}
 /* a number in the rules: typed or stepped with − and +, never the browser's spinner */
 .mp input[type=number]{appearance:textfield;-moz-appearance:textfield}.mp input[type=number]::-webkit-inner-spin-button,.mp input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .mp .step{display:inline-flex;align-items:center;background:var(--frame);border:1px solid var(--edge);border-radius:6px}
@@ -430,12 +436,13 @@ en: {
   at_display_brightness: "Monitor brightness",
   at_nvidia_profile: "NVIDIA driver profile",
   at_rgb_lighting: "RGB lighting off",
-  modesHibernate: "Hibernate the PC when the battery reaches the hibernate level",
   modesHibOn: "Hibernation on",
   modesHibOff: "Hibernation off",
-  modesTestNotice: "Send a test notification",
   ntAll: "Notifications",
-  ntWhich: "Which ones",
+  ntSetup: "Set up",
+  ntTest: "Test notification",
+  ntSend: "Send",
+  setHibernate: "Hibernate on low battery",
   ng_mains: "Mains lost and back",
   ng_modeChanges: "A mode the program switched",
   ng_lowBattery: "Low battery",
@@ -917,12 +924,13 @@ uk: {
   at_display_brightness: "Яскравість монітора",
   at_nvidia_profile: "Профіль драйвера NVIDIA",
   at_rgb_lighting: "Вимкнення RGB-підсвітки",
-  modesHibernate: "Переводити ПК у гібернацію, коли батарея сягає рівня гібернації",
   modesHibOn: "Гібернацію увімкнено",
   modesHibOff: "Гібернацію вимкнено",
-  modesTestNotice: "Надіслати тестове сповіщення",
   ntAll: "Сповіщення",
-  ntWhich: "Які саме",
+  ntSetup: "Налаштувати",
+  ntTest: "Тестове сповіщення",
+  ntSend: "Надіслати",
+  setHibernate: "Гібернація при низькому заряді",
   ng_mains: "Світло зникло й повернулося",
   ng_modeChanges: "Режим, який змінила програма",
   ng_lowBattery: "Низький заряд",
@@ -2144,16 +2152,15 @@ function mpPaintTop() {
     (v.actions || []).filter((a) => MP_FAILED.includes(a.status)).map((a) => mpFailLine(mpTitle(a.typeId), a)),
     (v.restores || []).filter((r) => MP_FAILED.includes(r.status)).map((r) => mpFailLine(mpTitle(r.typeId), r)),
     (v.problems || []).length ? mpEl('div', { className: 'bad' }, t('modesProblem')) : null);
-  const hib = mpEl('input', { type: 'checkbox', checked: s.autoHibernate !== false, disabled: mpBusy, 'data-f': 'hibernate' });
-  hib.onchange = () => mpHibernate(hib.checked);
-  // the notification switches show only once the service said how they stand: never a guessed state first
-  const n = mpNotif, all = !!n && n.enabled !== false;
-  mpSet($('modesHib'), mpEl('label', { className: 'ck' }, hib, t('modesHibernate')),
-    n ? mpSwitch('enabled', t('ntAll'), all, () => mpNotifSet('enabled', !all)) : null,
-    all ? mpButton('notif-which', '', t('ntWhich'), () => { mpNotifOpen = !mpNotifOpen; mpPaintTop(); }, { 'aria-expanded': String(mpNotifOpen) }) : null,
-    mpButton('test-notice', '', t('modesTestNotice'), mpTestNotice),
-    all && mpNotifOpen ? mpEl('div', { className: 'ntg', role: 'group', 'aria-label': t('ntWhich') },
-      MP_NOTIF_GROUPS.map((k) => mpSwitch(k, t(`ng_${k}`), n[k] !== false, () => mpNotifSet(k, n[k] === false)))) : null);
+  // the settings: a row each, its name left and its control right, in one column. The notification switches show only
+  // once the service said how they stand (never a guessed state first); the six groups fold under Set up.
+  const hibOn = s.autoHibernate !== false, n = mpNotif, all = !!n && n.enabled !== false;
+  mpSet($('modesHib'),
+    mpRow('hibernate', t('setHibernate'), mpSwitch('hibernate', hibOn, () => mpHibernate(!hibOn), mpBusy)),
+    n ? mpRow('enabled', t('ntAll'), mpSwitch('enabled', all, () => mpNotifSet('enabled', !all)),
+      all ? mpButton('notif-setup', '', t('ntSetup'), () => { mpNotifOpen = !mpNotifOpen; mpPaintTop(); }, { className: 'lk', 'aria-expanded': String(mpNotifOpen) }) : null) : null,
+    all && mpNotifOpen ? MP_NOTIF_GROUPS.map((k) => mpRow(k, t(`ng_${k}`), mpSwitch(k, n[k] !== false, () => mpNotifSet(k, n[k] === false)), null, true)) : null,
+    mpRow('test', t('ntTest'), mpButton('test-notice', '', t('ntSend'), mpTestNotice)));
   const msg = $('modesMsg');
   msg.textContent = mpMsg ? mpMsg.text : ''; msg.className = `msg ${mpMsg ? mpMsg.kind : ''}`.trim(); msg.hidden = !mpMsg;
   paintModesV2();
@@ -2441,12 +2448,18 @@ function mpLoadNotif() {
   return fetch('/api/settings/notifications', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
     .then((x) => { if (x) mpNotif = x; });
 }
-// A switch: a button with the switch role, its state by the track's fill and the knob's side; one click flips it.
-function mpSwitch(key, text, on, onclick) {
-  const b = mpEl('button', { type: 'button', className: 'sw', role: 'switch', 'aria-checked': String(!!on), 'data-sw': key },
-    mpEl('span', { className: 'tr', 'aria-hidden': 'true' }), text);
+// A switch: a button with the switch role, its state by the track's fill and the knob's side; one click flips it. Named by
+// its row's label (mpRow), which flips it too.
+function mpSwitch(key, on, onclick, disabled) {
+  const b = mpEl('button', { type: 'button', className: 'sw', role: 'switch', id: `ms-${key}`, 'aria-labelledby': `ms-${key}-l`,
+    'aria-checked': String(!!on), 'data-sw': key, disabled: !!disabled }, mpEl('span', { className: 'tr' }));
   b.onclick = onclick;
   return b;
+}
+// One settings row: the name (a label for a switch, plain text before a button), an optional text button, the control.
+function mpRow(key, text, control, extra, sub) {
+  const name = control.getAttribute('role') === 'switch' ? mpEl('label', { id: `ms-${key}-l`, htmlFor: `ms-${key}` }, text) : mpEl('span', {}, text);
+  return mpEl('div', { className: sub ? 'sr sub' : 'sr' }, mpEl('div', { className: 'nm' }, name, extra), control);
 }
 // Shown at once; a refused change springs back and says why.
 async function mpNotifSet(key, on) {

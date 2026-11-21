@@ -318,16 +318,21 @@ public sealed partial class PageI18nTests
               mpNotif = { enabled: true, mains: true, modeChanges: false, lowBattery: true, failures: true, faults: true, overTemperature: true };
               mpPaintTop();
               const on = { role: sw('enabled').attrs.role, checked: sw('enabled').attrs['aria-checked'], tag: sw('enabled').tagName, groups: !!sw('mains') };
-              A($('modesHib'), 'notif-which').onclick();
+              A($('modesHib'), 'notif-setup').onclick();
+              // every switch is named by its row's label; no browser checkbox left in the block
+              const named = walk($('modesHib'), (x) => x.attrs.role === 'switch').every((s) => walk($('modesHib'), (x) => x.tagName === 'LABEL' && x.htmlFor === s.id && x.id === s.attrs['aria-labelledby']).length === 1);
+              const native = walk($('modesHib'), (x) => x.tagName === 'INPUT').length;
               const opened = ['mains', 'modeChanges'].map((k) => sw(k).attrs['aria-checked']);
               answers = [{ status: 200, body: { ...mpNotif, enabled: false } }];
               await sw('enabled').onclick();
-              console.log(JSON.stringify({ unread, on, opened, put: fetches.at(-1), off: sw('enabled').attrs['aria-checked'], groupsOff: !!sw('mains') }));
+              console.log(JSON.stringify({ unread, on, opened, named, native, put: fetches.at(-1), off: sw('enabled').attrs['aria-checked'], groupsOff: !!sw('mains') }));
             })();
             """);
         Assert.False(r.GetProperty("unread").GetBoolean());   // nothing before the service's answer: never a guessed state
         Assert.Equal("""{"role":"switch","checked":"true","tag":"BUTTON","groups":false}""", r.GetProperty("on").GetRawText());
         Assert.Equal("""["true","false"]""", r.GetProperty("opened").GetRawText());
+        Assert.True(r.GetProperty("named").GetBoolean());
+        Assert.Equal(0, r.GetProperty("native").GetInt32());
         var put = r.GetProperty("put");
         Assert.Equal(("PUT", "/api/settings/notifications", "1", """{"enabled":false}"""), (put.GetProperty("method").GetString(), put.GetProperty("url").GetString(), put.GetProperty("station").GetString(), put.GetProperty("body").GetString()));
         Assert.Equal("false", r.GetProperty("off").GetString());
@@ -519,15 +524,16 @@ public sealed partial class PageI18nTests
         var r = RunPanel("""
             (async () => {
               mpPaintTop();
-              const box = () => F($('modesHib'), 'hibernate');
-              const before = box().checked;
+              const box = () => walk($('modesHib'), (x) => x.attrs['data-sw'] === 'hibernate')[0];
+              const on = () => box().attrs['aria-checked'] === 'true';
+              const before = on();
               answers = [{ status: 500, body: 'modes.json not saved: disk full' }];
-              box().checked = false; await box().onchange();
-              const refused = [box().checked, mpMsg.text];
+              await box().onclick();
+              const refused = [on(), mpMsg.text];
               const OFF = JSON.parse(JSON.stringify(VIEW)); OFF.settings.autoHibernate = false;
               answers = [{ status: 200, body: OFF }];
-              box().checked = false; await box().onchange();
-              console.log(JSON.stringify({ before, req: fetches[0], refused, after: [box().checked, mpMsg.text] }));
+              await box().onclick();
+              console.log(JSON.stringify({ before, req: fetches[0], refused, after: [on(), mpMsg.text] }));
             })();
             """);
         Assert.True(r.GetProperty("before").GetBoolean());
