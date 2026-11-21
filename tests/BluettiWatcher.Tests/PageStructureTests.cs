@@ -11,10 +11,10 @@ public sealed partial class PageI18nTests
     // the 1.10.4 page's markup inside <main>, in document order (the modes panel as redesigned in 1.10.6)
     private const string Ids1104 = "title,readAt,gridChip,ecoChip,planChip,staleChip,maxChip,noteChip,modeSeg,planLabel,planSeg,modeLine,langSeg,ring,"
         + "zoneR,zoneA,arc,ticks,pct,wh,trend,load,spark,loadSub,left,leftSub,cutK,cut,cutSub,cutSub2,reach,volt,voltSub,today,todaySub,todaySub2,"
-        + "dtekCard,dtekChip,dtekPill,dtekGrid,dtekMore,dtekBody,dtekNote,rangeSeg,chart,count,battCard,battTitle,battKpis,hours,cycles,loadStats,cuts,"
+        + "dtekCard,dtekChip,dtekPill,dtekGrid,dtekMore,dtekBody,dtekNote,rangeSeg,chart,count,battCard,battTitle,battKpis,hours,cycles,loadStats,cuts,setCard,setMsg,modesHib,"
         + "srcCard,cloudChip,srcSeg,srcResetBox,srcReset,cloudSignIn,cloudSignOut,cloudLine,cloudLink,rows,stationCard,stationBody,modesCard,modesMore,"
-        + "modesStatus,modesMsg,modesList,modesEdit,modesRules,modesHib";   // 1.10.6: no switch of its own in the modes panel, its settings row at the end
-    private const string Headings1104 = "dtekTitle,dtekDetails,batteryAndLoad,energyPerHour,cyclesTitle,loadRangeTitle,powerCuts,srcTitle,lastReadings,stationOwn,modesTitle";
+        + "modesStatus,modesMsg,modesList,modesEdit,modesRules";   // 1.10.6: no switch of its own in the modes panel; its settings row became the Settings card above the reading source
+    private const string Headings1104 = "dtekTitle,dtekDetails,batteryAndLoad,energyPerHour,cyclesTitle,loadRangeTitle,powerCuts,setTitle,srcTitle,lastReadings,stationOwn,modesTitle";
     private const string Tiles1104 = "loadNow,timeLeft,thisCut,reaches,output,today";
 
     [GeneratedRegex(@" id=""([^""]+)""")]
@@ -55,7 +55,7 @@ public sealed partial class PageI18nTests
     public void Page_keeps_the_cards_and_charts_of_1_10_4()
     {
         string main = MainMarkup();
-        Assert.Equal(19, CardClass().Count(main));
+        Assert.Equal(20, CardClass().Count(main));   // 1.10.6: the Settings card
         Assert.Equal(5, main.Split("<svg", StringSplitOptions.None).Length - 1);   // brand, ring, sparkline, battery and load chart, energy per hour
     }
 }

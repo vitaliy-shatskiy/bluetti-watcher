@@ -154,7 +154,7 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 .mp .auto{line-height:34px}.mp .auto b{font-weight:600}
 .mp details.adv{margin:12px 0}.mp details.adv>summary{margin-bottom:0}.mp details.adv[open]>summary{margin-bottom:8px}
 .mp .enf{display:flex;flex-wrap:wrap;gap:6px 16px;margin:6px 0}
-#modesHib{margin:14px 0 0;padding-top:6px;border-top:1px solid var(--line);font-size:13px}
+#modesHib{font-size:13px}
 /* a settings row: the name left, the control right, every control in one column */
 #modesHib .sr{display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:16px;max-width:520px;min-height:36px}
 #modesHib .sr .nm{display:flex;align-items:center;gap:12px;color:var(--text)}
@@ -254,6 +254,9 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
   <div class="card"><h2 data-i18n="powerCuts"></h2><table><thead><tr><th data-i18n="colStart"></th><th data-i18n="colEnd"></th><th data-i18n="colLength"></th><th data-i18n="colBattery"></th><th data-i18n="colUsed"></th></tr></thead><tbody id="cuts"></tbody></table></div>
 </div>
 
+<!-- Settings (hibernation, notifications, the test notification): always open, painted by the modes script once the engine answered -->
+<div class="card mp" id="setCard" hidden><h2 data-i18n="setTitle"></h2><div class="msg" id="setMsg" role="status" aria-live="polite" hidden></div><div id="modesHib"></div></div>
+
 <!-- Reading source and cloud sign-in (GET /api/cloud): its own card, markup, style and script block -->
 <div class="card" id="srcCard" hidden><div class="bar"><h2 style="margin:0" data-i18n="srcTitle"></h2><span style="flex:1"></span><span class="chip" id="cloudChip"><i></i><span></span></span></div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px"><div class="seg" id="srcSeg" role="group" data-i18n-aria="srcAria"><button data-s="auto" data-i18n="srcAuto" data-i18n-title="srcAutoTip"></button><button data-s="bluetooth" data-i18n="srcBluetooth" data-i18n-title="srcBluetoothTip"></button><button data-s="cloud" data-i18n="srcCloud" data-i18n-title="srcCloudTip"></button></div><div class="seg" id="srcResetBox" hidden><button id="srcReset" data-i18n="srcUseConfig" data-i18n-title="srcUseConfigTip"></button></div>
@@ -267,7 +270,7 @@ main>*:nth-child(2){animation-delay:.06s}main>*:nth-child(3){animation-delay:.12
 <div class="card mp" id="modesCard" hidden><details id="modesMore"><summary data-i18n="modesTitle"></summary>
   <div class="chips" id="modesStatus" role="status" aria-live="polite"></div>
   <div class="msg" id="modesMsg" role="status" aria-live="polite" hidden></div>
-  <div id="modesList"></div><div id="modesEdit" hidden></div><div id="modesRules"></div><div id="modesHib"></div></details></div>
+  <div id="modesList"></div><div id="modesEdit" hidden></div><div id="modesRules"></div></details></div>
 </main><div id="tip"></div>
 <script>
 // Every visible text of the page, per language. A key used anywhere below must exist in both (a test checks).
@@ -439,6 +442,7 @@ en: {
   modesHibOn: "Hibernation on",
   modesHibOff: "Hibernation off",
   ntAll: "Notifications",
+  setTitle: "Settings",
   ntSetup: "Set up",
   ntTest: "Test notification",
   ntSend: "Send",
@@ -927,6 +931,7 @@ uk: {
   modesHibOn: "Гібернацію увімкнено",
   modesHibOff: "Гібернацію вимкнено",
   ntAll: "Сповіщення",
+  setTitle: "Налаштування",
   ntSetup: "Налаштувати",
   ntTest: "Тестове сповіщення",
   ntSend: "Надіслати",
@@ -2161,8 +2166,12 @@ function mpPaintTop() {
       all ? mpButton('notif-setup', '', t('ntSetup'), () => { mpNotifOpen = !mpNotifOpen; mpPaintTop(); }, { className: 'lk', 'aria-expanded': String(mpNotifOpen) }) : null) : null,
     all && mpNotifOpen ? MP_NOTIF_GROUPS.map((k) => mpRow(k, t(`ng_${k}`), mpSwitch(k, n[k] !== false, () => mpNotifSet(k, n[k] === false)), null, true)) : null,
     mpRow('test', t('ntTest'), mpButton('test-notice', '', t('ntSend'), mpTestNotice)));
-  const msg = $('modesMsg');
-  msg.textContent = mpMsg ? mpMsg.text : ''; msg.className = `msg ${mpMsg ? mpMsg.kind : ''}`.trim(); msg.hidden = !mpMsg;
+  // a settings message shows in the settings card, every other one in the panel
+  for (const [id, mine] of [['modesMsg', !!mpMsg && !mpMsg.set], ['setMsg', !!mpMsg && !!mpMsg.set]]) {
+    const msg = $(id);
+    msg.textContent = mine ? mpMsg.text : ''; msg.className = `msg ${mine ? mpMsg.kind : ''}`.trim(); msg.hidden = !mine;
+  }
+  $('setCard').hidden = false;
   paintModesV2();
 }
 // The header's power group under v2 reads the same view and presses through the same mpSelect as the panel: Auto and every
@@ -2437,7 +2446,7 @@ async function mpFollow() {
 async function mpHibernate(on) {
   if (mpBusy) { mpPaintTop(); return; }
   const r = await mpWrite('PUT', '/api/settings/hibernate', { autoHibernate: on });
-  mpMsg = r.ok ? { kind: 'ok', text: t(on ? 'modesHibOn' : 'modesHibOff') } : { kind: 'bad', text: t('modesNotSaved', { e: r.text }) };
+  mpMsg = r.ok ? { kind: 'ok', text: t(on ? 'modesHibOn' : 'modesHibOff'), set: true } : { kind: 'bad', text: t('modesNotSaved', { e: r.text }), set: true };
   mpPaintTop();   // the box shows the saved setting: a refused change springs back
 }
 // The notification switches (GET and PUT /api/settings/notifications): enabled over every group, each group its own;
@@ -2471,7 +2480,7 @@ async function mpNotifSet(key, on) {
     const r = await fetch('/api/settings/notifications', { method: 'PUT', headers: { 'X-Station': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ [key]: on }) });
     if (r.ok) mpNotif = await r.json(); else why = String(await r.text()).trim() || `HTTP ${r.status}`;
   } catch (e) { why = t('serviceDown', { e: e.message }); }
-  if (why !== null) { mpNotif = before; mpMsg = { kind: 'bad', text: t('modesNotSaved', { e: why }) }; }
+  if (why !== null) { mpNotif = before; mpMsg = { kind: 'bad', text: t('modesNotSaved', { e: why }), set: true }; }
   mpPaintTop();
 }
 // One notification whatever the switches say: a missing one is then Windows' (Do not disturb, the app's own switch).
@@ -2481,7 +2490,7 @@ async function mpTestNotice() {
     const r = await fetch('/api/settings/notifications/test', { method: 'POST', headers: { 'X-Station': '1' } });
     text = r.ok ? null : String(await r.text()).trim() || `HTTP ${r.status}`;
   } catch (e) { text = t('serviceDown', { e: e.message }); }
-  mpMsg = text === null ? { kind: 'ok', text: t('modesTestSent') } : { kind: 'bad', text: t('modesTestNotSent', { e: text }) };
+  mpMsg = text === null ? { kind: 'ok', text: t('modesTestSent'), set: true } : { kind: 'bad', text: t('modesTestNotSent', { e: text }), set: true };
   mpPaintTop();
 }
 function mpRulesTouched() { mpRulesDirty = true; mpRuleBtns.forEach((b) => { b.disabled = false; }); }
