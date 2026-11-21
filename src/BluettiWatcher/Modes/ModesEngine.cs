@@ -11,6 +11,9 @@ namespace BluettiWatcher.Modes;
 internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry, ModesStore store, ModeJournal journal, IFlagWordWriter flag,
     TimeProvider time, Action<string> log, Action<string, string>? onEvent = null) : IDisposable
 {
+    /// <summary>The event of a switch the user made himself: kept in the history, no notification.</summary>
+    public const string ModeChosenEvent = "mode-chosen";
+
     private readonly SemaphoreSlim _gate = new(1, 1);
     /// <summary>The engine's own lifetime: a change runs on it, so only the service's shutdown stops one half-way.</summary>
     private readonly CancellationTokenSource _lifetime = new();
@@ -172,7 +175,9 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
         finally { _gate.Release(); }
     }
 
-    private async Task ReconcileAsync(CancellationToken ct)
+    // byUser: a change the user made (a pick on the page, the tray menu, the CLI, an edit): its switch is stored as
+    // mode-chosen, which shows no notification; the switches the program makes on its own stay mode-changed.
+    private async Task ReconcileAsync(CancellationToken ct, bool byUser = false)
     {
         var input = _input ?? new SelectorInput(null, null, null, null, time.GetLocalNow());
         var d = ModeSelector.Decide(_settings, input);
@@ -192,7 +197,7 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
         finally { if (entering) _switching = null; }
         // Raised once the actions ran: its tray notice is a banner of a few seconds, which a refresh-rate change (screens
         // dark while they resync) or a plan's display-off timeout would otherwise swallow.
-        if (changed) onEvent?.Invoke("mode-changed", $"{mode.Id} ({d.Reason})");
+        if (changed) onEvent?.Invoke(byUser ? ModeChosenEvent : "mode-changed", $"{mode.Id} ({d.Reason})");
         if (journal.Count > ModeJournal.CompactAbove) CompactJournal();
         if (_emergency || _flagWritten == mode.FlagWord) return;
         string why = await flag.WriteAsync(mode.FlagWord, ct);
@@ -288,7 +293,7 @@ internal sealed class ModesEngine(StationConfig config, ModuleRegistry registry,
             try { store.Save(next); }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return (500, $"{ModesStore.FileName} not saved: {e.Message}"); }
             _settings = next;
-            await ReconcileAsync(ct);
+            await ReconcileAsync(ct, byUser: true);
             return (0, "");
         }
         catch (Exception e) when (e is not OperationCanceledException)
