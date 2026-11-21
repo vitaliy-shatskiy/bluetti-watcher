@@ -1932,7 +1932,7 @@ const mpModes = () => (mpView && mpView.settings && mpView.settings.modes) || []
 const mpSlug = (name) => String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '').slice(0, 32).replace(/-+$/, '');
 // The fields of an object schema: each hint's order first (hints are keyed by the dotted path from the settings root), then the schema's own order.
 // A field's or a value's word in the page's language (fl_<type>_<path>, fh_ for its help, fv_<type>_<path>_<value>), else the catalogue's English.
-const mpWord = (kind, tid, path, fallback) => { const k = `_${String(tid || '').replace(/\W/g, '_')}_${String(path).replace(/\W/g, '_')}`; return t(k) !== k ? t(k) : fallback; };
+const mpWord = (kind, tid, path, fallback) => { const k = `${kind}_${String(tid || '').replace(/\W/g, '_')}_${String(path).replace(/\W/g, '_')}`; return t(k) !== k ? t(k) : fallback; };
 function mpFields(schema, hints, prefix, tid) {
   const props = (schema && schema.properties) || {}, req = (schema && schema.required) || [];
   return Object.keys(props).map((name, i) => {
@@ -1962,14 +1962,14 @@ function mpTable(f, s, obj, entry, aria, id) {
   if (!Array.isArray(obj[f.name])) obj[f.name] = [];
   const rows = obj[f.name], box = mpEl('div', { ...aria, id, className: 'tbl', role: 'group', 'aria-labelledby': id + 'l' });
   const cell = (row, [name, ps], first) => {
-    const tid = entry && entry.descriptor && entry.descriptor.typeId, label = mpWord('fl', tid, `.${name}`, ps.title || name), ty = mpTypes(ps)[0], cur = row[name];
+    const tid = entry && entry.descriptor && entry.descriptor.typeId, label = mpWord('fl', tid, `${f.path}.${name}`, ps.title || name), ty = mpTypes(ps)[0], cur = row[name];
     const put = (x) => { if (x === undefined) delete row[name]; else row[name] = x; };
     if (ty === 'boolean') {
       const c = mpEl('input', { type: 'checkbox', checked: cur === true, 'aria-label': label });
       c.onchange = () => put(c.checked);
       return mpEl('label', { className: 'ck' }, c, label);
     }
-    const found = first && list ? mpOptions({}, { list }, entry) : ps.enum ? ps.enum.map((v) => ({ id: String(v), label: mpWord('fv', tid, `.${name}.${v}`, String(v)) })) : null;
+    const found = first && list ? mpOptions({}, { list }, entry) : ps.enum ? ps.enum.map((v) => ({ id: String(v), label: mpWord('fv', tid, `${f.path}.${name}.${v}`, String(v)) })) : null;
     if (found) {
       const v = cur === undefined ? '' : String(cur), opts = found.slice();
       if (v && !opts.some((o) => o.id === v)) opts.push({ id: v, label: t('modesMissing', { v }) });
@@ -1992,7 +1992,7 @@ function mpTable(f, s, obj, entry, aria, id) {
 function mpOptions(s, hint, entry, path) {
   const list = hint.discovery || hint.list, tid = entry && entry.descriptor && entry.descriptor.typeId;
   if (list) return ((entry && entry.discovery && entry.discovery[list]) || []).map((x) => ({ id: String(x.id), label: ((k) => (t(k) !== k ? t(k) : x.label || String(x.id)))('dv_' + String(x.id).replace(/\W/g, '_')) }));
-  return (s.enum || []).map((v) => ({ id: String(v), label: mpWord('fv', tid, `.${v}`, (hint.labels && hint.labels[v]) || String(v)) }));
+  return (s.enum || []).map((v) => ({ id: String(v), label: mpWord('fv', tid, `${path}.${v}`, (hint.labels && hint.labels[v]) || String(v)) }));
 }
 // An input's text as the JSON value its schema wants; undefined = the field is left out. A value that fits no type is sent as
 // typed, so the service names the field instead of the page guessing.

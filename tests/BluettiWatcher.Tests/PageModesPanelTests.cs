@@ -422,6 +422,19 @@ public sealed partial class PageI18nTests
     }
 
     [Fact]
+    public void Editor_fields_and_enum_values_take_the_page_word_and_keep_the_catalogue_text_without_one()
+    {
+        var r = RunPanel("""
+            t = (k, p) => ({ fl_windows_powerPlan_plan: 'Plan word', fv_service_state_services_startType_manual: 'by hand' })[k] || (p ? k + JSON.stringify(p) : k);
+            const fields = mpFields({ properties: { plan: { type: 'string', title: 'Power plan' }, other: { type: 'string', title: 'Other' } } }, {}, '', 'windows.powerPlan');
+            const opts = mpOptions({ enum: ['manual', 'automatic'] }, {}, { descriptor: { typeId: 'service.state' } }, 'services.startType');
+            console.log(JSON.stringify({ labels: fields.map((f) => f.label), opts: opts.map((o) => o.label) }));
+            """);
+        Assert.Equal("""["Plan word","Other"]""", r.GetProperty("labels").GetRawText());
+        Assert.Equal("""["by hand","automatic"]""", r.GetProperty("opts").GetRawText());
+    }
+
+    [Fact]
     public void A_pick_posts_once_and_a_second_press_while_one_is_out_sends_nothing()
     {
         var r = RunPanel("""
