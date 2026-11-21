@@ -49,8 +49,11 @@ internal sealed class FakeModule(string typeId, FakeMachine machine, Restoration
     public Task<ModuleAvailability> AvailableAsync(CancellationToken ct) =>
         Task.FromResult(Unavailable ? ModuleAvailability.No("not on this machine") : ModuleAvailability.Yes);
 
+    /// <summary>A slow or changing machine: replaces the fixed discovery answer.</summary>
+    public Func<CancellationToken, Task<IReadOnlyDictionary<string, IReadOnlyList<DiscoveredItem>>>>? Discover { get; set; }
+
     public Task<IReadOnlyDictionary<string, IReadOnlyList<DiscoveredItem>>> DiscoverAsync(CancellationToken ct) =>
-        Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<DiscoveredItem>>>(
+        Discover?.Invoke(ct) ?? Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<DiscoveredItem>>>(
             new Dictionary<string, IReadOnlyList<DiscoveredItem>> { ["things"] = [new DiscoveredItem("a", "Thing A")] });
 
     public IReadOnlyList<string> Validate(JsonObject settings)

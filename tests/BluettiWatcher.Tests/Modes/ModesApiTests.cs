@@ -13,11 +13,12 @@ public sealed class ModesApiTests : IDisposable
     private readonly StationConfig _config;
     private readonly ModesEngine _engine;
     private readonly ModesApi _api;
+    private readonly FakeModule _module;
 
     public ModesApiTests()
     {
         _config = new StationConfig { DataDir = _dir, PowerMode = new PowerModeConfig { FlagPath = Path.Combine(_dir, "flag", "power-mode.json") } };
-        _engine = new ModesEngine(_config, new ModuleRegistry([new FakeModule(BuiltInModes.PowerPlanType, _m)]), new ModesStore(_dir),
+        _engine = new ModesEngine(_config, new ModuleRegistry([_module = new FakeModule(BuiltInModes.PowerPlanType, _m)]), new ModesStore(_dir),
             new ModeJournal(Path.Combine(_dir, ModeJournal.FileName)), new FakeFlagWriter(), _clock, _ => { });
         _engine.Start(_clock.Now.AddDays(-1));
         _api = new ModesApi(_config, _engine);
@@ -150,6 +151,21 @@ public sealed class ModesApiTests : IDisposable
         Assert.True(m.GetProperty("available").GetBoolean());
         Assert.Equal("a", m.GetProperty("discovery").GetProperty("things")[0].GetProperty("id").GetString());
         Assert.Equal("object", m.GetProperty("descriptor").GetProperty("settingsSchema").GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public async Task Catalogue_SlowDiscoveryAfterTheFirstBuild_AnswersAtOnceFromTheLastBuild()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _api.HandleAsync(Req("GET", "/api/modes/catalogue"), ct);
+        var slow = new TaskCompletionSource<IReadOnlyDictionary<string, IReadOnlyList<DiscoveredItem>>>();
+        _module.Discover = _ => slow.Task;   // the machine now takes its time: the page never waits for it
+
+        var second = _api.HandleAsync(Req("GET", "/api/modes/catalogue"), ct);
+
+        Assert.True(second.IsCompletedSuccessfully);
+        Assert.Equal("a", Json(await second).GetProperty("modules")[0].GetProperty("discovery").GetProperty("things")[0].GetProperty("id").GetString());
+        slow.SetResult(new Dictionary<string, IReadOnlyList<DiscoveredItem>> { ["things"] = [new DiscoveredItem("b", "Thing B")] });
     }
 
     [Fact]

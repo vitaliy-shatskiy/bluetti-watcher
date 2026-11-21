@@ -105,12 +105,15 @@ using var account = new CloudAccount(config, cloud, signInHttp, time, Log, stop.
 var notificationSettings = new NotificationSettingsStore(Path.Combine(config.DataDir, "notifications.json"), Log);
 BluettiWatcher.Modes.Broker.BrokerStatus BrokerState() => BluettiWatcher.Modes.Broker.BrokerVersion.Check(typeof(StationService).Assembly.GetName().Version ?? new Version(0, 0),
     BluettiWatcher.Modes.Broker.BrokerVersion.Read(BluettiWatcher.Modes.Broker.BrokerPaths.Default));
+// The catalogue's discovery takes seconds: built at start, so the page's first ask is answered at once.
+var modesApi = modes is null ? null : new ModesApi(config, modes);
+modesApi?.WarmCatalogue();
 var api = new StationApi(config, service, store, time, started, dtek, Log, () => bluetooth.StationEncrypted, () => bluetooth.BluetoothStalled,
         () =>
         {
             using var planSwitch = new BluettiWatcher.PowerMode.PowerModeSwitch([.. BluettiWatcher.PowerMode.PowerModeSwitch.ProcessEnvironment(), .. config.PowerModeEnvironment], TextWriter.Null);
             return planSwitch.ActivePlan();
-        }, account, bluetooth.StationBlocks, modes is null ? null : new ModesApi(config, modes), notificationSettings, BrokerState);
+        }, account, bluetooth.StationBlocks, modesApi, notificationSettings, BrokerState);
 // The notification-area icon and the notifications: a thread of this process, only in an interactive session (README, Tray).
 using var trayHost = config.Tray && Environment.UserInteractive
     ? TrayHost.Start(modes is null ? new ManualTrayModes(service) : new ModesTrayModes(modes), new Uri($"http://127.0.0.1:{config.Port}/"), time.LocalTimeZone, Log)

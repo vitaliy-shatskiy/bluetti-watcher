@@ -23,6 +23,10 @@ internal sealed class ModesApi(StationConfig config, ModesEngine engine, TimeSpa
     /// <summary>The longest one module's availability and discovery may take for the catalogue.</summary>
     internal static readonly TimeSpan DiscoverWait = TimeSpan.FromSeconds(3);
 
+    private readonly Lock _catalogueGate = new();
+    private Task<HttpResponse>? _catalogue;          // the last finished build, or the first one while it runs
+    private Task<HttpResponse>? _catalogueRefresh;   // the one rebuild behind the answers, while it runs
+
     public static bool Owns(string path) =>
         path == "/api/modes" || path.StartsWith("/api/modes/", StringComparison.Ordinal) || path == "/api/settings/hibernate";
 
@@ -135,13 +139,40 @@ internal sealed class ModesApi(StationConfig config, ModesEngine engine, TimeSpa
         }));
     }
 
-    private async Task<HttpResponse> CatalogueAsync(CancellationToken ct)
+    /// <summary>Builds the catalogue once at start, so the page's first ask finds it ready.</summary>
+    public void WarmCatalogue()
+    {
+        lock (_catalogueGate) _catalogue ??= BuildCatalogueAsync();
+    }
+
+    // Discovery asks the machine (plans, GPUs, services, tasks, monitors, OpenRGB) one module after another: seconds of
+    // work. An ask gets the last build at once and one rebuild runs behind it, so the next ask sees the machine as it is now.
+    private Task<HttpResponse> CatalogueAsync(CancellationToken ct)
+    {
+        Task<HttpResponse> answer;
+        lock (_catalogueGate)
+        {
+            if (_catalogue is null || _catalogue.IsFaulted || _catalogue.IsCanceled) _catalogue = BuildCatalogueAsync();
+            answer = _catalogue;
+            if (answer.IsCompletedSuccessfully && _catalogueRefresh is not { IsCompleted: false }) _catalogueRefresh = RefreshCatalogueAsync();
+        }
+        return answer.WaitAsync(ct);
+    }
+
+    private async Task<HttpResponse> RefreshCatalogueAsync()
+    {
+        var fresh = await BuildCatalogueAsync();
+        lock (_catalogueGate) _catalogue = Task.FromResult(fresh);
+        return fresh;
+    }
+
+    // Shared by every ask that waits on it, so no request's token ends it; each module is bounded by DiscoverWait.
+    private async Task<HttpResponse> BuildCatalogueAsync()
     {
         var entries = new List<(IActionModule Module, ModuleAvailability Available, IReadOnlyDictionary<string, IReadOnlyList<DiscoveredItem>> Lists)>();
         foreach (var m in engine.Registry.All)
         {
-            using var bounded = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            bounded.CancelAfter(DiscoverWait);
+            using var bounded = new CancellationTokenSource(DiscoverWait);
             ModuleAvailability available;
             IReadOnlyDictionary<string, IReadOnlyList<DiscoveredItem>> lists = new Dictionary<string, IReadOnlyList<DiscoveredItem>>();
             try
@@ -149,7 +180,7 @@ internal sealed class ModesApi(StationConfig config, ModesEngine engine, TimeSpa
                 available = await m.AvailableAsync(bounded.Token);
                 if (available.Available) lists = await m.DiscoverAsync(bounded.Token);
             }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { available = ModuleAvailability.No("no answer in time"); }
+            catch (OperationCanceledException) when (bounded.IsCancellationRequested) { available = ModuleAvailability.No("no answer in time"); }
             catch (Exception e) when (e is not OperationCanceledException) { available = ModuleAvailability.No(e.Message); }
             entries.Add((m, available, lists));
         }
