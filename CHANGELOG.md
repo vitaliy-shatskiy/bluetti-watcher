@@ -6,6 +6,80 @@ The release notes on GitHub are this file's section for the tag.
 
 ## [Unreleased]
 
+## [1.10.6] - 2026-11-21
+
+### Changed
+
+- Page: the 1.10.5 page redesign is withdrawn. The page is the 1.10.4 page again (every card, chart, the battery ring
+  and the layout), with the text and element fixes below. With it, tray and Windows notifications are in English again,
+  and `GET/PUT /api/settings/page` and `page-settings.json` are gone.
+- Page texts: no middle dots or text arrows between facts. The header names the mains state in one chip ("On battery",
+  "Charging 300 W", "Grid on") and the plan in force by its name; mode and action names come in the page's language,
+  day counts with their plural forms, the broker's failure and its next try in local time. The 30-day tiles share one
+  baseline.
+- Power modes panel: each mode is plain lines worded from its actions with one "Set up" button; the usual Auto pair
+  reads as one sentence with the minutes editable ("More rules" opens the full list); only what failed is shown. The
+  panel has no mode switch of its own: the header's is the one. The mode editor opens in place.
+- Mode editor: the GPU limit is one choice, the card's lowest limit or watts of your own, stepped by 10 within the
+  card's range, with the range and the usual limit as a hint; a saved percent shows in watts and is kept until edited.
+  Each action block has its title, Remove and an on switch in its header. No browser checkboxes, no asterisks, no list
+  of one choice; field names and values in the page's language.
+- Page: a Settings card above the reading source holds "Hibernate on low battery", "Notifications" (all on or off;
+  "Set up" switches each group) and the test notification. They left the folded Power modes panel.
+- Notifications: a mode you pick yourself (the page, the tray, the command line, an edit) shows no notification. Its
+  event is `mode-chosen`; a switch the service makes on its own stays `mode-changed`.
+- Notifications: `notifications.json` and `/api/settings/notifications` take `enabled`, a switch over every group that
+  keeps each group's own value.
+- Power modes: a fresh install's Normal sets the Balanced plan, so leaving Eco ends on Balanced even after a hand change
+  during Eco. A saved mode is not rewritten.
+- API: the action catalogue (`GET /api/modes/catalogue`) is built at start; an ask is answered from the last build at
+  once while one rebuild runs behind it. The page asks for it at load, so a mode block paints once, with its lines. A
+  GPU's discovery item gives its `min`, `max` and `default` watts as `numbers`.
+
+### Removed
+
+- The `gpu.idleWatcher` action, which only logged what kept an idle GPU at full clock. A saved mode or journal entry of
+  it is dropped at start with one log line; the event `gpu-idle-p0` is no longer written.
+
+### Fixed
+
+- Page: the mode editor's "[object Object]" fix of 1.10.5 is kept: a list of objects is edited as rows and saving with
+  nothing changed writes the same settings back.
+- Page: a mode block no longer shows bare action names for a few seconds before its lines.
+## [1.10.5] - 2026-11-21
+
+### Changed
+
+- Page: redesigned after a full design review. One control set (32 px buttons, one segmented look, small tags that do
+  not look like buttons), a readable type scale with sentence-case headings, and no middle dots or text arrows between
+  facts (a page test fails on any). Sections run header, live tiles, power modes, outage schedule, charts, last 30 days,
+  tables, data source; a footer names the version and the last update.
+- Page header: the name and the station model on separate lines, one mains tag ("On battery" / "On mains"), and one mode
+  switch in the order Auto, Eco, Normal, Max with localized names. Up to five modes show as buttons, more go behind
+  "More"; when the buttons do not fit, the whole switch becomes one menu, so a label is never cut. A press moves the
+  selection at once, a thin bar marks a change still running, the last press wins, and a refused change says why with
+  "Try again".
+- Page tiles: battery with a meter, load with the last hour, "Battery lasts until" shown once (smoothed over the last 10
+  minutes of load), the current or last outage, output and time off mains today, on shared baselines.
+- Page charts: battery and load are two stacked plots on one time axis with outage bands, labelled 20 % and
+  hibernation levels, a "Now" line, a dashed forecast and five ranges.
+- Page outage schedule: one timeline strip per day with the outage intervals as text, the current one tagged, and a
+  "Battery will last" / "Battery will not last" tag.
+- Page power modes: always open; a summary of the mode and why, the actions as a list with status words, modes as rows
+  edited in place with Save and Cancel, delete with Undo (switching to Auto first when the deleted mode is chosen), Auto
+  rules as sentences with minute steppers, and hibernation and test notifications as separate settings rows.
+- Page tables and statistics: one fact per column with units in every cell, energy in kWh, plain names for the
+  recurring and selected-range load.
+- Page data source: collapsed to one line while nothing needs attention, opens by itself on a problem, can be hidden
+  (stored by the service in `page-settings.json`, `GET/PUT /api/settings/page`); a cloud sign-in can be cancelled and
+  times out after 5 minutes.
+- Tray and Windows notifications speak the page's language (the page sends it to the service).
+
+### Fixed
+
+- Page: the mode editor showed "[object Object]" for a setting that is a list of objects (for example Windows services);
+  such a list is now edited as rows, and saving with nothing changed writes the same settings back.
+
 ## [1.10.4] - 2026-11-20
 
 ### Fixed
