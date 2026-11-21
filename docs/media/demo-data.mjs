@@ -59,6 +59,35 @@ export function history(url, minute) {
   return { step: 60, rows };
 }
 
+// The power modes as a fresh install has them (Normal = Balanced, Eco = Power saver and the GPU's lowest limit,
+// Max = High performance), Auto following the cut: Eco 3 minutes after mains is lost.
+const PLAN = { balanced: '381b4222-f694-41f0-9685-ff5bb260df2e', saver: 'a1841308-3541-4fab-bc81-f71556f20b4a', high: '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c' };
+const plan = (guid) => ({ typeId: 'windows.powerPlan', enabled: true, enforce: false, settings: { plan: guid } });
+const MODES = [
+  { id: 'normal', name: 'Normal', flagWord: 'normal', builtIn: true, actions: [plan(PLAN.balanced)] },
+  { id: 'eco', name: 'Eco', flagWord: 'eco', builtIn: true,
+    actions: [plan(PLAN.saver), { typeId: 'gpu.powerLimit', enabled: true, enforce: false, settings: { gpu: '0', limit: 'min' } }] },
+  { id: 'max', name: 'Max', flagWord: 'normal', builtIn: true, actions: [plan(PLAN.high)] },
+];
+export function modes(minute) {
+  const active = minute >= CUT_AT + 3 ? 'eco' : 'normal';
+  return {
+    engine: 'v2', activeModeId: active, reason: 'auto', switching: null, pending: false, emergency: false, actions: [], restores: [], problems: [],
+    settings: {
+      version: 1, modes: MODES, fallbackModeId: 'normal', autoHibernate: true,
+      rules: [{ condition: { kind: 'mainsOffFor', seconds: 180 }, modeId: 'eco' }, { condition: { kind: 'mainsOnFor', seconds: 180 }, modeId: 'normal' }],
+      selection: { kind: 'auto', manualModeId: null, autoModeId: active, autoRule: active === 'eco' ? 0 : null },
+    },
+  };
+}
+const CATALOGUE = { modules: [
+  { descriptor: { typeId: 'windows.powerPlan', title: 'Windows power plan', settingsSchema: { type: 'object', required: ['plan'], properties: { plan: { type: 'string' } } }, uiHints: { plan: { list: 'plans' } } },
+    available: true, unavailableReason: null, discovery: { plans: [{ id: PLAN.balanced, label: 'Balanced' }, { id: PLAN.saver, label: 'Power saver' }, { id: PLAN.high, label: 'High performance' }] } },
+  { descriptor: { typeId: 'gpu.powerLimit', title: 'GPU power limit', settingsSchema: { type: 'object', required: ['gpu'], properties: { gpu: { type: 'string' }, watts: { type: 'number' }, limit: { type: 'string', enum: ['min'] } } }, uiHints: {} },
+    available: true, unavailableReason: null, discovery: { gpus: [{ id: '0', label: 'Demo GPU', numbers: { min: 150, max: 400, default: 340 } }] } },
+] };
+const NOTIFICATIONS = { enabled: true, mains: true, modeChanges: true, lowBattery: true, failures: true, faults: true, overTemperature: true };
+
 // Answers every request of a Playwright context: the shipped page, and the demo API at the current minute.
 export async function serve(ctx, getMinute) {
   const json = (route, body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
@@ -66,6 +95,9 @@ export async function serve(ctx, getMinute) {
     const u = route.request().url();
     if (u.includes('/api/now')) return json(route, now(getMinute()));
     if (u.includes('/api/history')) return json(route, history(u, getMinute()));
+    if (u.includes('/api/modes/catalogue')) return json(route, CATALOGUE);
+    if (u.includes('/api/modes')) return json(route, modes(getMinute()));
+    if (u.includes('/api/settings/notifications')) return json(route, NOTIFICATIONS);
     if (u.includes('/api/mode')) return json(route, { ok: true });
     return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: PAGE });
   });

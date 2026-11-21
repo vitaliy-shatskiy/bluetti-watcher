@@ -42,7 +42,7 @@ try {
   while (minute < END) {
     minute += minute < CUT_AT - 2 ? 2 : minute < CUT_AT + 6 ? 1 : 12;
     await page.clock.setFixedTime(START + minute * 60000);
-    await page.evaluate(() => load(true));
+    await page.evaluate(() => Promise.all([load(true), mpRefresh()]));   // the page's own poll: the reading and the modes view
     await hold(minute >= CUT_AT && minute <= CUT_AT + 6 ? 900 : 450);
   }
   await hold(1800);

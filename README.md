@@ -55,7 +55,8 @@ flowchart LR
 - **Safe hibernation**: levels act only on two agreeing readings; implausible jumps are rejected.
 - **Battery time learned from your station**: a loss model fitted to your past cuts, with a likely range.
 - **Dashboard** in English and Ukrainian: battery, load, time left, cut history, charts from 1 hour to 30 days; fits a phone.
-- **Tray icon and Windows notifications**: mains lost and back, mode changes, low battery, failures, station alarms.
+- **Tray icon and Windows notifications**: mains lost and back, a mode the program switched, low battery, failures,
+  station alarms; all off with one switch.
 - **Optional**: BLUETTI cloud fallback, DTEK outage schedule (Kyiv region), wake during a cut, Claude Code integration.
 - **One NativeAOT exe**, a per-user scheduled task, no window, no elevation for the service.
 
@@ -118,14 +119,17 @@ Without the broker the service runs fine; only the actions that need it report s
 
 ## Using it
 
-- **Dashboard**: the `Bluetti Watcher` shortcut, or `http://127.0.0.1:18940/`. The Power modes panel picks Auto or a
-  mode, edits modes and rules, and turns hibernation on or off.
+- **Dashboard**: the `Bluetti Watcher` shortcut, or `http://127.0.0.1:18940/`. The switch in the header picks Auto or a
+  mode. The Power modes panel says what each mode does in plain words and edits modes, their actions and the Auto
+  rules. The Settings card turns hibernation and notifications on or off and sends a test notification.
 - **Tray icon**: the charge as digits over a bar, green on mains, amber on battery, grey with no fresh reading. The
   tooltip gives the watts, the mode and the time left; a click opens Auto, every mode, "Open panel" and "Exit tray"
   (hides the icon until the service restarts; the service keeps running).
-- **Notifications**: Windows toasts for mains lost and back, mode changes, low battery, failed actions, an admin broker
-  older than the service, and station faults, warnings and over-temperature. Each group can be switched off on the page
-  or in [`notifications.json`](docs/configuration.md#notifications-notificationsjson). No icon (`"tray": false` or
+- **Notifications**: Windows toasts for mains lost and back, a mode the program switched on its own (an Auto rule, a
+  dropped choice; a mode you pick yourself shows none), low battery, failed actions, an admin broker older than the
+  service, and station faults, warnings and over-temperature. "Notifications" on the Settings card turns them all off;
+  "Set up" beside it switches each group; the same switches live in
+  [`notifications.json`](docs/configuration.md#notifications-notificationsjson). No icon (`"tray": false` or
   `--no-tray`) means no notifications.
 - **Flag file** `%ProgramData%\BluettiWatcher\power-mode.json`: the current mode and battery level for other programs
   ([power-mode/README.md](power-mode/README.md)).
@@ -155,14 +159,14 @@ The actions a mode can hold:
 - services and scheduled tasks;
 - apps and Phone Link closed;
 - a command pair from `config.json` (for example pause a backup on entering, resume it on leaving);
-- the RGB lighting off through [OpenRGB](https://openrgb.org/), a profile of your choice back on leaving;
-- a watcher that logs what keeps the GPU at full clock.
+- the RGB lighting off through [OpenRGB](https://openrgb.org/), a profile of your choice back on leaving.
 
 The GPU limit and profile, services, scheduled tasks that refuse the user and elevated apps go through the admin broker,
 which acts only on what its allow list names (`BluettiWatcher.exe --broker-allow`, elevated).
 
 Every change is journaled and undone when the mode is left, unless you changed that setting by hand in the meantime:
-then it stays as you set it. The built-in Eco uses the Power saver plan and lists the other actions switched off.
+then it stays as you set it. The built-in Normal sets the Balanced plan, Eco the Power saver plan with the other
+actions listed and switched off, Max the High performance plan. A saved mode is never rewritten by an update.
 `"modes": { "engine": "legacy" }` keeps the older fixed eco ([configuration.md](docs/configuration.md#power-mode-and-actions)).
 
 ## Supported stations
@@ -217,7 +221,7 @@ does: set `"wakeEveryMinutes": 45` in `config.json` and restart the task.
 - **Local only.** The HTTP API listens on `127.0.0.1` and refuses any `Host` other than `127.0.0.1:<port>` or
   `localhost:<port>`. Every write route needs the header `X-Station: 1` and no foreign `Origin`, which other web
   pages cannot send ([api.md](docs/api.md#request-rules)).
-- **Off switches.** "Hibernation off" in the Power modes panel stops hibernation. `--dry-run` or `"dryRun": true` logs
+- **Off switches.** "Hibernate on low battery" on the Settings card stops hibernation. `--dry-run` or `"dryRun": true` logs
   every power-mode command and hibernation instead of running it.
 - **Nothing leaves the PC** unless you turn on a module:
   - Cloud fallback: `sso.bluettipower.com` (sign-in, token refresh) and `gw.bluettipower.com` (device list, live state,
@@ -256,7 +260,7 @@ fallback covers the gaps.
 <details>
 <summary><b>How do I stop a hibernation right now?</b></summary>
 
-Turn "Hibernation off" in the Power modes panel; it applies at once. With the legacy engine, create an empty file
+Switch off "Hibernate on low battery" on the Settings card; it applies at once. With the legacy engine, create an empty file
 `no-hibernate` in `%LOCALAPPDATA%\bluetti-watcher` instead.
 
 </details>
@@ -298,7 +302,7 @@ also run `install.ps1 -Broker -Apply` from an elevated PowerShell: the broker ru
 
 On mains, in this order:
 
-1. On the dashboard pick **Normal** in the Power modes panel, so every change a mode made is restored.
+1. On the dashboard pick **Normal** in the header's power switch, so every change a mode made is restored.
 2. Stop the service and remove its tasks and files:
 
 ```powershell

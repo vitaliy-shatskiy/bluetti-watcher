@@ -18,7 +18,8 @@ installed Google Chrome; the video scripts need `ffmpeg` on PATH. Every script w
 | `explainer/explainer.webp`, `.mp4`, `explainer/explainer-uk.webp`, `.mp4` | A power cut in six steps (`explainer/explainer.html`) | `node explainer/render.mjs` |
 | `../demos/cli.webp`, `../demos/cli.mp4` | `--help`, `power-mode status` on a demo flag, `--version` | From the repo root: `vhs docs/demos/cli.tape; node docs/media/gif.mjs docs/demos/cli-source.gif --out docs/demos/cli --fps 25` (vhs, ttyd and ffmpeg on PATH, the exe installed) |
 
-- `demo-data.mjs` is the demo station both dashboard scripts serve: every `/api/*` request is answered inside the
+- `demo-data.mjs` is the demo station both dashboard scripts serve (the readings, the power modes as a fresh install has
+  them with Auto following the cut, the notification switches): every `/api/*` request is answered inside the
   browser, on a port that is not the service's, so nothing reaches a running service.
 - `gif.mjs` turns a lossless video into an animated WebP (or `--format gif`) plus an MP4 within a 5 MB budget
   (`node gif.mjs <video> [--out <path>] [--format webp|gif] [--width 1640] [--fps 12] [--budget-mb 5]`; Node 20+,

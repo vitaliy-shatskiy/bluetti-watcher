@@ -8,7 +8,7 @@ namespace BluettiWatcher.Modes;
 /// </summary>
 internal static class RetiredActions
 {
-    /// <summary><c>gpu.idleWatcher</c> (removed in 1.10.6): it only logged what kept an idle GPU busy, and its polling cost power.</summary>
+    /// <summary><c>gpu.idleWatcher</c>: it only logged what kept an idle GPU busy, and its polling cost power.</summary>
     public static readonly FrozenSet<string> TypeIds = FrozenSet.Create(StringComparer.Ordinal, "gpu.idleWatcher");
 
     /// <summary>The settings without retired actions, and how many were taken out.</summary>

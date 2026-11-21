@@ -424,15 +424,23 @@ The default engine (`legacy` keeps section 5). Code in `Modes/`; routes in [api.
    Any other bad line moves the journal aside (`.corrupt-<unix>`), restores nothing and holds `normal` until Auto
    (`modes-problem`). Compacted at start and past 5000 records, keeping owned state, the last mode and 200 records.
 7. **Settings** `modes.json`, versioned, replaced atomically. A first start after the switch was used migrates
-   `returnPlan` and `gpuCap`; a fresh install gets Eco = Power saver with its GPU limit (`min`), a command pair,
-   services and Phone Link listed but off, and Max = High performance. An unparseable file is
-   moved aside; one from a newer build is left alone and defaults run in memory.
+   `returnPlan` and `gpuCap`; a fresh install gets Normal = Balanced, Eco = Power saver with its GPU limit (`min`), a
+   command pair, services and Phone Link listed but off, and Max = High performance. Defaults never rewrite a saved
+   mode. An action of a retired type (`gpu.idleWatcher`) is dropped at start with one log line, and an owned resource
+   of it is closed as dropped, never restored. An unparseable file is moved aside; one from a newer build is left alone
+   and defaults run in memory.
 8. **Flag:** the active mode's word goes through the switch's own flag code, so flag readers are unchanged. The
    station's eco and mains-back run no switch command under `v2`; the emergency and the battery report still do.
 9. **Policy warnings:** a saved mode answers with the entries the broker policy does not allow and the elevated
    command that allows each.
-10. **Page:** a Power modes panel (only under `v2`, idle while closed; `/#modes`) with Auto, the reason in force, a
-    chip per action, the hibernate setting, a mode editor generated from the catalogue and the Auto rules editor.
+10. **Page:** the header switch picks Auto or a mode. The Power modes panel (only under `v2`; `/#modes`) shows each
+    mode as plain lines worded by the page from its actions, the usual Auto pair as one sentence with the minutes
+    editable (any other rule set as a list), and only what failed. The mode editor opens in place, its forms generated
+    from the catalogue; an action type with an editor of its own (the GPU limit: the card's lowest limit or watts of
+    one's own) is registered outside the panel, which names no module. A block paints only once the catalogue is in,
+    and the page asks for it at load beside the first view. The Settings card holds the hibernate setting, the
+    notification switches and the test notification.
+11. **Catalogue:** built once at start; an ask gets the last build at once and one rebuild runs behind it.
 
 ## 13. Admin broker (power modes)
 
@@ -478,13 +486,14 @@ started on demand (`schtasks /run`), and wait up to 10 s for the answer.
    | Group | Source |
    |---|---|
    | `mains` | the confirmed cut starting or ending (never on the first snapshot) |
-   | `modeChanges` | `mode-changed`, `mode-dropped`; `eco-on`, `mains-back` under `legacy` |
+   | `modeChanges` | `mode-changed`, `mode-dropped`; `eco-on`, `mains-back` under `legacy`. A switch the user made (`mode-chosen`) shows none. |
    | `lowBattery` | `emergency-on`, `stop`, `hibernate-warning` |
    | `failures` | `action-failed`, `mode-refused`, `broker-stale` |
    | `faults` | `grid-voltage-high`, station faults and warnings |
    | `overTemperature` | station temperature over `stationTempHighC` |
 
-   Events come through a hook on the store, so every writer counts. Station alarms notify when they appear.
+   `enabled` false silences every group and keeps each group's value. Events come through a hook on the store, so
+   every writer counts. Station alarms notify when they appear.
 
 ## 15. Storage and files
 

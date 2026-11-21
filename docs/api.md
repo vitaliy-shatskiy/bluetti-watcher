@@ -145,8 +145,9 @@ when a time cannot be read.
 Kinds the service writes: `mode`, `mode-applied`, `mode-refused`, `mode-dropped`, `mode-superseded`, `eco-on`,
 `emergency-on`, `mains-back`, `stop`, `hibernate-warning`, `hibernate`, `hibernate-refused`, `hibernate-skipped`,
 `hibernate-delayed`, `action`, `action-failed`, `config-warning`, `grid-voltage-high`, `station-warning`,
-`station-fault`, `station-alarm-cleared`, `station-hot`, `broker-stale`, `gpu-idle-p0`, `wake-*` and
-`dtek-watcher-*`.
+`station-fault`, `station-alarm-cleared`, `station-hot`, `broker-stale`, `wake-*` and `dtek-watcher-*`. Under
+`modes.engine` = `v2` also `mode-changed` (the service switched the mode on its own), `mode-chosen` (a switch the user
+made: a select, the tray, an edit; no notification), `mode-drift` and `modes-problem`.
 
 ## GET /api/health
 
@@ -162,7 +163,7 @@ Kinds the service writes: `mode`, `mode-applied`, `mode-refused`, `mode-dropped`
 | `bluetoothEncrypted` | true once the station opened an encrypted Bluetooth handshake: Bluetooth is not tried again until a restart and the cloud fallback answers. Does not change `ok`. |
 | `bluetoothStalled` | true while an abandoned Bluetooth read is still running: no new Bluetooth read starts and the cloud fallback answers. Does not change `ok`. |
 | `readingSource` | The source in force: `auto`, `bluetooth`, `cloud`. |
-| `cloud` | `{ "state", "detail", "at" }`: `off` · `signed-out` (no token) · `ok` · `sign-in-needed` (the token refresh was refused) · `error` (the last read failed; `detail` says why). Never a token. |
+| `cloud` | `{ "state", "detail", "at", "until" }`: `state` is `off`, `signed-out` (no token), `ok`, `sign-in-needed` (the token refresh was refused) or `error` (the last read failed; `detail` says why). `until` = when the access token runs out, or null without a readable token. Never a token. |
 | `misses` | Misses in a row. |
 | `silent` | true while the station does not answer. |
 | `rawRows`, `aggregateRows` | Rows in the database. |
@@ -204,7 +205,7 @@ The power plan every end of eco sets: `returnPlan` in `power-mode.config.json` b
 
 ```json
 { "readingSource": "auto", "readingSourceFrom": "default",
-  "cloud": { "state": "ok", "detail": "", "at": null },
+  "cloud": { "state": "ok", "detail": "", "at": null, "until": "2026-12-21T19:06:00+00:00" },
   "signIn": { "state": "idle", "message": "", "at": null } }
 ```
 
@@ -226,7 +227,8 @@ The power plan every end of eco sets: `returnPlan` in `power-mode.config.json` b
 
 Which Windows notifications show ([configuration.md](configuration.md#notifications-notificationsjson)).
 
-- GET: `{ "mains", "modeChanges", "lowBattery", "failures", "faults", "overTemperature" }`, each true or false.
+- GET: `{ "enabled", "mains", "modeChanges", "lowBattery", "failures", "faults", "overTemperature" }`, each true or
+  false. `enabled` false silences every group and keeps each group's own value for when it is true again.
 - PUT: any subset of those keys with true or false, write guard; the rest keep their value. All or nothing: an unknown
   key or a non-boolean value is 400 and changes nothing. 200 answers the whole set as saved; the next notification
   follows it.
@@ -254,7 +256,7 @@ User-defined modes, the Auto rules and per-action status ([design.md](design.md)
 | `PUT /api/modes/rules` | an array of rules | Replaces the Auto rules; order = priority, the first match wins. |
 | `POST /api/modes/select` | `{ "mode": "auto" \| "<id>" }` | Holds that mode until `auto`. |
 | `PUT /api/settings/hibernate` | `{ "autoHibernate": true \| false }` | Hibernation at the hibernate level on or off; a `no-hibernate` file found at start sets it to `false` once (design.md, section 6). |
-| `GET /api/modes/catalogue` | | Every action type: `{ "modules": [ { "descriptor", "available", "unavailableReason", "discovery" } ] }`; each module gets 3 s. |
+| `GET /api/modes/catalogue` | | Every action type: `{ "modules": [ { "descriptor", "available", "unavailableReason", "discovery" } ] }`. Built at start; each ask is answered from the last build at once and one rebuild runs behind it (each module gets 3 s), so the next ask sees the machine as it is then. |
 | `GET /api/modes/journal` | `?since=<seq>` | `{ "pageSize": 500, "records": [] }`: journal records after that sequence number, at most 500. |
 
 Writes take the write guard. A change is saved to `modes.json`, reconciled at once and answered with the whole view.
@@ -322,7 +324,8 @@ A rule (at most 32):
 Catalogue `descriptor`: `typeId`, `version`, `title`, `settingsSchema` (JSON Schema subset: `type`, `properties`,
 `required`, `enum`, `minimum`, `maximum`, `items`, `additionalProperties`), `uiHints`, `discoveryLists`,
 `restoration` (`reversible`, `token`, `compensatable`, `irreversible`), `needsAdmin`, `defaultSettings`. `discovery`
-maps each list name to `[ { "id", "label" } ]` (plans, services, ...). The page renders a module's settings form from
+maps each list name to `[ { "id", "label", "numbers" } ]` (plans, services, ...); `numbers` is an optional map of
+named values a page words itself (a GPU's `min`, `max` and `default` watts). The page renders a module's settings form from
 `settingsSchema` and `uiHints` alone: `uiHints` maps a field's dotted path (`limit`, `inner.depth`) to
 `{ label, help, units, order, widget, discovery, step, labels }`; `discovery` (or `list`) names a discovery list,
 `widget: "slider"` makes a bounded number a slider.

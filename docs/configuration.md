@@ -236,15 +236,16 @@ names it and every group stays on until the next change rewrites the file.
 
 | Key | Type | Default | Notifications |
 |---|---|---|---|
+| `enabled` | bool | true | Every notification; false silences them all and keeps each group's own value. |
 | `mains` | bool | true | Mains lost, mains back (the confirmed cut). |
-| `modeChanges` | bool | true | Modes the service changed itself: eco on, modes lifted when mains is back, a mode the Auto rules put in force (`v2`), a page choice dropped. |
+| `modeChanges` | bool | true | Modes the service changed itself: eco on, modes lifted when mains is back, a mode the Auto rules put in force (`v2`), a page choice dropped. A mode the user picked (page, tray, command line) shows none. |
 | `lowBattery` | bool | true | Battery emergency, stop, the hibernate warning. |
 | `failures` | bool | true | A power-mode command or action that failed, a mode choice refused, an admin broker older than the service. |
 | `faults` | bool | true | Station faults and warnings, the grid voltage alert. |
 | `overTemperature` | bool | true | A station temperature above `stationTempHighC` (V2 stations). |
 
 ```json
-{ "mains": true, "modeChanges": false, "lowBattery": true, "failures": true, "faults": true, "overTemperature": true }
+{ "enabled": true, "mains": true, "modeChanges": false, "lowBattery": true, "failures": true, "faults": true, "overTemperature": true }
 ```
 
 ## Other files in the data directory
