@@ -47,7 +47,8 @@ internal sealed class GpuPowerLimitModule(INvidiaSmi smi, IAdminBroker broker) :
         var lists = new Dictionary<string, IReadOnlyList<DiscoveredItem>>(StringComparer.Ordinal);
         var q = await smi.QueryAsync(ct);
         if (q.Gpus is not null)
-            lists["gpus"] = [.. q.Gpus.Select(g => new DiscoveredItem(g.Id, string.Create(CultureInfo.InvariantCulture, $"{g.Name} ({g.Min:0.#}..{g.Max:0.#} W, default {g.Default:0.#} W)")))];
+            lists["gpus"] = [.. q.Gpus.Select(g => new DiscoveredItem(g.Id, string.Create(CultureInfo.InvariantCulture, $"{g.Name} ({g.Min:0.#}..{g.Max:0.#} W, default {g.Default:0.#} W)"),
+                new Dictionary<string, double>(StringComparer.Ordinal) { ["min"] = g.Min, ["max"] = g.Max, ["default"] = g.Default }))];
         return lists;
     }
 

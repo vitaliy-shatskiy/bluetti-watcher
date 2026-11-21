@@ -215,6 +215,15 @@ public sealed class PowerModulesTests
         Assert.False(m.Equivalent(intent.Key, intent.Target, baseline.Value));
     }
 
+    // the page words the limit from these (its lowest, the range, the usual one), never from the English label
+    [Fact]
+    public async Task GpuLimit_Discover_GivesEachCardsLimitsAsNumbers()
+    {
+        var card = Assert.Single((await new GpuPowerLimitModule(_smi, _broker).DiscoverAsync(Ct))["gpus"]);
+        var g = _smi.Gpus[0];
+        Assert.Equal((g.Min, g.Max, g.Default), (card.Numbers!["min"], card.Numbers["max"], card.Numbers["default"]));
+    }
+
     [Fact]
     public async Task GpuLimit_OutsideRange_FailsWithoutCallingBroker()
     {
