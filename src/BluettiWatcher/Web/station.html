@@ -2227,7 +2227,8 @@ const mpEditEl = () => mpEditBox || (mpEditBox = $('modesEdit'));
 // One block per mode: its name, «Active» on the one in force, what it does line by line, one button to set it up.
 function mpPaintList() {
   const v = mpView;
-  if (!v) return;
+  // the lines need the catalogue's schemas: before it is in, a block would show bare action names, then swap to the lines
+  if (!v || !mpCat) return;
   const d = mpDraft, box = mpEditEl();
   mpSet($('modesList'), mpEl('h3', {}, t('modesList')), mpModes().map((m) => {
     const on = (m.actions || []).filter((a) => a.enabled !== false), here = d && !d.create && d.mode.id === m.id;

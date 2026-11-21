@@ -274,6 +274,23 @@ public sealed partial class PageI18nTests
     }
 
     [Fact]
+    public void A_mode_block_is_painted_only_once_the_catalogue_is_in_never_as_bare_action_names_first()
+    {
+        var r = RunPanel("""
+            const lis = () => walk($('modesList'), (x) => x.tagName === 'LI').map((x) => x.textContent);
+            const blocks = () => walk($('modesList'), (x) => x.className === 'mode').length;
+            const cat = mpCat; mpCat = null;
+            mpPaintList();
+            const before = { blocks: blocks(), lines: lis() };
+            mpCat = cat;
+            mpPaintList();
+            console.log(JSON.stringify({ before, after: blocks() }));
+            """);
+        Assert.Equal("""{"blocks":0,"lines":[]}""", r.GetProperty("before").GetRawText());   // the view came first: nothing yet, no names-then-lines swap
+        Assert.True(r.GetProperty("after").GetInt32() > 0);
+    }
+
+    [Fact]
     public void Built_in_modes_cannot_be_deleted_and_a_user_mode_is_deleted_only_after_the_confirm()
     {
         var r = RunPanel("""
